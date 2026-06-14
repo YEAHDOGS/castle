@@ -1,5 +1,6 @@
 {
-  "name": "castle-app",
+  "name": "castle",
+  "author": "Captain Brando!",
   "private": true,
   "version": "0.0.0",
   "type": "module",
