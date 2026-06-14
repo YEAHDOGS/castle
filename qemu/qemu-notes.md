@@ -26,7 +26,7 @@ https://www.qemu.org/
 # Bootloader
 
 - GRUB
-- Lumine
+- Limine
 
 # Things to work on
 
@@ -34,6 +34,7 @@ https://www.qemu.org/
 - We need robust auditing, logging, and metrics. Anything installed, we need to have a record of it immediately
 - Test the btrfs rollback feature. Can this be integrated with castle?
 - Install scripts for everything
+- End-to-end encryption for all incoming and outgoing traffic
 
 # Packages
 

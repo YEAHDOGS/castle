@@ -1,0 +1,1 @@
+# We need to install everything listed in qemu-notes.md
