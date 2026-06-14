@@ -1,2 +1,3 @@
-# castle-app
- A way to make data yours again
+# Castle 🏰
+
+A way to make data yours again
