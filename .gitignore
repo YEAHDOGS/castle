@@ -1,3 +1,8 @@
+# Data
+*.iso
+*.qcow2
+src/qemu/data/*
+
 # Logs
 logs
 *.log
