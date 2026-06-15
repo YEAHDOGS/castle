@@ -58,6 +58,7 @@ function Test-CryptographicHash {
         [string]$ExpectedHash,
         [string]$HashUrl,
         [string]$Algorithm = "SHA512",
+        [string]$IsoName,
         [object]$HttpClient
     )
 
@@ -67,8 +68,27 @@ function Test-CryptographicHash {
         try {
             Write-Host "📡 Querying remote checksum manifest..." -ForegroundColor DarkGray
             $FetchedData = $HttpClient.GetStringAsync($HashUrl).GetAwaiter().GetResult()
-            if ($FetchedData -match "([a-fA-F0-9]{64,128})") {
-                $ExpectedHash = $Matches[1]
+            
+            if (-not [string]::IsNullOrEmpty($IsoName)) {
+                # 1. Multi-line manifest parsing (Line must contain our specific ISO target name)
+                $EscapedIsoName = [regex]::Escape($IsoName)
+                
+                # Match hex hash chars, whitespace, optional asterisk, and our literal file name
+                $Pattern = "(?mi)^([a-fA-F0-9]+)\s+\*?${EscapedIsoName}\s*$"
+                
+                if ($FetchedData -match $Pattern) {
+                    $ExpectedHash = $Matches[1]
+                }
+                else {
+                    Write-Host "⚠️ Targeted file string '$IsoName' not listed within retrieved network manifest." -ForegroundColor Orange
+                }
+            }
+            else {
+                # 2. Fallback for single-line raw checksum streams (.sha256 / .sha512 files)
+                # Broadened regex range to cleanly capture MD5 (32), SHA1 (40), SHA256 (64), or SHA512 (128)
+                if ($FetchedData -match "([a-fA-F0-9]{32,128})") {
+                    $ExpectedHash = $Matches[1]
+                }
             }
         }
         catch {
@@ -78,6 +98,12 @@ function Test-CryptographicHash {
 
     if ([string]::IsNullOrEmpty($ExpectedHash)) {
         Write-Host "❌ Missing cryptographic hash target signature. Verification aborted." -ForegroundColor Red
+        return $false
+    }
+
+    # Verify target payload exists locally before calling Get-FileHash
+    if (-not (Test-Path $FilePath)) {
+        Write-Host "❌ Target path local payload storage node not found: $FilePath" -ForegroundColor Red
         return $false
     }
 
