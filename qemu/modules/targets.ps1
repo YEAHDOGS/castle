@@ -40,14 +40,15 @@ $IsoMatrix = @(
         Name          = "EndeavourOS Linux"
         Description   = "Friendly, terminal-centric Arch-based distribution with a GUI installer."
         # Dynamic Resolver Configuration
-        ResolverType  = "GitHub"
-        ResolverRepo  = "endeavouros-team/ISO"
+        ResolverType  = "HtmlDirectory"
+        ResolverUrl   = "https://mirrors.gigenet.com/endeavouros/iso/"
+        ResolverRegex = 'href="EndeavourOS_([^"]+)\.iso"'
         # Templates
-        UrlTemplate   = 'https://github.com/endeavouros-team/ISO/releases/download/$v/EndeavourOS_$v.iso'
-        HashUrlSha512Template = 'https://github.com/endeavouros-team/ISO/releases/download/$v/EndeavourOS_$v.iso.sha512sum'
+        UrlTemplate   = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso'
+        HashUrlSha512Template = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sha512'
+        SigUrlTemplate = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sig'
         IsoNameTemplate = 'EndeavourOS_$v.iso'
         FileTemplate  = 'endeavouros-$v.iso'
-        # Note: GPG sig resolving on GitHub releases varies by version tag formatting, keeping static for now or ignoring sig since hash works
         # QEMU Profile
         DiskSize      = "40G"
         OsFamily      = "linux"
