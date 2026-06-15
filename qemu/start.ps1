@@ -482,52 +482,61 @@ Write-Host "  Castle VM Pipeline" -ForegroundColor Cyan
 Write-Host "  Target: $($Iso.Name)" -ForegroundColor White
 Write-Host "  ================================================================" -ForegroundColor DarkGray
 
-# ==============================================================================
-# PHASE 1 -- ISO ACQUISITION (Download if missing)
-# ==============================================================================
-Write-Host ""
-Write-Host "  [*] Phase 1: ISO Acquisition" -ForegroundColor Cyan
-Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
-
 Add-Type -AssemblyName System.Net.Http
 $HttpClient = [System.Net.Http.HttpClient]::new()
 
-if (Test-Path $IsoPath) {
-    $SizeGB = "{0:N2}" -f ((Get-Item $IsoPath).Length / 1GB)
-    Write-Host "  [OK] ISO cached: $IsoPath ($SizeGB GB)" -ForegroundColor Green
-}
-else {
-    Write-Host "  [>] ISO not found locally. Starting secure download..." -ForegroundColor Yellow
+$Verified = $false
+while (-not $Verified) {
+    # ==============================================================================
+    # PHASE 1 -- ISO ACQUISITION (Download if missing)
+    # ==============================================================================
+    Write-Host ""
+    Write-Host "  [*] Phase 1: ISO Acquisition" -ForegroundColor Cyan
+    Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
 
-    if (-not (Test-Path $DataDir)) {
-        New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+    if (Test-Path $IsoPath) {
+        $SizeGB = "{0:N2}" -f ((Get-Item $IsoPath).Length / 1GB)
+        Write-Host "  [OK] ISO cached: $IsoPath ($SizeGB GB)" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  [>] ISO not found locally. Starting secure download..." -ForegroundColor Yellow
+
+        if (-not (Test-Path $DataDir)) {
+            New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+        }
+
+        $DownloadOk = Start-NetworkStream -Url $Iso.Url -Path $IsoPath -HttpClient $HttpClient
+        if (-not $DownloadOk) {
+            Write-Host "  [FAIL] Download failed. Aborting." -ForegroundColor Red
+            $HttpClient.Dispose()
+            Exit 1
+        }
     }
 
-    $DownloadOk = Start-NetworkStream -Url $Iso.Url -Path $IsoPath -HttpClient $HttpClient
-    if (-not $DownloadOk) {
-        Write-Host "  [FAIL] Download failed. Aborting." -ForegroundColor Red
-        $HttpClient.Dispose()
-        Exit 1
+    # ==============================================================================
+    # PHASE 2 -- INTEGRITY VERIFICATION (Always runs, even for cached ISOs)
+    # ==============================================================================
+    Write-Host ""
+    Write-Host "  [*] Phase 2: Integrity Verification" -ForegroundColor Cyan
+    Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
+
+    $Verified = Test-IsoIntegrity -Target $Iso -FilePath $IsoPath -HttpClient $HttpClient
+
+    if (-not $Verified) {
+        Write-Host ""
+        Write-Host "  [FAIL] INTEGRITY CHECK FAILED -- Refusing to boot unverified image." -ForegroundColor Red
+        $Choice = Read-Host "     Delete and re-download? [Y]es / [N]o (default: N)"
+        if ($Choice -match "^y" -or $Choice -match "^yes") {
+            Remove-Item $IsoPath -Force
+            Write-Host "  [i] Deleted corrupted ISO. Retrying..." -ForegroundColor Yellow
+        } else {
+            Write-Host "  [FAIL] Exiting without boot." -ForegroundColor Red
+            $HttpClient.Dispose()
+            Exit 1
+        }
     }
 }
-
-# ==============================================================================
-# PHASE 2 -- INTEGRITY VERIFICATION (Always runs, even for cached ISOs)
-# ==============================================================================
-Write-Host ""
-Write-Host "  [*] Phase 2: Integrity Verification" -ForegroundColor Cyan
-Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
-
-$Verified = Test-IsoIntegrity -Target $Iso -FilePath $IsoPath -HttpClient $HttpClient
 $HttpClient.Dispose()
-
-if (-not $Verified) {
-    Write-Host ""
-    Write-Host "  [FAIL] INTEGRITY CHECK FAILED -- Refusing to boot unverified image." -ForegroundColor Red
-    Write-Host "     Delete and re-download: Remove-Item '$IsoPath'" -ForegroundColor DarkGray
-    Write-Host ""
-    Exit 1
-}
 
 # ==============================================================================
 # PHASE 3 -- DISK PROVISIONING
