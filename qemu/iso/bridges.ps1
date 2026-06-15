@@ -106,7 +106,8 @@ function Test-GpgSignature {
     )
 
     if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) {
-        Write-Host "⚠️ GPG executable not detected on environment paths. Skipping layer..." -ForegroundColor Orange
+        Write-Host "⚠️ GPG executable not detected on environment paths." -ForegroundColor Orange
+        Write-Host "If you have Git installed, your PATH variable or your $PROFILE must point to the gpg.exe in the Git\usr\bin folder. Skipping layer..." -ForegroundColor Orange
         return $true
     }
 
