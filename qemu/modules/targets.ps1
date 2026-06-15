@@ -113,13 +113,17 @@ $IsoMatrix = @(
         Id            = "rocky"
         Name          = "Rocky Linux Minimal (RHEL Core)"
         Description   = "Enterprise Linux distro offering 100% bug-for-bug compatibility with RHEL."
-        Url           = "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.2-x86_64-minimal.iso"
-        IsoName       = "Rocky-10.2-x86_64-minimal.iso"
-        File          = "rockylinux.iso"
-        HashUrlSha256 = "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM"
-        SigUrl        = "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/CHECKSUM.SIG"
-        GpgKey        = "21040B48A14A2ED7"
-        GpgServer     = "hkps://keyserver.ubuntu.com"
+        # Dynamic Resolver Configuration
+        ResolverType  = "HtmlDirectory"
+        ResolverUrl   = "https://download.rockylinux.org/pub/rocky/"
+        ResolverRegex = 'href="([89]|10)/"'
+        # Templates
+        UrlTemplate   = 'https://download.rockylinux.org/pub/rocky/$v/isos/x86_64/Rocky-$v-latest-x86_64-minimal.iso'
+        IsoNameTemplate = 'Rocky-$v-latest-x86_64-minimal.iso'
+        FileTemplate  = 'rockylinux-$v.iso'
+        HashUrlSha256Template = 'https://download.rockylinux.org/pub/rocky/$v/isos/x86_64/CHECKSUM'
+        # Rocky signs the checksum file, not the ISO directly — GPG disabled until
+        # we add checksum-file-level signature verification support.
         # QEMU Profile
         DiskSize      = "30G"
         OsFamily      = "linux"

@@ -22,8 +22,8 @@ function Get-HtmlDirectoryVersions {
             $Versions = $Versions | Where-Object { $_ -match $Filter }
         }
 
-        # Sort descending (latest first)
-        return @($Versions | Sort-Object -Descending)
+        # Sort descending (latest first) with natural numeric sorting
+        return @($Versions | Sort-Object { [regex]::Replace($_, '\d+', { $args[0].Value.PadLeft(10, '0') }) } -Descending)
     }
     catch {
         Write-Host "  [FAIL] Failed to scrape HTML directory: $_" -ForegroundColor Red
