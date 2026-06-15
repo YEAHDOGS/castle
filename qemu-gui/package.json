@@ -1,0 +1,14 @@
+{
+  "name": "castle-qemu-gui",
+  "version": "1.0.0",
+  "description": "Standalone desktop UI for Castle VM QEMU Swarm",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "Captain Brando",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
