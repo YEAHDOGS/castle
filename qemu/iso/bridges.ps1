@@ -72,15 +72,19 @@ function Test-CryptographicHash {
             if (-not [string]::IsNullOrEmpty($IsoName)) {
                 # 1. Multi-line manifest parsing (Line must contain our specific ISO target name)
                 $EscapedIsoName = [regex]::Escape($IsoName)
-                
-                # Match hex hash chars, whitespace, optional asterisk, and our literal file name
-                $Pattern = "(?mi)^([a-fA-F0-9]+)\s+\*?${EscapedIsoName}\s*$"
-                
+        
+                # --- DUAL FORMAT PATTERN ---
+                # Pattern 1 (Standard Linux): Matches hash at start, followed by whitespace/asterisk and filename
+                # Pattern 2 (BSD / RHEL Style): Matches Algorithm(filename) = hash
+                $Pattern = "(?mi)(?:^([a-fA-F0-9]+)\s+\*?${EscapedIsoName}\s*$|^\w+\s*\(${EscapedIsoName}\)\s*=\s*([a-fA-F0-9]+)\s*$)"
+        
                 if ($FetchedData -match $Pattern) {
-                    $ExpectedHash = $Matches[1]
+                    # Since we have two capturing groups in an OR condition, 
+                    # $Matches[1] captures the standard format, $Matches[2] captures the BSD style.
+                    $ExpectedHash = if (![string]::IsNullOrEmpty($Matches[1])) { $Matches[1] } else { $Matches[2] }
                 }
                 else {
-                    Write-Host "⚠️ Targeted file string '$IsoName' not listed within retrieved network manifest." -ForegroundColor Orange
+                    Write-Host "⚠️ Targeted file string '$IsoName' not listed within retrieved network manifest." -ForegroundColor Yellow
                 }
             }
             else {
@@ -92,7 +96,7 @@ function Test-CryptographicHash {
             }
         }
         catch {
-            Write-Host "⚠️ Remote hash lookup failed. Falling back to local data map attributes." -ForegroundColor Orange
+            Write-Host "⚠️ Remote hash lookup failed. Falling back to local data map attributes." -ForegroundColor Yellow
         }
     }
 
