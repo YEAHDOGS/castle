@@ -14,6 +14,20 @@
 #   - BSD/RHEL format: "ALGO(filename) = hash"
 # ==============================================================================
 
+function Get-FileHashDotNet {
+    param([string]$Path, [string]$Algorithm = "SHA512")
+    $stream = [System.IO.File]::OpenRead($Path)
+    if ($Algorithm -eq "SHA512") { $hasher = [System.Security.Cryptography.SHA512]::Create() }
+    elseif ($Algorithm -eq "SHA256") { $hasher = [System.Security.Cryptography.SHA256]::Create() }
+    elseif ($Algorithm -eq "MD5") { $hasher = [System.Security.Cryptography.MD5]::Create() }
+    elseif ($Algorithm -eq "SHA1") { $hasher = [System.Security.Cryptography.SHA1]::Create() }
+    else { $hasher = [System.Security.Cryptography.SHA256]::Create() }
+    $hashBytes = $hasher.ComputeHash($stream)
+    $stream.Close()
+    $hasher.Dispose()
+    return ([System.BitConverter]::ToString($hashBytes) -replace '-').ToLower()
+}
+
 function Test-CryptographicHash {
     param (
         [string]$FilePath,
@@ -102,7 +116,7 @@ function Test-CryptographicHash {
     }
 
     # -- Compute and compare --
-    $ComputedHash = (Get-FileHash -Path $FilePath -Algorithm $Algorithm).Hash.ToLower().Trim()
+    $ComputedHash = (Get-FileHashDotNet -Path $FilePath -Algorithm $Algorithm).Trim()
     $TargetCleanHash = $ExpectedHash.ToLower().Trim()
 
     if ($ComputedHash -eq $TargetCleanHash) {
@@ -199,7 +213,7 @@ function Get-OrCreateHmacKey {
     if (Test-Path $KeyFilePath) {
         try {
             $Encrypted = (Get-Content $KeyFilePath -Raw).Trim()
-            $Credential = New-Object System.Management.Automation.PSCredential("key", (ConvertTo-SecureString $Encrypted))
+            $Credential = New-Object System.Management.Automation.PSCredential("key", (ConvertTo-SecureString $Encrypted -ErrorAction Stop))
             $Key = $Credential.GetNetworkCredential().Password
             if ($Key.Length -eq 64) {
                 return $Key
@@ -308,7 +322,7 @@ function Test-IsoIntegrity {
     if ($TrustStore.ContainsKey($IsoName)) {
         Write-Host "  [TRUST PIN] Validating against pinned local trust store..." -ForegroundColor Magenta
         $ExpectedPinnedHash = $TrustStore[$IsoName]
-        $ComputedPinnedHash = (Get-FileHash -Path $FilePath -Algorithm "SHA512").Hash.ToLower().Trim()
+        $ComputedPinnedHash = (Get-FileHashDotNet -Path $FilePath -Algorithm "SHA512").Trim()
         
         if ($ComputedPinnedHash -eq $ExpectedPinnedHash) {
             Write-Host "  [OK] Trust Pinning verification passed. ISO matches pinned state." -ForegroundColor Green
@@ -382,7 +396,7 @@ function Test-IsoIntegrity {
     # -- Pin Verified Hash if we successfully verified remotely --
     if ($HashMatch -and $FinalHash) {
         Write-Host "  [TRUST PIN] Pinning verified hash to local trust store." -ForegroundColor Magenta
-        $PinnedHashToSave = (Get-FileHash -Path $FilePath -Algorithm "SHA512").Hash.ToLower().Trim()
+        $PinnedHashToSave = (Get-FileHashDotNet -Path $FilePath -Algorithm "SHA512").Trim()
         $TrustStore[$IsoName] = $PinnedHashToSave
         Save-PinnedTrustStore -TrustStore $TrustStore
     }
