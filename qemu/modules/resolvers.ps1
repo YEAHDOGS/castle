@@ -71,9 +71,39 @@ function Invoke-VersionPrompt {
     # Helper to check if disk exists for a version
     function Get-DiskStatus {
         param([string]$Ver)
-        $FileNamePattern = if ($Target.File) { $Target.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Target.FileTemplate) { ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Target.Id).qcow2" }
+        
+        # 1. Determine the .qcow2 (Disk) filename
+        $FileNamePattern = if ($Target.File) { 
+            $Target.File -replace '\.(iso|img\.gz)$', '.qcow2' 
+        }
+        elseif ($Target.FileTemplate) { 
+            ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(iso|img\.gz)$', '.qcow2' 
+        }
+        else { 
+            "$($Target.Id).qcow2" 
+        }
+
+        # 2. Determine the .iso filename
+        $IsoPattern = if ($Target.File) { 
+            $Target.File -replace '\.(qcow2)$', '' 
+        }
+        elseif ($Target.FileTemplate) { 
+            ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(qcow2)$', '.iso' 
+        }
+        else { 
+            "$($Target.Id).iso" 
+        }
+
+        # 3. Build full absolute paths
         $DiskPath = Join-Path $DataDir $FileNamePattern
-        if (Test-Path $DiskPath) { return " [DISK]" } else { return "" }
+        $IsoPath = Join-Path $DataDir $IsoPattern
+
+        # 4. Check paths and build the status string dynamically
+        $Labels = ""
+        if (Test-Path $IsoPath) { $Labels += " [ISO]" }
+        if (Test-Path $DiskPath) { $Labels += " [DISK]" }
+
+        return $Labels
     }
 
     $LatestDisk = Get-DiskStatus $Versions[0]

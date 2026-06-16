@@ -41,7 +41,8 @@ function Test-CryptographicHash {
                     if ($XmlDoc.files -and $XmlDoc.files.file) {
                         $TargetName = if (-not [string]::IsNullOrEmpty($IsoName)) {
                             $IsoName
-                        } else {
+                        }
+                        else {
                             [System.IO.Path]::GetFileName($FilePath)
                         }
 
@@ -233,7 +234,7 @@ function Get-OrCreateHmacKey {
 function Get-PinnedTrustStore {
     $DataDir = Join-Path $PSScriptRoot "..\data"
     $TrustFile = Join-Path $DataDir ".castle_trust.json"
-    $SigFile   = Join-Path $DataDir ".castle_trust.sig"
+    $SigFile = Join-Path $DataDir ".castle_trust.sig"
 
     $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
     $KeyFile = Join-Path $HomeDir ".castle_vm_key"
@@ -272,7 +273,7 @@ function Save-PinnedTrustStore {
     param ([hashtable]$TrustStore)
     $DataDir = Join-Path $PSScriptRoot "..\data"
     $TrustFile = Join-Path $DataDir ".castle_trust.json"
-    $SigFile   = Join-Path $DataDir ".castle_trust.sig"
+    $SigFile = Join-Path $DataDir ".castle_trust.sig"
 
     $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
     $KeyFile = Join-Path $HomeDir ".castle_vm_key"
@@ -312,7 +313,8 @@ function Test-IsoIntegrity {
         if ($ComputedPinnedHash -eq $ExpectedPinnedHash) {
             Write-Host "  [OK] Trust Pinning verification passed. ISO matches pinned state." -ForegroundColor Green
             return $true
-        } else {
+        }
+        else {
             Write-Host "  [FAIL] TRUST PIN MISMATCH! The cached ISO differs from the initially trusted version." -ForegroundColor Red
             return $false
         }
@@ -352,7 +354,8 @@ function Test-IsoIntegrity {
 
                 if ($Result) {
                     $FinalHash = $Result
-                } else {
+                }
+                else {
                     $HashMatch = $false
                     break
                 }
