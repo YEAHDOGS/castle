@@ -171,6 +171,12 @@ function Build-QemuArgs {
         "-device", "usb-tablet"
     )
 
+    # Attach the /scripts folder as a Virtual FAT drive
+    $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
+    if (Test-Path $ScriptsDir) {
+        $Args += @("-drive", "file=fat:rw:$ScriptsDir,format=raw,media=disk")
+    }
+
     if ($Vnc) {
         $VncBind = if (Test-RunningInDocker) { "0.0.0.0" } else { "127.0.0.1" }
         $Args += @("-vnc", "$($VncBind):$($VncDisplay)")

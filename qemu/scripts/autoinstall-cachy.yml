@@ -20,9 +20,13 @@ autoInstall:
 
 # Automated Partitioning Layout
 partition:
-  device: "/dev/nvme0n1" # Target drive
+  device: "/dev/vda" # Target virtio drive
   method: erase
-  filesystem: "btrfs" # Automatically formats to Btrfs
+  partitionTable: "mbr"
+  filesystem: "btrfs"
+
+bootloader:
+  name: "limine"
 
 # Pre-defined User Setup
 users:
@@ -31,11 +35,12 @@ users:
   password: "wearedogs"
   autologin: false
 
-# Automated Package Selection (Where you force Niri)
+# Automated Package Selection (Minimal KDE + UFW)
 packages:
   operations:
     - install:
-        - cachyos-niri-settings
-        - niri
-        - fuzzel
-        - alacritty
+        - cachyos-kde-settings
+        - plasma-desktop
+        - sddm
+        - ufw
+        - ufw-extras
