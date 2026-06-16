@@ -1,6 +1,6 @@
-# Castle VM -- QEMU Provisioning Pipeline
+# Castle Clone Factory -- QEMU Provisioning Pipeline
 
-Castle VM is a modular, zero-dependency, automated PowerShell virtual machine pipeline for Windows. It enables developers to query, stream, cryptographically verify, provision, and boot target operating systems in QEMU with a single command.
+Castle Clone Factory is a modular, zero-dependency, automated PowerShell virtual machine pipeline for Windows. It enables developers to query, stream, cryptographically verify, provision, and boot target operating systems in QEMU with a single command.
 
 ---
 
@@ -77,7 +77,7 @@ To spin up multiple separate instances of the same target OS simultaneously, or 
 
 All components are fully modularized under the following directory layout:
 ```text
-qemu/
+clonewars/
 ├── start.ps1              # Core entry point, CLI loop, and pipeline runner
 ├── README.md              # Technical pipeline documentation (this file)
 ├── qemu-notes.md          # Architectural research notes
@@ -144,7 +144,7 @@ Based on the target's `OsFamily` (Linux, Windows, macOS) and `Firmware` metadata
 
 ## Docker Deployment & Containerization
 
-Castle VM can run completely containerized inside Docker. In this mode, virtual machine displays are securely exposed via an in-container VNC server bridged to a web-accessible NoVNC gateway, allowing you to access the graphical installation interface directly from any web browser on the host.
+Castle Clone Factory can run completely containerized inside Docker. In this mode, virtual machine displays are securely exposed via an in-container VNC server bridged to a web-accessible NoVNC gateway, allowing you to access the graphical installation interface directly from any web browser on the host.
 
 ### 1. Install Docker Desktop (Windows)
 If Docker is not currently installed, you can install Docker Desktop from an Administrator PowerShell prompt using Windows Package Manager:
@@ -154,7 +154,7 @@ winget install Docker.DockerDesktop
 *Note: Restart your machine after installation to finalize WSL2 integrations.*
 
 ### 2. Build the Docker Image
-Navigate to the `qemu/` folder containing the `Dockerfile` and run:
+Navigate to the `clonewars/` folder containing the `Dockerfile` and run:
 ```bash
 docker build -t castle-vm .
 ```
