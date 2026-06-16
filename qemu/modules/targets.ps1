@@ -14,44 +14,44 @@ $IsoMatrix = @(
     # ══════════════════════════════════════════════════════════════════════════
 
     @{
-        Id            = "cachyos"
-        Name          = "CachyOS Linux"
-        Description   = "Performance-tuned Arch-based distribution with custom kernels and desktop options."
+        Id                    = "cachyos"
+        Name                  = "CachyOS Linux"
+        Description           = "Performance-tuned Arch-based distribution with custom kernels and desktop options."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://mirror.cachyos.org/ISO/desktop/"
-        ResolverRegex = 'href="([^"]+)/"'
-        ResolverFilter= '^\d{6}$'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://mirror.cachyos.org/ISO/desktop/"
+        ResolverRegex         = 'href="([^"]+)/"'
+        ResolverFilter        = '^\d{6}$'
         # Templates
-        UrlTemplate   = 'https://mirror.cachyos.org/ISO/desktop/$v/cachyos-desktop-linux-$v.iso'
+        UrlTemplate           = 'https://mirror.cachyos.org/ISO/desktop/$v/cachyos-desktop-linux-$v.iso'
         HashUrlSha256Template = 'https://mirror.cachyos.org/ISO/desktop/$v/cachyos-desktop-linux-$v.iso.sha256'
-        SigUrlTemplate= 'https://mirror.cachyos.org/ISO/desktop/$v/cachyos-desktop-linux-$v.iso.sig'
-        IsoNameTemplate = 'cachyos-desktop-linux-$v.iso'
-        FileTemplate  = 'cachyos-$v.iso'
+        SigUrlTemplate        = 'https://mirror.cachyos.org/ISO/desktop/$v/cachyos-desktop-linux-$v.iso.sig'
+        IsoNameTemplate       = 'cachyos-desktop-linux-$v.iso'
+        FileTemplate          = 'cachyos-$v.iso'
         
-        GpgKey        = "F3B607488DB35A47"
-        GpgServer     = "hkps://keys.openpgp.org"
+        GpgKey                = "F3B607488DB35A47"
+        GpgServer             = "hkps://keys.openpgp.org"
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "linux"
+        DiskSize              = "40G"
+        OsFamily              = "linux"
     },
     @{
-        Id            = "endeavouros"
-        Name          = "EndeavourOS Linux"
-        Description   = "Friendly, terminal-centric Arch-based distribution with a GUI installer."
+        Id                    = "endeavouros"
+        Name                  = "EndeavourOS Linux"
+        Description           = "Friendly, terminal-centric Arch-based distribution with a GUI installer."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://mirrors.gigenet.com/endeavouros/iso/"
-        ResolverRegex = 'href="EndeavourOS_([^"]+)\.iso"'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://mirrors.gigenet.com/endeavouros/iso/"
+        ResolverRegex         = 'href="EndeavourOS_([^"]+)\.iso"'
         # Templates
-        UrlTemplate   = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso'
+        UrlTemplate           = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso'
         HashUrlSha512Template = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sha512'
-        SigUrlTemplate = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sig'
-        IsoNameTemplate = 'EndeavourOS_$v.iso'
-        FileTemplate  = 'endeavouros-$v.iso'
+        SigUrlTemplate        = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sig'
+        IsoNameTemplate       = 'EndeavourOS_$v.iso'
+        FileTemplate          = 'endeavouros-$v.iso'
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "linux"
+        DiskSize              = "40G"
+        OsFamily              = "linux"
     },
     @{
         Id            = "arch"
@@ -88,21 +88,21 @@ $IsoMatrix = @(
         OsFamily      = "linux"
     },
     @{
-        Id            = "talos"
-        Name          = "Talos Linux (Secure Immutable K8s)"
-        Description   = "Secure, immutable, and minimal Linux OS built specifically for running Kubernetes."
+        Id                    = "talos"
+        Name                  = "Talos Linux (Secure Immutable K8s)"
+        Description           = "Secure, immutable, and minimal Linux OS built specifically for running Kubernetes."
         # Dynamic Resolver Configuration
-        ResolverType  = "GitHub"
-        ResolverRepo  = "siderolabs/talos"
+        ResolverType          = "GitHub"
+        ResolverRepo          = "siderolabs/talos"
         # Templates
-        UrlTemplate   = 'https://github.com/siderolabs/talos/releases/download/$v/metal-amd64.iso'
+        UrlTemplate           = 'https://github.com/siderolabs/talos/releases/download/$v/metal-amd64.iso'
         HashUrlSha256Template = 'https://github.com/siderolabs/talos/releases/download/$v/sha256sum.txt'
         HashUrlSha512Template = 'https://github.com/siderolabs/talos/releases/download/$v/sha512sum.txt'
-        IsoNameTemplate = 'metal-amd64.iso'
-        FileTemplate  = 'talos-$v.iso'
+        IsoNameTemplate       = 'metal-amd64.iso'
+        FileTemplate          = 'talos-$v.iso'
         # QEMU Profile
-        DiskSize      = "20G"
-        OsFamily      = "linux"
+        DiskSize              = "20G"
+        OsFamily              = "linux"
     },
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -110,43 +110,43 @@ $IsoMatrix = @(
     # ══════════════════════════════════════════════════════════════════════════
 
     @{
-        Id            = "rocky"
-        Name          = "Rocky Linux Minimal (RHEL Core)"
-        Description   = "Enterprise Linux distro offering 100% bug-for-bug compatibility with RHEL."
+        Id                    = "rocky"
+        Name                  = "Rocky Linux Minimal (RHEL Core)"
+        Description           = "Enterprise Linux distro offering 100% bug-for-bug compatibility with RHEL."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://download.rockylinux.org/pub/rocky/"
-        ResolverRegex = 'href="([89]|10)/"'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://download.rockylinux.org/pub/rocky/"
+        ResolverRegex         = 'href="([89]|10)/"'
         # Templates
-        UrlTemplate   = 'https://download.rockylinux.org/pub/rocky/$v/isos/x86_64/Rocky-$v-latest-x86_64-minimal.iso'
-        IsoNameTemplate = 'Rocky-$v-latest-x86_64-minimal.iso'
-        FileTemplate  = 'rockylinux-$v.iso'
+        UrlTemplate           = 'https://download.rockylinux.org/pub/rocky/$v/isos/x86_64/Rocky-$v-latest-x86_64-minimal.iso'
+        IsoNameTemplate       = 'Rocky-$v-latest-x86_64-minimal.iso'
+        FileTemplate          = 'rockylinux-$v.iso'
         HashUrlSha256Template = 'https://download.rockylinux.org/pub/rocky/$v/isos/x86_64/CHECKSUM'
         # Rocky signs the checksum file, not the ISO directly — GPG disabled until
         # we add checksum-file-level signature verification support.
         # QEMU Profile
-        DiskSize      = "30G"
-        OsFamily      = "linux"
+        DiskSize              = "30G"
+        OsFamily              = "linux"
     },
     @{
-        Id            = "debian"
-        Name          = "Debian NetInst"
-        Description   = "Highly stable and community-driven Linux distribution, known as the Universal OS."
+        Id                    = "debian"
+        Name                  = "Debian NetInst"
+        Description           = "Highly stable and community-driven Linux distribution, known as the Universal OS."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
-        ResolverRegex = 'href="debian-([\d\.]+)-amd64-netinst\.iso"'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
+        ResolverRegex         = 'href="debian-([\d\.]+)-amd64-netinst\.iso"'
         # Templates
-        UrlTemplate   = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-$v-amd64-netinst.iso'
-        IsoNameTemplate = 'debian-$v-amd64-netinst.iso'
-        FileTemplate  = 'debian-$v.iso'
+        UrlTemplate           = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-$v-amd64-netinst.iso'
+        IsoNameTemplate       = 'debian-$v-amd64-netinst.iso'
+        FileTemplate          = 'debian-$v.iso'
         HashUrlSha256Template = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA256SUMS'
         HashUrlSha512Template = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA512SUMS'
         # Debian signs the checksum file, not the ISO directly — GPG disabled until
         # we add checksum-file-level signature verification support
         # QEMU Profile
-        DiskSize      = "30G"
-        OsFamily      = "linux"
+        DiskSize              = "30G"
+        OsFamily              = "linux"
     },
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -154,46 +154,46 @@ $IsoMatrix = @(
     # ══════════════════════════════════════════════════════════════════════════
 
     @{
-        Id            = "ubuntu"
-        Name          = "Ubuntu Desktop LTS"
-        Description   = "The most widely used Linux desktop OS, backed by Canonical."
+        Id                    = "ubuntu"
+        Name                  = "Ubuntu Desktop LTS"
+        Description           = "The most widely used Linux desktop OS, backed by Canonical."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://releases.ubuntu.com/24.04/"
-        ResolverRegex = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-desktop-amd64\.iso"'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://releases.ubuntu.com/24.04/"
+        ResolverRegex         = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-desktop-amd64\.iso"'
         # Templates
-        UrlTemplate   = 'https://releases.ubuntu.com/24.04/ubuntu-$v-desktop-amd64.iso'
-        IsoNameTemplate = 'ubuntu-$v-desktop-amd64.iso'
-        FileTemplate  = 'ubuntu-$v.iso'
+        UrlTemplate           = 'https://releases.ubuntu.com/24.04/ubuntu-$v-desktop-amd64.iso'
+        IsoNameTemplate       = 'ubuntu-$v-desktop-amd64.iso'
+        FileTemplate          = 'ubuntu-$v.iso'
         HashUrlSha256Template = 'https://releases.ubuntu.com/24.04/SHA256SUMS'
         # Ubuntu signs the checksum file, not the ISO directly
         # SigUrl      = "https://releases.ubuntu.com/24.04/SHA256SUMS.gpg"
         # GpgKey      = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
         # GpgServer   = "hkps://keyserver.ubuntu.com"
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "linux"
+        DiskSize              = "40G"
+        OsFamily              = "linux"
     },
     @{
-        Id            = "ubuntu-server"
-        Name          = "Ubuntu Server LTS (AI Hardware Optimized)"
-        Description   = "LTS server operating system optimized for container, cloud, and AI hardware workloads."
+        Id                    = "ubuntu-server"
+        Name                  = "Ubuntu Server LTS (AI Hardware Optimized)"
+        Description           = "LTS server operating system optimized for container, cloud, and AI hardware workloads."
         # Dynamic Resolver Configuration
-        ResolverType  = "HtmlDirectory"
-        ResolverUrl   = "https://releases.ubuntu.com/24.04/"
-        ResolverRegex = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-live-server-amd64\.iso"'
+        ResolverType          = "HtmlDirectory"
+        ResolverUrl           = "https://releases.ubuntu.com/24.04/"
+        ResolverRegex         = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-live-server-amd64\.iso"'
         # Templates
-        UrlTemplate   = 'https://releases.ubuntu.com/24.04/ubuntu-$v-live-server-amd64.iso'
-        IsoNameTemplate = 'ubuntu-$v-live-server-amd64.iso'
-        FileTemplate  = 'ubuntu-server-$v.iso'
+        UrlTemplate           = 'https://releases.ubuntu.com/24.04/ubuntu-$v-live-server-amd64.iso'
+        IsoNameTemplate       = 'ubuntu-$v-live-server-amd64.iso'
+        FileTemplate          = 'ubuntu-server-$v.iso'
         HashUrlSha256Template = 'https://releases.ubuntu.com/24.04/SHA256SUMS'
         # Ubuntu signs the checksum file, not the ISO directly
         # SigUrl        = "https://releases.ubuntu.com/24.04/SHA256SUMS.gpg"
         # GpgKey        = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
         # GpgServer     = "hkps://keyserver.ubuntu.com"
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "linux"
+        DiskSize              = "40G"
+        OsFamily              = "linux"
     },
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -291,80 +291,80 @@ $IsoMatrix = @(
     # ══════════════════════════════════════════════════════════════════════════
 
     @{
-        Id            = "windows11"
-        Name          = "Windows 11 Enterprise (Evaluation)"
-        Description   = "Microsoft Windows 11 Enterprise (Evaluation), requiring UEFI and virtual TPM."
-        Url           = "https://archive.org/download/windows-11-enterprise-evaluation-iso/22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
-        IsoName       = "22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
-        File          = "windows11-enterprise-eval.iso"
-        HashUrlSha1   = "https://archive.org/download/windows-11-enterprise-evaluation-iso/windows-11-enterprise-evaluation-iso_files.xml"
+        Id          = "windows11"
+        Name        = "Windows 11 Enterprise (Evaluation)"
+        Description = "Microsoft Windows 11 Enterprise (Evaluation), requiring UEFI and virtual TPM."
+        Url         = "https://archive.org/download/windows-11-enterprise-evaluation-iso/22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        IsoName     = "22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        File        = "windows11-enterprise-eval.iso"
+        HashUrlSha1 = "https://archive.org/download/windows-11-enterprise-evaluation-iso/windows-11-enterprise-evaluation-iso_files.xml"
         # QEMU Profile
-        DiskSize      = "64G"
-        OsFamily      = "windows"
-        Firmware      = "uefi"
+        DiskSize    = "64G"
+        OsFamily    = "windows"
+        Firmware    = "uefi"
     },
     @{
-        Id            = "windows10"
-        Name          = "Windows 10 Enterprise (Evaluation)"
-        Description   = "Microsoft Windows 10 Enterprise (Evaluation) for client desktop workloads."
-        Url           = "https://archive.org/download/Win10_Enterprise_Eval_x64/19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
-        IsoName       = "19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
-        File          = "windows10-enterprise-eval.iso"
-        HashUrlSha1   = "https://archive.org/download/Win10_Enterprise_Eval_x64/Win10_Enterprise_Eval_x64_files.xml"
+        Id          = "windows10"
+        Name        = "Windows 10 Enterprise (Evaluation)"
+        Description = "Microsoft Windows 10 Enterprise (Evaluation) for client desktop workloads."
+        Url         = "https://archive.org/download/Win10_Enterprise_Eval_x64/19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        IsoName     = "19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        File        = "windows10-enterprise-eval.iso"
+        HashUrlSha1 = "https://archive.org/download/Win10_Enterprise_Eval_x64/Win10_Enterprise_Eval_x64_files.xml"
         # QEMU Profile
-        DiskSize      = "64G"
-        OsFamily      = "windows"
+        DiskSize    = "64G"
+        OsFamily    = "windows"
     },
     @{
-        Id            = "windows8"
-        Name          = "Windows 8.1 Pro VL (x64)"
-        Description   = "Legacy Microsoft Windows 8.1 Professional VL (x64) installation."
-        Url           = "https://archive.org/download/win-8.1-pro-vl-x-64/Win8.1_Pro_VL_x64_English.iso"
-        IsoName       = "Win8.1_Pro_VL_x64_English.iso"
-        File          = "windows8.1-pro-vl-x64.iso"
+        Id          = "windows8"
+        Name        = "Windows 8.1 Pro VL (x64)"
+        Description = "Legacy Microsoft Windows 8.1 Professional VL (x64) installation."
+        Url         = "https://archive.org/download/win-8.1-pro-vl-x-64/Win8.1_Pro_VL_x64_English.iso"
+        IsoName     = "Win8.1_Pro_VL_x64_English.iso"
+        File        = "windows8.1-pro-vl-x64.iso"
         # Archive.org _files.xml contains per-file SHA1 hashes in XML format
-        HashUrlSha1   = "https://archive.org/download/win-8.1-pro-vl-x-64/win-8.1-pro-vl-x-64_files.xml"
+        HashUrlSha1 = "https://archive.org/download/win-8.1-pro-vl-x-64/win-8.1-pro-vl-x-64_files.xml"
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "windows"
+        DiskSize    = "40G"
+        OsFamily    = "windows"
     },
     @{
-        Id            = "windows7"
-        Name          = "Windows 7 SP1 Ultimate"
-        Description   = "Classic Microsoft Windows 7 SP1 Ultimate (x64) installation."
-        Url           = "https://archive.org/download/windows-7-ultimate-x-64-sp-1-fully-updated/Windows%207%20Ultimate%20x64%20-%20SP1%20%28Fully%20Updated%29.iso"
-        IsoName       = "Windows 7 Ultimate x64 - SP1 (Fully Updated).iso"
-        File          = "windows7-ultimate-sp1.iso"
+        Id          = "windows7"
+        Name        = "Windows 7 SP1 Ultimate"
+        Description = "Classic Microsoft Windows 7 SP1 Ultimate (x64) installation."
+        Url         = "https://archive.org/download/windows-7-ultimate-x-64-sp-1-fully-updated/Windows%207%20Ultimate%20x64%20-%20SP1%20%28Fully%20Updated%29.iso"
+        IsoName     = "Windows 7 Ultimate x64 - SP1 (Fully Updated).iso"
+        File        = "windows7-ultimate-sp1.iso"
         # Archive.org _files.xml contains per-file SHA1 hashes in XML format
-        HashUrlSha1   = "https://dn760108.eu.archive.org/0/items/windows-7-ultimate-x-64-sp-1-fully-updated/windows-7-ultimate-x-64-sp-1-fully-updated_files.xml"
+        HashUrlSha1 = "https://dn760108.eu.archive.org/0/items/windows-7-ultimate-x-64-sp-1-fully-updated/windows-7-ultimate-x-64-sp-1-fully-updated_files.xml"
         # QEMU Profile
-        DiskSize      = "40G"
-        OsFamily      = "windows"
+        DiskSize    = "40G"
+        OsFamily    = "windows"
     },
     @{
-        Id            = "windowsxp"
-        Name          = "Windows XP Professional SP3 (x86)"
-        Description   = "Legacy Microsoft Windows XP Professional SP3 (x86) installation."
-        Url           = "https://archive.org/download/WinXPProSP3x86/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso"
-        IsoName       = "en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso"
-        File          = "windowsxp-pro-sp3-x86.iso"
+        Id          = "windowsxp"
+        Name        = "Windows XP Professional SP3 (x86)"
+        Description = "Legacy Microsoft Windows XP Professional SP3 (x86) installation."
+        Url         = "https://archive.org/download/WinXPProSP3x86/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso"
+        IsoName     = "en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso"
+        File        = "windowsxp-pro-sp3-x86.iso"
         # Archive.org _files.xml contains per-file MD5 hashes in XML format
-        HashUrlMd5    = "https://archive.org/download/WinXPProSP3x86/WinXPProSP3x86_files.xml"
+        HashUrlMd5  = "https://archive.org/download/WinXPProSP3x86/WinXPProSP3x86_files.xml"
         # QEMU Profile
-        DiskSize      = "20G"
-        OsFamily      = "windows"
+        DiskSize    = "20G"
+        OsFamily    = "windows"
     },
     @{
-        Id            = "windowsserver"
-        Name          = "Windows Server 2022 (Evaluation)"
-        Description   = "Microsoft Windows Server 2022 Evaluation edition."
-        Url           = "https://archive.org/download/windows-server-2022_build-20348.169/20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
-        IsoName       = "20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
-        File          = "windows-server-2022-eval.iso"
-        HashUrlSha1   = "https://archive.org/download/windows-server-2022_build-20348.169/windows-server-2022_build-20348.169_files.xml"
+        Id          = "windowsserver"
+        Name        = "Windows Server 2022 (Evaluation)"
+        Description = "Microsoft Windows Server 2022 Evaluation edition."
+        Url         = "https://archive.org/download/windows-server-2022_build-20348.169/20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
+        IsoName     = "20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
+        File        = "windows-server-2022-eval.iso"
+        HashUrlSha1 = "https://archive.org/download/windows-server-2022_build-20348.169/windows-server-2022_build-20348.169_files.xml"
         # QEMU Profile
-        DiskSize      = "64G"
-        OsFamily      = "windows"
+        DiskSize    = "64G"
+        OsFamily    = "windows"
     },
 
     # ══════════════════════════════════════════════════════════════════════════

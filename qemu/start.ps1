@@ -87,7 +87,8 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         if (Test-Path $DiskFile) {
             Write-Host "  [CLEANUP] Deleting virtual disk: $DiskFile" -ForegroundColor Yellow
             Remove-Item $DiskFile -Force
-        } else {
+        }
+        else {
             Write-Host "  [CLEANUP] Virtual disk does not exist: $DiskFile" -ForegroundColor DarkGray
         }
     }
@@ -96,7 +97,8 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         if (Test-Path $IsoFile) {
             Write-Host "  [CLEANUP] Deleting cached ISO: $IsoFile" -ForegroundColor Yellow
             Remove-Item $IsoFile -Force
-        } else {
+        }
+        else {
             $FileNamePattern = if ($Matched[0].FileTemplate) { $Matched[0].FileTemplate -replace '\$v', '*' } else { $Resolved.File }
             if (-not $FileNamePattern) { $FileNamePattern = "$($Resolved.Id).iso" }
             $PatternPath = Join-Path $DataDir $FileNamePattern
@@ -106,7 +108,8 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
                     Write-Host "  [CLEANUP] Deleting cached ISO: $($wf.FullName)" -ForegroundColor Yellow
                     Remove-Item $wf.FullName -Force
                 }
-            } else {
+            }
+            else {
                 Write-Host "  [CLEANUP] Cached ISO does not exist: $IsoFile" -ForegroundColor DarkGray
             }
         }
@@ -152,7 +155,7 @@ function Show-CastleMenu {
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
-        $IsoIcon  = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
+        $IsoIcon = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
         $DiskIcon = if ($CachedDisks.Count -gt 0) { "[DISK]" } else { "      " }
 
         $SizeStr = ""
@@ -188,7 +191,8 @@ function Show-TargetDetails {
     $IsoStatus = if ($CachedIsos.Count -gt 0) {
         $SizeGB = "{0:N2}" -f ($CachedIsos[0].Length / 1GB)
         "Cached ($SizeGB GB) at $($CachedIsos[0].Name)"
-    } else {
+    }
+    else {
         "Not downloaded (will fetch automatically)"
     }
 
@@ -196,7 +200,8 @@ function Show-TargetDetails {
     $DiskStatus = if ($CachedDisks.Count -gt 0) {
         $DiskGB = "{0:N2}" -f ($CachedDisks[0].Length / 1GB)
         "Provisioned ($DiskGB GB) at $($CachedDisks[0].Name)"
-    } else {
+    }
+    else {
         "Not provisioned (will create new $TargetDiskSize disk)"
     }
 
@@ -269,12 +274,14 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
         if ([int]::TryParse($Choice, [ref]$SelectedIndex)) {
             if ($SelectedIndex -ge 1 -and $SelectedIndex -le $IsoMatrix.Count) {
                 $SelectedTarget = $IsoMatrix[$SelectedIndex - 1]
-            } else {
+            }
+            else {
                 Write-Host "   [FAIL] Index $SelectedIndex is out of range." -ForegroundColor Red
                 Start-Sleep -Seconds 1
                 continue
             }
-        } else {
+        }
+        else {
             # Find target matching input
             $Matched = @($IsoMatrix | Where-Object { $_.Id -eq $Choice })
             if ($Matched.Count -eq 0) {
@@ -285,14 +292,16 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                 Write-Host "   [FAIL] Unknown target: '$Choice'" -ForegroundColor Red
                 Start-Sleep -Seconds 1.5
                 continue
-            } elseif ($Matched.Count -gt 1) {
+            }
+            elseif ($Matched.Count -gt 1) {
                 Write-Host "   [?] Ambiguous -- matches multiple targets:" -ForegroundColor Yellow
                 foreach ($m in $Matched) {
                     Write-Host "     * $($m.Id) -- $($m.Name)" -ForegroundColor White
                 }
                 Read-Host "   Press Enter to try again..." | Out-Null
                 continue
-            } else {
+            }
+            else {
                 $SelectedTarget = $Matched[0]
             }
         }
@@ -308,10 +317,12 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
             if ($BootChoice -eq "y" -or $BootChoice -eq "yes") {
                 $Target = $SelectedTarget.Id
                 break
-            } elseif ($BootChoice -eq "n" -or $BootChoice -eq "no" -or $BootChoice -eq "b" -or $BootChoice -eq "back") {
+            }
+            elseif ($BootChoice -eq "n" -or $BootChoice -eq "no" -or $BootChoice -eq "b" -or $BootChoice -eq "back") {
                 $SelectedTarget = $null
                 break
-            } elseif ($BootChoice -eq "d" -or $BootChoice -eq "delete") {
+            }
+            elseif ($BootChoice -eq "d" -or $BootChoice -eq "delete") {
                 # Render deletion sub-menu
                 while ($true) {
                     Clear-Host
@@ -339,7 +350,8 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                             if ($CachedDisks.Count -gt 0) {
                                 foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force }
                                 Write-Host "   [OK] Deleted virtual disk(s)." -ForegroundColor Green
-                            } else {
+                            }
+                            else {
                                 Write-Host "   [i] Disk does not exist." -ForegroundColor Gray
                             }
                             Start-Sleep -Seconds 1.5
@@ -359,7 +371,8 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                                     Remove-Item $wf.FullName -Force
                                 }
                                 Write-Host "   [OK] Deleted cached ISO(s)." -ForegroundColor Green
-                            } else {
+                            }
+                            else {
                                 Write-Host "   [i] Cached ISO does not exist." -ForegroundColor Gray
                             }
                             Start-Sleep -Seconds 1.5
@@ -409,7 +422,8 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                         Start-Sleep -Seconds 1
                     }
                 }
-            } else {
+            }
+            else {
                 Write-Host "   Invalid choice. Enter Y, N, D, or B." -ForegroundColor Red
                 Start-Sleep -Seconds 1
             }
@@ -439,7 +453,7 @@ if ($Target -eq "list") {
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
-        $IsoIcon  = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
+        $IsoIcon = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
         $DiskIcon = if ($CachedDisks.Count -gt 0) { "[DISK]" } else { "      " }
 
         $SizeStr = ""
@@ -545,7 +559,8 @@ while (-not $Verified) {
         if ($Choice -match "^y" -or $Choice -match "^yes") {
             Remove-Item $IsoPath -Force
             Write-Host "  [i] Deleted corrupted ISO. Retrying..." -ForegroundColor Yellow
-        } else {
+        }
+        else {
             Write-Host "  [FAIL] Exiting without boot." -ForegroundColor Red
             $HttpClient.Dispose()
             Exit 1
@@ -565,7 +580,8 @@ if (-not (Test-QemuInstalled)) { Exit 1 }
 
 $DiskPath = if (-not [string]::IsNullOrEmpty($Instance)) {
     Join-Path $DataDir "instances\$Instance.qcow2"
-} else {
+}
+else {
     $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
     Join-Path $DataDir $DiskName
 }

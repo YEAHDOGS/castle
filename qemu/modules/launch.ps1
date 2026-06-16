@@ -174,7 +174,7 @@ function Build-QemuArgs {
     # Attach the /scripts folder as a Virtual FAT drive
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
     if (Test-Path $ScriptsDir) {
-        $Args += @("-drive", "file=fat:rw:$ScriptsDir,format=raw,media=disk")
+        $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,media=cdrom,readonly=on")
     }
 
     if ($Vnc) {
