@@ -7,6 +7,11 @@
 
 Add-Type -AssemblyName PresentationFramework
 
+$PowershellDir = (Get-Command pwsh).Source
+if (-not $PowershellDir) {
+    $PowershellDir = "powershell.exe"
+}
+
 $Xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -99,13 +104,13 @@ $Window = [Windows.Markup.XamlReader]::Load($Reader)
 
 # UI Elements Mapping
 $TargetListView = $Window.FindName("TargetListView")
-$BtnLaunch      = $Window.FindName("BtnLaunch")
-$BtnLaunchBg    = $Window.FindName("BtnLaunchBg")
-$BtnLaunchVnc   = $Window.FindName("BtnLaunchVnc")
-$BtnDeleteDisk  = $Window.FindName("BtnDeleteDisk")
-$BtnDeleteIso   = $Window.FindName("BtnDeleteIso")
-$BtnPurge       = $Window.FindName("BtnPurge")
-$TxtStatus      = $Window.FindName("TxtStatus")
+$BtnLaunch = $Window.FindName("BtnLaunch")
+$BtnLaunchBg = $Window.FindName("BtnLaunchBg")
+$BtnLaunchVnc = $Window.FindName("BtnLaunchVnc")
+$BtnDeleteDisk = $Window.FindName("BtnDeleteDisk")
+$BtnDeleteIso = $Window.FindName("BtnDeleteIso")
+$BtnPurge = $Window.FindName("BtnPurge")
+$TxtStatus = $Window.FindName("TxtStatus")
 
 # Load Target Data
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
@@ -113,13 +118,14 @@ if (Test-Path "$ModuleRoot\targets.ps1") {
     . "$ModuleRoot\targets.ps1"
     foreach ($Target in $IsoMatrix) {
         [void]$TargetListView.Items.Add([pscustomobject]@{
-            Id       = $Target.Id
-            Name     = $Target.Name
-            OsFamily = $Target.OsFamily
-            DiskSize = if ($Target.DiskSize) { $Target.DiskSize } else { "40G" }
-        })
+                Id       = $Target.Id
+                Name     = $Target.Name
+                OsFamily = $Target.OsFamily
+                DiskSize = if ($Target.DiskSize) { $Target.DiskSize } else { "40G" }
+            })
     }
-} else {
+}
+else {
     $TxtStatus.Text = "[FAIL] Could not find modules\targets.ps1"
     $TxtStatus.Foreground = "#FF5555"
 }
@@ -144,63 +150,69 @@ function Invoke-StartScript {
     
     # Run inside a new PowerShell window so interactive prompts / CLI UI works
     $ProcArgs = @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"") + $AllArgs
-    Start-Process -FilePath "powershell.exe" -ArgumentList $ProcArgs
+    Start-Process -FilePath $PowershellDir -ArgumentList $ProcArgs
 }
 
 # Event Wiring
 $BtnLaunch.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 $BtnLaunchBg.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Background")
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Background")
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 $BtnLaunchVnc.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Vnc")
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Vnc")
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 $BtnDeleteDisk.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-DeleteDisk")
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-DeleteDisk")
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 $BtnDeleteIso.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-DeleteIso")
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-DeleteIso")
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 $BtnPurge.Add_Click({
-    if ($TargetListView.SelectedItem) {
-        Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Purge")
-    } else {
-        $TxtStatus.Text = "Please select a target first."
-        $TxtStatus.Foreground = "#FFAA00"
-    }
-})
+        if ($TargetListView.SelectedItem) {
+            Invoke-StartScript -TargetId $TargetListView.SelectedItem.Id -ArgsList @("-Purge")
+        }
+        else {
+            $TxtStatus.Text = "Please select a target first."
+            $TxtStatus.Foreground = "#FFAA00"
+        }
+    })
 
 # Display Window
 $Window.ShowDialog() | Out-Null
