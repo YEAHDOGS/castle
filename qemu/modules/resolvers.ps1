@@ -53,7 +53,7 @@ function Get-GitHubReleaseVersions {
 
 function Invoke-VersionPrompt {
     param (
-        [string]$TargetName,
+        [hashtable]$Target,
         [array]$Versions
     )
 
@@ -63,14 +63,27 @@ function Invoke-VersionPrompt {
     }
 
     Write-Host ""
-    Write-Host "  [?] Multiple versions discovered for $TargetName" -ForegroundColor Cyan
+    Write-Host "  [?] Multiple versions discovered for $($Target.Name)" -ForegroundColor Cyan
     Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  [0] Latest ($($Versions[0]))" -ForegroundColor Green
+
+    $DataDir = Join-Path (Split-Path $PSScriptRoot -Parent) "data"
+    
+    # Helper to check if disk exists for a version
+    function Get-DiskStatus {
+        param([string]$Ver)
+        $FileNamePattern = if ($Target.File) { $Target.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Target.FileTemplate) { ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Target.Id).qcow2" }
+        $DiskPath = Join-Path $DataDir $FileNamePattern
+        if (Test-Path $DiskPath) { return " [DISK]" } else { return "" }
+    }
+
+    $LatestDisk = Get-DiskStatus $Versions[0]
+    Write-Host "  [0] Latest ($($Versions[0]))$LatestDisk" -ForegroundColor Green
 
     # Show up to 5 alternative versions
     $MaxIdx = [Math]::Min($Versions.Count - 1, 5)
     for ($i = 1; $i -le $MaxIdx; $i++) {
-        Write-Host "  [$i] $($Versions[$i])" -ForegroundColor White
+        $DiskStatus = Get-DiskStatus $Versions[$i]
+        Write-Host "  [$i] $($Versions[$i])$DiskStatus" -ForegroundColor White
     }
     
     Write-Host ""
@@ -123,7 +136,7 @@ function Resolve-TargetVersion {
         Exit 1
     }
 
-    $SelectedVersion = Invoke-VersionPrompt -TargetName $Target.Name -Versions $Versions
+    $SelectedVersion = Invoke-VersionPrompt -Target $Target -Versions $Versions
     Write-Host "  [OK] Selected version: $SelectedVersion" -ForegroundColor Green
 
     # Clone the target to avoid modifying the static manifest structure permanently

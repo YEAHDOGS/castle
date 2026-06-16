@@ -79,7 +79,8 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
     }
 
     $Resolved = Resolve-TargetVersion -Target $Matched[0]
-    $DiskFile = Join-Path $DataDir "$($Resolved.Id).qcow2"
+    $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
+    $DiskFile = Join-Path $DataDir $DiskName
     $IsoFile = Join-Path $DataDir $Resolved.File
 
     if ($DeleteDisk -or $Purge) {
@@ -146,10 +147,13 @@ function Show-CastleMenu {
         $FileName = if ($Entry.File) { $Entry.File } elseif ($Entry.FileTemplate) { $Entry.FileTemplate -replace '\$v', '*' } else { "$($Entry.Id).iso" }
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
-        $DiskPath = Join-Path $DataDir "$($Entry.Id).qcow2"
+        
+        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
+        $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
         $IsoIcon  = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
-        $DiskIcon = if (Test-Path $DiskPath) { "[DISK]" } else { "      " }
+        $DiskIcon = if ($CachedDisks.Count -gt 0) { "[DISK]" } else { "      " }
 
         $SizeStr = ""
         if ($CachedIsos.Count -gt 0) {
@@ -176,7 +180,10 @@ function Show-TargetDetails {
     $FileName = if ($Entry.File) { $Entry.File } elseif ($Entry.FileTemplate) { $Entry.FileTemplate -replace '\$v', '*' } else { "$($Entry.Id).iso" }
     $IsoPattern = Join-Path $DataDir $FileName
     $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
-    $DiskPath = Join-Path $DataDir "$($Entry.Id).qcow2"
+    
+    $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+    $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
+    $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
     $IsoStatus = if ($CachedIsos.Count -gt 0) {
         $SizeGB = "{0:N2}" -f ($CachedIsos[0].Length / 1GB)
@@ -186,9 +193,9 @@ function Show-TargetDetails {
     }
 
     $TargetDiskSize = if ($Entry.DiskSize) { $Entry.DiskSize } else { "40G" }
-    $DiskStatus = if (Test-Path $DiskPath) {
-        $DiskGB = "{0:N2}" -f ((Get-Item $DiskPath).Length / 1GB)
-        "Provisioned ($DiskGB GB)"
+    $DiskStatus = if ($CachedDisks.Count -gt 0) {
+        $DiskGB = "{0:N2}" -f ($CachedDisks[0].Length / 1GB)
+        "Provisioned ($DiskGB GB) at $($CachedDisks[0].Name)"
     } else {
         "Not provisioned (will create new $TargetDiskSize disk)"
     }
@@ -326,10 +333,12 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                     if ($DelOption -eq "1") {
                         $Confirm = Read-Host "   Are you sure you want to delete the virtual disk .qcow2 file? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
-                            $DiskFile = Join-Path $DataDir "$($SelectedTarget.Id).qcow2"
-                            if (Test-Path $DiskFile) {
-                                Remove-Item $DiskFile -Force
-                                Write-Host "   [OK] Deleted virtual disk." -ForegroundColor Green
+                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
+                            $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
+                            if ($CachedDisks.Count -gt 0) {
+                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force }
+                                Write-Host "   [OK] Deleted virtual disk(s)." -ForegroundColor Green
                             } else {
                                 Write-Host "   [i] Disk does not exist." -ForegroundColor Gray
                             }
@@ -361,8 +370,12 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                         $Confirm = Read-Host "   Are you sure you want to perform a full purge (.qcow2, .iso, and trust hash)? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
                             # 1. Disk
-                            $DiskFile = Join-Path $DataDir "$($SelectedTarget.Id).qcow2"
-                            if (Test-Path $DiskFile) { Remove-Item $DiskFile -Force }
+                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
+                            $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
+                            if ($CachedDisks.Count -gt 0) {
+                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force }
+                            }
                             
                             # 2. ISO
                             $FileNamePattern = if ($SelectedTarget.FileTemplate) { $SelectedTarget.FileTemplate -replace '\$v', '*' } else { $SelectedTarget.File }
@@ -421,10 +434,13 @@ if ($Target -eq "list") {
         $FileName = if ($Entry.File) { $Entry.File } elseif ($Entry.FileTemplate) { $Entry.FileTemplate -replace '\$v', '*' } else { "$($Entry.Id).iso" }
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
-        $DiskPath = Join-Path $DataDir "$($Entry.Id).qcow2"
+        
+        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
+        $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
         $IsoIcon  = if ($CachedIsos.Count -gt 0) { "[ISO]" } else { "[   ]" }
-        $DiskIcon = if (Test-Path $DiskPath) { "[DISK]" } else { "      " }
+        $DiskIcon = if ($CachedDisks.Count -gt 0) { "[DISK]" } else { "      " }
 
         $SizeStr = ""
         if ($CachedIsos.Count -gt 0) {
@@ -550,7 +566,8 @@ if (-not (Test-QemuInstalled)) { Exit 1 }
 $DiskPath = if (-not [string]::IsNullOrEmpty($Instance)) {
     Join-Path $DataDir "instances\$Instance.qcow2"
 } else {
-    Join-Path $DataDir "$($Iso.Id).qcow2"
+    $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
+    Join-Path $DataDir $DiskName
 }
 $DiskSize = if ($Iso.DiskSize) { $Iso.DiskSize } else { "40G" }
 $FirstBoot = New-VirtualDisk -DiskPath $DiskPath -DiskSize $DiskSize -BaseDisk $BaseDisk

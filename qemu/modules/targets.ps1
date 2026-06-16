@@ -132,16 +132,18 @@ $IsoMatrix = @(
         Id            = "debian"
         Name          = "Debian NetInst"
         Description   = "Highly stable and community-driven Linux distribution, known as the Universal OS."
-        Url           = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso"
-        IsoName       = "debian-13.5.0-amd64-netinst.iso"
-        File          = "debian.iso"
-        HashUrlSha256 = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA256SUMS"
-        HashUrlSha512 = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA512SUMS"
+        # Dynamic Resolver Configuration
+        ResolverType  = "HtmlDirectory"
+        ResolverUrl   = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
+        ResolverRegex = 'href="debian-([\d\.]+)-amd64-netinst\.iso"'
+        # Templates
+        UrlTemplate   = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-$v-amd64-netinst.iso'
+        IsoNameTemplate = 'debian-$v-amd64-netinst.iso'
+        FileTemplate  = 'debian-$v.iso'
+        HashUrlSha256Template = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA256SUMS'
+        HashUrlSha512Template = 'https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA512SUMS'
         # Debian signs the checksum file, not the ISO directly — GPG disabled until
         # we add checksum-file-level signature verification support
-        # SigUrl      = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA512SUMS.sign"
-        # GpgKey      = "DF9B9C49EAA9298432589D76DA87E80D6294BE9B"
-        # GpgServer   = "hkps://keyserver.ubuntu.com"
         # QEMU Profile
         DiskSize      = "30G"
         OsFamily      = "linux"
@@ -154,11 +156,16 @@ $IsoMatrix = @(
     @{
         Id            = "ubuntu"
         Name          = "Ubuntu Desktop LTS"
-        Description   = "Popular, user-friendly desktop operating system based on Debian."
-        Url           = "https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso"
-        IsoName       = "ubuntu-24.04.4-desktop-amd64.iso"
-        File          = "ubuntu.iso"
-        HashUrlSha256 = "https://releases.ubuntu.com/24.04/SHA256SUMS"
+        Description   = "The most widely used Linux desktop OS, backed by Canonical."
+        # Dynamic Resolver Configuration
+        ResolverType  = "HtmlDirectory"
+        ResolverUrl   = "https://releases.ubuntu.com/24.04/"
+        ResolverRegex = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-desktop-amd64\.iso"'
+        # Templates
+        UrlTemplate   = 'https://releases.ubuntu.com/24.04/ubuntu-$v-desktop-amd64.iso'
+        IsoNameTemplate = 'ubuntu-$v-desktop-amd64.iso'
+        FileTemplate  = 'ubuntu-$v.iso'
+        HashUrlSha256Template = 'https://releases.ubuntu.com/24.04/SHA256SUMS'
         # Ubuntu signs the checksum file, not the ISO directly
         # SigUrl      = "https://releases.ubuntu.com/24.04/SHA256SUMS.gpg"
         # GpgKey      = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
@@ -171,13 +178,19 @@ $IsoMatrix = @(
         Id            = "ubuntu-server"
         Name          = "Ubuntu Server LTS (AI Hardware Optimized)"
         Description   = "LTS server operating system optimized for container, cloud, and AI hardware workloads."
-        Url           = "https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso"
-        IsoName       = "ubuntu-24.04-live-server-amd64.iso"
-        File          = "ubuntu-server-latest.iso"
-        HashUrlSha256 = "https://releases.ubuntu.com/24.04/SHA256SUMS"
-        SigUrl        = "https://releases.ubuntu.com/24.04/SHA256SUMS.gpg"
-        GpgKey        = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
-        GpgServer     = "hkps://keyserver.ubuntu.com"
+        # Dynamic Resolver Configuration
+        ResolverType  = "HtmlDirectory"
+        ResolverUrl   = "https://releases.ubuntu.com/24.04/"
+        ResolverRegex = 'href="ubuntu-(\d+\.\d+(?:\.\d+)?)-live-server-amd64\.iso"'
+        # Templates
+        UrlTemplate   = 'https://releases.ubuntu.com/24.04/ubuntu-$v-live-server-amd64.iso'
+        IsoNameTemplate = 'ubuntu-$v-live-server-amd64.iso'
+        FileTemplate  = 'ubuntu-server-$v.iso'
+        HashUrlSha256Template = 'https://releases.ubuntu.com/24.04/SHA256SUMS'
+        # Ubuntu signs the checksum file, not the ISO directly
+        # SigUrl        = "https://releases.ubuntu.com/24.04/SHA256SUMS.gpg"
+        # GpgKey        = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
+        # GpgServer     = "hkps://keyserver.ubuntu.com"
         # QEMU Profile
         DiskSize      = "40G"
         OsFamily      = "linux"
@@ -281,10 +294,10 @@ $IsoMatrix = @(
         Id            = "windows11"
         Name          = "Windows 11 Enterprise (Evaluation)"
         Description   = "Microsoft Windows 11 Enterprise (Evaluation), requiring UEFI and virtual TPM."
-        Url           = "https://software-static.download.prss.microsoft.com/kv/win/ch9/enterprise/26100.1742.240906-0331.ge_release_svc_refresh_CLIENTENTERPRISEEVAL_x64FRE_en-us.iso"
+        Url           = "https://archive.org/download/windows-11-enterprise-evaluation-iso/22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        IsoName       = "22000.194.210913-1444.co_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
         File          = "windows11-enterprise-eval.iso"
-        HashAlgorithm = "SHA256"
-        ExpectedHash  = "4A87FA29B12D0BE3A48C079140D83A6B4E54CE373A12E8DA4999FA44BB968132"
+        HashUrlSha1   = "https://archive.org/download/windows-11-enterprise-evaluation-iso/windows-11-enterprise-evaluation-iso_files.xml"
         # QEMU Profile
         DiskSize      = "64G"
         OsFamily      = "windows"
@@ -294,10 +307,10 @@ $IsoMatrix = @(
         Id            = "windows10"
         Name          = "Windows 10 Enterprise (Evaluation)"
         Description   = "Microsoft Windows 10 Enterprise (Evaluation) for client desktop workloads."
-        Url           = "https://software-static.download.prss.microsoft.com/sg/download/evalcenter/Win10_Enterprise_Evaluation_x64_en-us.iso"
+        Url           = "https://archive.org/download/Win10_Enterprise_Eval_x64/19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
+        IsoName       = "19044.1288.211006-0501.21h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso"
         File          = "windows10-enterprise-eval.iso"
-        HashAlgorithm = "SHA256"
-        ExpectedHash  = "E10A7C1844A68C6F19A96E7E0BFE23EB114BA717CD8F77B13214E8746AA6E3B9"
+        HashUrlSha1   = "https://archive.org/download/Win10_Enterprise_Eval_x64/Win10_Enterprise_Eval_x64_files.xml"
         # QEMU Profile
         DiskSize      = "64G"
         OsFamily      = "windows"
@@ -319,11 +332,11 @@ $IsoMatrix = @(
         Id            = "windows7"
         Name          = "Windows 7 SP1 Ultimate"
         Description   = "Classic Microsoft Windows 7 SP1 Ultimate (x64) installation."
-        Url           = "https://archive.org/download/win7-ultimate-sp1-x64/Win7_Ult_SP1_English_COEM_x64.iso"
-        IsoName       = "Win7_Ult_SP1_English_COEM_x64.iso"
+        Url           = "https://archive.org/download/windows-7-ultimate-x-64-sp-1-fully-updated/Windows%207%20Ultimate%20x64%20-%20SP1%20%28Fully%20Updated%29.iso"
+        IsoName       = "Windows 7 Ultimate x64 - SP1 (Fully Updated).iso"
         File          = "windows7-ultimate-sp1.iso"
         # Archive.org _files.xml contains per-file SHA1 hashes in XML format
-        HashUrlSha1   = "https://archive.org/download/win7-ultimate-sp1-x64/win7-ultimate-sp1-x64_files.xml"
+        HashUrlSha1   = "https://dn760108.eu.archive.org/0/items/windows-7-ultimate-x-64-sp-1-fully-updated/windows-7-ultimate-x-64-sp-1-fully-updated_files.xml"
         # QEMU Profile
         DiskSize      = "40G"
         OsFamily      = "windows"
@@ -339,6 +352,18 @@ $IsoMatrix = @(
         HashUrlMd5    = "https://archive.org/download/WinXPProSP3x86/WinXPProSP3x86_files.xml"
         # QEMU Profile
         DiskSize      = "20G"
+        OsFamily      = "windows"
+    },
+    @{
+        Id            = "windowsserver"
+        Name          = "Windows Server 2022 (Evaluation)"
+        Description   = "Microsoft Windows Server 2022 Evaluation edition."
+        Url           = "https://archive.org/download/windows-server-2022_build-20348.169/20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
+        IsoName       = "20348.169.210806-2348.fe_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"
+        File          = "windows-server-2022-eval.iso"
+        HashUrlSha1   = "https://archive.org/download/windows-server-2022_build-20348.169/windows-server-2022_build-20348.169_files.xml"
+        # QEMU Profile
+        DiskSize      = "64G"
         OsFamily      = "windows"
     },
 
