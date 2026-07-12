@@ -171,10 +171,10 @@ function Build-QemuArgs {
         "-device", "usb-tablet"
     )
 
-    # Attach the /scripts folder as a Virtual FAT drive
+    # Attach the /scripts folder as a Virtual FAT drive (skip for android target)
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
-    if (Test-Path $ScriptsDir) {
-        $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,media=cdrom,readonly=on")
+    if ((Test-Path $ScriptsDir) -and $Target.Id -ne "android") {
+        $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,readonly=on")
     }
 
     if ($Vnc) {

@@ -1,0 +1,41 @@
+well i'm on the wearedogs site. projects/wearedogs . if you're going swarm, go git branch swarm it for me and make pull requests into master with the changes for every target.
+
+
+
+There are some things i am very tight about with my projects.
+
+
+
+Styling, the ide keeps wrecking my styling,  Especially as I create new tasks and I continue asking for new changes as I'm going along. Sometimes the idea gets confused and it doesn't have a clear understanding of my styling principles. with this project. So I think I need like a styling agent in the swarm. Yeah, I guess if I'm picking like kind of like picking like a team, right? So like the styling agent needs to like make sure whenever there's a change, it needs to make sure that the style isn't being wrecked, cuz right now it's just steamrolling through. Um, it needs to prioritize Tailwind CSS. Scratch that. Not Tailwind CSS. SCSS. But it needs to use have strict uh rules about storing colors in external files. You know, maybe I need another agent that's good. at modularizing and compartmentalizing. So like, I also need to make sure that strings, for example, are stored in external files, especially if we're a project like this. Eventually, at all the the text in this project will will need to be translated. Otherwise, AI or by the computer itself, which I think browsers do a great job at that already. So, I need to make sure that the that's not. being wrecked. I have some tasks. about this, but yeah, I think I Should I have a second agent that cares about compartmentalizing, or maybe the styling agent can also do this? Yeah, I need strings in outside files. Yeah, like there need to be themes. Always. I think I need another agent that like monitors. the repo. itself. Kind of. Like I said, sometimes the AI suggests npm installations of packages, and sometimes they're absolutely necessary. I can't get the website up without them. Other times, there I mean, there are drawbacks for every package, so. Svelte shines, i think svelte shines bright with js libraries. the modularized focused one should extrapolate functions into .js files, like when making a music player as i previously asked, the mod agent should take functions like pause() play() skip() etc. and put them in a player class, and keep the codebase tidy like that. We need someone documenting and doing jsdoc comments. staying out of the way. oh and we need a unit tester. for the style person should love the unit tester, cuz my biggest gripe is the WEAREDOGS letters text shifting when other new elements appear in and out. the text should remain as static as a painting, regardless of ui. I should be able to quickly spin up agents with these set types of parameters easily, i'll need some kind of prompt database... We can make another project specifically to house prompts and platform suggestions. like prompts to spin up a typescript agent vs a c++ agent vs a stylish scss everything with animation library agent vs a hey that code is very unsafe agent. 
+
+My golden code rules (applies most places):
+- if a function is one line, it shouldnt be a function. 
+- early return statement > nested if statements. nested code is too hard to read and prone to inefficiencies
+- no files greater than 1000 lines. if it's larger, it usually needs refactoring and modularizing. libs save the world
+- build for the rocks, so that 1000 years from now, a potato running chrome version 40 can open and run it and have a good experience. polyfills are necessary only if this isn't thought about sooner. simple code. 
+- layouts are crucial, mobile-first is good but sometimes a limiting principle, but start mobile-first. mobile portrait, landscape, televisions, car dashboards, a flip phone, and web
+- intuititive device specific controls are good. the back swipe on mobile, the menu button on old mobile devices, the scrollwheel on web, touch and swipe, swipe and hold, volume button sync, being creative and accessible and intuitive should be an innate understanding. maximize potential.
+- Constants should be used wherever possible, and these values should be hoisted up close to the top of the file as in const MAX_BPM_VAL = 200;
+- 
+
+
+There also needs to be someone who rips code. like their focus is what i currently have with the ide, a ripper.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TASKS FOR WEAREDOGS ai
+
+- The whole site must have pagination. wearedogs.net/music brings up the music panel, /stats brings up the stats panel, /music/[song filename] loads the song into the music player, wearedogs.net/en is english /es is spanish /fr is french etc, /map launches the map panel, /apps/[app name] launches the app.
+- We need more languages. And a better way to store the statistics, fetch the data live api? we need to better consolidate and extrapolate the data into separate files, .xlsx files for population counts? There are 2000 languages in the world, we need as many as possible, and we should number them all, and display the number in the opened stats panel in the front page top left corner. more imaginary languages (simlish, minion speak, i am groot).
+- use i18n to properly show the user's language on load. if i open the site in poland, the we are dogs main text must be set to polish. in sweden, swiss, china chinese etc. just user what their browser is set to, not the location or anything that requires a user notification.
