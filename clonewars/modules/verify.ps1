@@ -353,6 +353,7 @@ function Test-IsoIntegrity {
         
         if ($ComputedPinnedHash -eq $ExpectedPinnedHash) {
             Write-Host "  [OK] Trust Pinning verification passed. ISO matches pinned state." -ForegroundColor Green
+            Protect-IsoFile -FilePath $FilePath
             return $true
         }
         else {
@@ -428,5 +429,56 @@ function Test-IsoIntegrity {
         Save-PinnedTrustStore -TrustStore $TrustStore
     }
 
+    if ($HashMatch) {
+        Protect-IsoFile -FilePath $FilePath
+    }
+
     return $HashMatch
+}
+
+function Protect-IsoFile {
+    param (
+        [string]$FilePath
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        return
+    }
+
+    # Only apply NTFS ACLs on Windows
+    $IsWindows = ($PSVersionTable.OS -like "*Windows*") -or ($env:OS -eq "Windows_NT")
+    if (-not $IsWindows) {
+        return
+    }
+
+    try {
+        Write-Host "  [SECURITY] Enforcing strict security permissions on: $FilePath" -ForegroundColor Yellow
+
+        # Get current user SID
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSid = $Identity.User
+
+        # Get current ACL
+        $Acl = Get-Acl -Path $FilePath
+
+        # Disable inheritance and clear existing inherited rules
+        $Acl.SetAccessRuleProtection($true, $false)
+
+        # Build access rule for current user: Allow ReadAndExecute, Delete, Synchronize, and WriteAttributes
+        $Rights = [System.Security.AccessControl.FileSystemRights]"ReadAndExecute, Delete, Synchronize, WriteAttributes"
+        $Rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $CurrentUserSid,
+            $Rights,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+
+        $Acl.SetAccessRule($Rule)
+        $File = Get-Item $FilePath
+        $File.SetAccessControl($Acl)
+
+        Write-Host "  [SECURITY] Permissions successfully configured. Only user [$($Identity.Name)] has access." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  [SECURITY FAIL] Could not apply security permissions: $_" -ForegroundColor Red
+    }
 }
