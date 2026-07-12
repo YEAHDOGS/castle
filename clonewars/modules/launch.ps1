@@ -165,6 +165,9 @@ function Build-QemuArgs {
         "-m", $Hardware.Memory
         "-drive", "file=$DiskPath,if=$DiskInterface,format=qcow2"
         "-drive", "file=$IsoPath,media=cdrom,readonly=on"
+    )
+
+    $Args += @(
         "-boot", "order=$BootOrder"
         "-vga", $VgaType
         "-usb"
@@ -278,5 +281,103 @@ function Start-CastleVm {
         }
         Write-Host ""
         & $Script:QemuSystem $QemuArgs
+    }
+}
+
+
+function New-UnattendedWindowsIso {
+    param (
+        [hashtable]$Target,
+        [string]$SourceFolder,
+        [string]$OutputIsoPath
+    )
+
+    Write-Host "  [ISO BUILD] Generating unattended ISO: $OutputIsoPath" -ForegroundColor Yellow
+
+    # 1. Load keys from .env
+    $EnvVars = @{}
+    $EnvFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
+    if (Test-Path $EnvFile) {
+        Get-Content $EnvFile | ForEach-Object {
+            if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') {
+                $Key = $Matches[1].Trim()
+                $Val = $Matches[2].Trim() -replace "^['`"]", "" -replace "['`"]$", ""
+                $EnvVars[$Key] = $Val
+            }
+        }
+    }
+
+    $HomeKey = if ($EnvVars.ContainsKey("WINDOWS_HOME_KEY")) { $EnvVars["WINDOWS_HOME_KEY"] } else { "YTMG3-N6KCE-XXBTM-8D96T-YQRFF" }
+    $ProKey = if ($EnvVars.ContainsKey("WINDOWS_PRO_KEY")) { $EnvVars["WINDOWS_PRO_KEY"] } else { "VK7JG-NPHTM-C97JM-9MPGT-3V66T" }
+
+    # 2. Read template autounattend.xml from phoenix project
+    $PhoenixDir = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) "phoenix"
+    $TemplateXmlPath = Join-Path $PhoenixDir "win-install\autounattend.xml"
+    if (-not (Test-Path $TemplateXmlPath)) {
+        Write-Host "  [FAIL] Unattended XML template not found at: $TemplateXmlPath" -ForegroundColor Red
+        return $false
+    }
+
+    $XmlText = Get-Content $TemplateXmlPath -Raw
+
+    # 3. Replace keys and image select based on target Id
+    if ($Target.Id -eq "win11-home") {
+        $XmlText = $XmlText -replace 'set \^"IMG_PARAM=/Name:\^"Windows 11 Pro\^"\^"', 'set ^"IMG_PARAM=/Index:1^"'
+        $XmlText = $XmlText -replace '<ProductKey>VK7JG-NPHTM-C97JM-9MPGT-3V66T</ProductKey>', "<ProductKey>$HomeKey</ProductKey>"
+        $XmlText = $XmlText -replace '<InstallFromName>Windows 11 Pro</InstallFromName>', "<InstallFromName>Windows 11 Home</InstallFromName>"
+    }
+    else {
+        # win11-pro
+        $XmlText = $XmlText -replace 'set \^"IMG_PARAM=/Name:\^"Windows 11 Pro\^"\^"', 'set ^"IMG_PARAM=/Index:1^"'
+        $XmlText = $XmlText -replace '<ProductKey>VK7JG-NPHTM-C97JM-9MPGT-3V66T</ProductKey>', "<ProductKey>$ProKey</ProductKey>"
+    }
+
+    # 4. Inject Chocolatey installation command into FirstLogonCommands
+    $ChocoCommand = @'
+				<SynchronousCommand wcm:action="add">
+					<Order>2</Order>
+					<CommandLine>powershell.exe -WindowStyle "Normal" -ExecutionPolicy "Bypass" -NoProfile -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); choco install 7zip notepadplusplus git vscode vlc curl sysinternals -y"</CommandLine>
+				</SynchronousCommand>
+'@
+    $XmlText = $XmlText -replace '(<FirstLogonCommands>[\s\S]*?<\/SynchronousCommand>\s*)(<\/FirstLogonCommands>)', "`$1`r`n$ChocoCommand`r`n`$2"
+
+    # 5. Save autounattend.xml temporarily to source folder
+    $TempXmlPath = Join-Path $SourceFolder "autounattend.xml"
+    $XmlText | Set-Content $TempXmlPath -Force -NoNewline
+
+    # 6. Locate oscdimg.exe
+    $OscdimgPath = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+    $OscdimgFile = Get-ChildItem -Path $OscdimgPath -Filter "oscdimg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
+
+    if (-not $OscdimgFile) {
+        # Fallback to PATH search
+        $OscdimgFile = Get-Command "oscdimg.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+    }
+
+    if (-not $OscdimgFile) {
+        Write-Host "  [FAIL] oscdimg.exe utility not found. Please ensure Microsoft.OSCDIMG is installed." -ForegroundColor Red
+        if (Test-Path $TempXmlPath) { Remove-Item $TempXmlPath -Force }
+        return $false
+    }
+
+    # 7. Compile ISO
+    $EtfsBoot = Join-Path $SourceFolder "boot\etfsboot.com"
+    $EfiSys = Join-Path $SourceFolder "efi\microsoft\boot\efisys.bin"
+
+    Write-Host "  [ISO BUILD] Compiling bootable ISO..." -ForegroundColor Yellow
+    $Process = Start-Process -FilePath $OscdimgFile -ArgumentList "-m", "-o", "-u2", "-udfver102", "-bootdata:2#p0,e,b`"$EtfsBoot`"#pEF,e,b`"$EfiSys`"", "`"$SourceFolder`"", "`"$OutputIsoPath`"" -NoNewWindow -PassThru -Wait
+
+    # 8. Cleanup temporary XML
+    if (Test-Path $TempXmlPath) {
+        Remove-Item $TempXmlPath -Force
+    }
+
+    if ($Process.ExitCode -eq 0) {
+        Write-Host "  [OK] Unattended ISO generated successfully: $OutputIsoPath" -ForegroundColor Green
+        return $true
+    }
+    else {
+        Write-Host "  [FAIL] oscdimg.exe failed with exit code: $($Process.ExitCode)" -ForegroundColor Red
+        return $false
     }
 }

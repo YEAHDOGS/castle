@@ -291,6 +291,24 @@ $IsoMatrix = @(
     # ══════════════════════════════════════════════════════════════════════════
 
     @{
+        Id          = "win11-home"
+        Name        = "Windows 11 Home"
+        Description = "Local retail copy of Windows 11 Home edition (Unattended ISO)."
+        File        = "win11-home.iso"
+        DiskSize    = "64G"
+        OsFamily    = "windows"
+        Firmware    = "uefi"
+    },
+    @{
+        Id          = "win11-pro"
+        Name        = "Windows 11 Pro"
+        Description = "Local retail copy of Windows 11 Pro edition (Unattended ISO)."
+        File        = "win11-pro.iso"
+        DiskSize    = "64G"
+        OsFamily    = "windows"
+        Firmware    = "uefi"
+    },
+    @{
         Id          = "windows11"
         Name        = "Windows 11 Enterprise (Evaluation)"
         Description = "Microsoft Windows 11 Enterprise (Evaluation), requiring UEFI and virtual TPM."
