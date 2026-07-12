@@ -335,6 +335,11 @@ function Test-IsoIntegrity {
         [object]$HttpClient
     )
 
+    if ($Target.IsFolder) {
+        Write-Host "  [i] Skipping integrity verification for folder target: $($Target.Name)" -ForegroundColor Green
+        return $true
+    }
+
     $HashMatch = $false
     $FinalHash = $null
     $IsoName = if ($Target.File) { $Target.File } else { [System.IO.Path]::GetFileName($FilePath) }

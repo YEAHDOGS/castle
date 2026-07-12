@@ -80,7 +80,12 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
 
     $Resolved = Resolve-TargetVersion -Target $Matched[0]
     $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
-    $DiskFile = Join-Path $DataDir $DiskName
+    $DiskFile = if (-not [string]::IsNullOrEmpty($Instance)) {
+        Join-Path $DataDir "instances\$Instance.qcow2"
+    }
+    else {
+        Join-Path $DataDir $DiskName
+    }
     $IsoFile = Join-Path $DataDir $Resolved.File
 
     if ($DeleteDisk -or $Purge) {
@@ -96,7 +101,12 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
     if ($DeleteIso -or $Purge) {
         if (Test-Path $IsoFile) {
             Write-Host "  [CLEANUP] Deleting cached ISO: $IsoFile" -ForegroundColor Yellow
-            Remove-Item $IsoFile -Force
+            if ($Matched[0].IsFolder) {
+                Remove-Item $IsoFile -Recurse -Force
+            }
+            else {
+                Remove-Item $IsoFile -Force
+            }
         }
         else {
             $FileNamePattern = if ($Matched[0].FileTemplate) { $Matched[0].FileTemplate -replace '\$v', '*' } else { $Resolved.File }
@@ -106,7 +116,12 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
             if ($WildcardFiles.Count -gt 0) {
                 foreach ($wf in $WildcardFiles) {
                     Write-Host "  [CLEANUP] Deleting cached ISO: $($wf.FullName)" -ForegroundColor Yellow
-                    Remove-Item $wf.FullName -Force
+                    if ($Matched[0].IsFolder) {
+                        Remove-Item $wf.FullName -Recurse -Force
+                    }
+                    else {
+                        Remove-Item $wf.FullName -Force
+                    }
                 }
             }
             else {
@@ -160,7 +175,13 @@ function Show-CastleMenu {
 
         $SizeStr = ""
         if ($CachedIsos.Count -gt 0) {
-            $SizeGB = "{0:N1}" -f ($CachedIsos[0].Length / 1GB)
+            if ($Entry.IsFolder) {
+                $FolderSize = (Get-ChildItem $CachedIsos[0].FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                $SizeGB = "{0:N1}" -f ($FolderSize / 1GB)
+            }
+            else {
+                $SizeGB = "{0:N1}" -f ($CachedIsos[0].Length / 1GB)
+            }
             $SizeStr = "($SizeGB GB)"
         }
 
@@ -368,7 +389,12 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                             $WildcardFiles = @(Get-Item $PatternPath -ErrorAction SilentlyContinue)
                             if ($WildcardFiles.Count -gt 0) {
                                 foreach ($wf in $WildcardFiles) {
-                                    Remove-Item $wf.FullName -Force
+                                    if ($SelectedTarget.IsFolder) {
+                                        Remove-Item $wf.FullName -Recurse -Force
+                                    }
+                                    else {
+                                        Remove-Item $wf.FullName -Force
+                                    }
                                 }
                                 Write-Host "   [OK] Deleted cached ISO(s)." -ForegroundColor Green
                             }
@@ -396,7 +422,14 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                             $PatternPath = Join-Path $DataDir $FileNamePattern
                             $WildcardFiles = @(Get-Item $PatternPath -ErrorAction SilentlyContinue)
                             if ($WildcardFiles.Count -gt 0) {
-                                foreach ($wf in $WildcardFiles) { Remove-Item $wf.FullName -Force }
+                                foreach ($wf in $WildcardFiles) {
+                                    if ($SelectedTarget.IsFolder) {
+                                        Remove-Item $wf.FullName -Recurse -Force
+                                    }
+                                    else {
+                                        Remove-Item $wf.FullName -Force
+                                    }
+                                }
                             }
                             
                             # 3. Pinned Trust Hash
@@ -458,7 +491,13 @@ if ($Target -eq "list") {
 
         $SizeStr = ""
         if ($CachedIsos.Count -gt 0) {
-            $SizeGB = "{0:N1}" -f ($CachedIsos[0].Length / 1GB)
+            if ($Entry.IsFolder) {
+                $FolderSize = (Get-ChildItem $CachedIsos[0].FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                $SizeGB = "{0:N1}" -f ($FolderSize / 1GB)
+            }
+            else {
+                $SizeGB = "{0:N1}" -f ($CachedIsos[0].Length / 1GB)
+            }
             $SizeStr = "($SizeGB GB)"
         }
 
@@ -529,17 +568,29 @@ while (-not $Verified) {
         Write-Host "  [OK] ISO cached: $IsoPath ($SizeGB GB)" -ForegroundColor Green
     }
     else {
-        Write-Host "  [>] ISO not found locally. Starting secure download..." -ForegroundColor Yellow
-
-        if (-not (Test-Path $DataDir)) {
-            New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+        $SourceFolderName = $Iso.Id
+        $SourceFolderPath = Join-Path $DataDir $SourceFolderName
+        if (($Iso.Id -eq "win11-home" -or $Iso.Id -eq "win11-pro") -and (Test-Path $SourceFolderPath)) {
+            $BuildOk = New-UnattendedWindowsIso -Target $Iso -SourceFolder $SourceFolderPath -OutputIsoPath $IsoPath
+            if (-not $BuildOk) {
+                Write-Host "  [FAIL] Failed to generate unattended ISO. Aborting." -ForegroundColor Red
+                $HttpClient.Dispose()
+                Exit 1
+            }
         }
+        else {
+            Write-Host "  [>] ISO not found locally. Starting secure download..." -ForegroundColor Yellow
 
-        $DownloadOk = Start-NetworkStream -Url $Iso.Url -Path $IsoPath -HttpClient $HttpClient
-        if (-not $DownloadOk) {
-            Write-Host "  [FAIL] Download failed. Aborting." -ForegroundColor Red
-            $HttpClient.Dispose()
-            Exit 1
+            if (-not (Test-Path $DataDir)) {
+                New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+            }
+
+            $DownloadOk = Start-NetworkStream -Url $Iso.Url -Path $IsoPath -HttpClient $HttpClient
+            if (-not $DownloadOk) {
+                Write-Host "  [FAIL] Download failed. Aborting." -ForegroundColor Red
+                $HttpClient.Dispose()
+                Exit 1
+            }
         }
     }
 
