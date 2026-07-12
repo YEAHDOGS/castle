@@ -368,6 +368,23 @@ $IsoMatrix = @(
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # ANDROID (Mobile/Desktop OS)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    @{
+        Id            = "android"
+        Name          = "Android-x86 (9.0-r2 Pie)"
+        Description   = "An open-source project to port Android to the x86 platform, running smoothly under QEMU."
+        Url           = "https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso"
+        IsoName       = "android-x86_64-9.0-r2.iso"
+        File          = "android-x86_64-9.0-r2.iso"
+        HashUrlSha1   = "https://raw.githubusercontent.com/android-x86/android-x86-com.github.io/master/releases/releasenote-9-0-r2.html"
+        # QEMU Profile
+        DiskSize      = "16G"
+        OsFamily      = "android"
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # macOS (Experimental — Requires OpenCore Shim)
     # ══════════════════════════════════════════════════════════════════════════
 

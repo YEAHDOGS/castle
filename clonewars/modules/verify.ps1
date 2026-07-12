@@ -43,8 +43,9 @@ function Test-CryptographicHash {
     # -- Fetch remote hash if a URL was provided --
     if (-not [string]::IsNullOrEmpty($HashUrl)) {
         try {
-            Write-Host "     [>] Fetching remote manifest..." -ForegroundColor DarkGray
+            Write-Host "     [>] Fetching remote manifest from: $HashUrl" -ForegroundColor DarkGray
             $FetchedData = $HttpClient.GetStringAsync($HashUrl).GetAwaiter().GetResult()
+            Write-Host "     [+] Retrieved content from link (first 200 chars): $(if ($FetchedData) { $FetchedData.Substring(0, [Math]::Min(200, $FetchedData.Length)) -replace '\r?\n', ' ' } else { 'empty' })" -ForegroundColor DarkGray
 
             # -- Attempt 1: XML manifest (Archive.org _files.xml format) --
             if ($FetchedData.TrimStart().StartsWith("<")) {
@@ -87,7 +88,28 @@ function Test-CryptographicHash {
                         $ExpectedHash = if (![string]::IsNullOrEmpty($Matches[1])) { $Matches[1] } else { $Matches[2] }
                     }
                     else {
-                        Write-Host "     [?] File '$IsoName' not found in remote manifest." -ForegroundColor Yellow
+                        # Proximity fallback: Find hex string of matching length within 250 chars of the filename
+                        $Length = switch ($Algorithm) {
+                            "MD5" { 32 }
+                            "SHA1" { 40 }
+                            "SHA256" { 64 }
+                            "SHA512" { 128 }
+                            default { 64 }
+                        }
+                        $FallbackPattern1 = "(?is)${EscapedIsoName}.{1,250}?([a-fA-F0-9]{$Length})"
+                        $FallbackPattern2 = "(?is)([a-fA-F0-9]{$Length}).{1,250}?${EscapedIsoName}"
+
+                        if ($FetchedData -match $FallbackPattern1) {
+                            $ExpectedHash = $Matches[1]
+                            Write-Host "     [+] Found $Algorithm hash via proximity fallback near filename: $ExpectedHash" -ForegroundColor DarkGray
+                        }
+                        elseif ($FetchedData -match $FallbackPattern2) {
+                            $ExpectedHash = $Matches[1]
+                            Write-Host "     [+] Found $Algorithm hash via proximity fallback near filename: $ExpectedHash" -ForegroundColor DarkGray
+                        }
+                        else {
+                            Write-Host "     [?] File '$IsoName' not found in remote manifest." -ForegroundColor Yellow
+                        }
                     }
                 }
                 else {
