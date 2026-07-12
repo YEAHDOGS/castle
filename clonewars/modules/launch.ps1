@@ -177,7 +177,13 @@ function Build-QemuArgs {
     # Attach the /scripts folder as a Virtual FAT drive (skip for android target)
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
     if ((Test-Path $ScriptsDir) -and $Target.Id -ne "android") {
-        $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,readonly=on")
+        if ($IsLinuxOS) {
+            $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,readonly=on")
+        }
+        else {
+            # On Windows, vvfat requires read-write mode to prevent the 'Block node is read-only' error
+            $Args += @("-drive", "file=fat:rw:$ScriptsDir,format=raw")
+        }
     }
 
     if ($Vnc) {
