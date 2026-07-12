@@ -2,6 +2,7 @@
 *.iso
 *.qcow2
 clonewars/data/*
+arcade/data/*
 
 # Logs
 logs
