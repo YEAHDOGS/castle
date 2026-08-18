@@ -45,6 +45,14 @@ To view a static registry of targets and cache statuses:
 .\start.ps1 list
 ```
 
+### Download-Only Firmware Targets
+Some targets are retro-handheld firmware images (ARM), which cannot boot in the x86 QEMU pipeline. For these, the pipeline downloads, cryptographically verifies, and caches the image in `data/`, then stops before disk provisioning — flash the verified file to an SD card (e.g. with balenaEtcher/Rufus):
+```powershell
+.\start.ps1 minui     # MinUI launcher (Anbernic/Miyoo/Trimui) -- base .zip
+.\start.ps1 knulli    # Knulli CFW (Batocera-based) -- RG34XX SD image
+```
+Both resolve their versions from GitHub Releases and prompt you to pick one. Knulli is verified against its published `.sha256`/`.md5` checksum assets plus the GitHub API asset digest; MinUI publishes no checksum files, so the GitHub API SHA256 asset digest is used. To fetch a different Knulli device image, edit the `ResolverAssetRegex` device slug in `modules/targets.ps1` (e.g. `rg35xx-sp`, `rg-cubexx`, `trimui-brick`).
+
 ### 4. Swarm Mode & Multi-Instance Boot
 To spin up multiple separate instances of the same target OS simultaneously, or run background jobs:
 - **Asynchronous Background Launch (`-Background`):**
@@ -102,14 +110,14 @@ clonewars/
 When a target is chosen, the engine executes a sequential 5-phase pipeline to transition the OS target from a remote URL into a running VM.
 
 ### Phase 1: Dynamic Version Discovery & ISO Acquisition
-1. If the target has a `ResolverType` (e.g. `HtmlDirectory` or `GitHub`), the engine queries the remote server to find available release versions and prompts you to select one.
+1. If the target has a `ResolverType` (e.g. `HtmlDirectory`, `GitHub`, or `GitHubAsset`), the engine queries the remote server to find available release versions and prompts you to select one. `GitHubAsset` targets additionally resolve the concrete download asset from the release's asset list by regex — needed when asset filenames embed dates or codenames that do not match the release tag — and automatically wire up any companion `.sha256`/`.sha512`/`.md5` checksum assets plus the SHA256 digest GitHub computes for every release asset.
 2. If the chosen ISO is not found in `data/`, the pipeline initiates a secure download, streaming it chunk-by-chunk to prevent memory leaks and showing a console progress bar.
 
 ### Phase 2: Cryptographic Verification (Trust Pinning System)
 To ensure the pipeline is "sealed from madness," every image must pass rigorous integrity verification:
 1. **Trust Pinning:** Upon the first successful validation of a download (authenticated via remote SHA hash files or GPG signatures), the target's computed cryptographic signature is saved to the local trust store (`data/.castle_trust.json`).
 2. **Offline Pinning:** On subsequent boots, the pipeline verifies the ISO against this local database. This prevents man-in-the-middle attacks, DNS poisoning, and local bit-rot, allowing offline boots to remain cryptographically secure.
-3. **Multi-Algorithm Auditing:** Supports `SHA256`, `SHA512`, `SHA384`, `SHA1`, and `MD5`. If a target specifies multiple validation paths, the engine performs multi-checksum auditing.
+3. **Multi-Algorithm Auditing:** Supports `SHA256`, `SHA512`, `SHA384`, `SHA1`, and `MD5`. If a target specifies multiple validation paths, the engine performs multi-checksum auditing — a static/pinned expected hash and remote checksum manifests are all checked cumulatively, and every configured layer must pass.
 
 ### Phase 3: Virtual Disk Provisioning
 The engine provisions a thin-provisioned copy-on-write virtual disk (`qcow2`) in the `data/` folder:
