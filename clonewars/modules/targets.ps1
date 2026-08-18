@@ -403,6 +403,49 @@ $IsoMatrix = @(
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # RETRO HANDHELD FIRMWARE (Download & verify only — flash to SD card)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    @{
+        Id                 = "minui"
+        Name               = "MinUI (Handheld Launcher)"
+        Description        = "Minimal custom launcher for retro handhelds (Anbernic, Miyoo, Trimui). Download-only: copy to SD card."
+        # Dynamic Resolver Configuration
+        ResolverType       = "GitHubAsset"
+        ResolverRepo       = "shauninman/MinUI"
+        # Asset names drop the tag's leading 'v' (v20251127-1 -> MinUI-20251127-1-base.zip),
+        # so the file is resolved from the release asset list rather than a URL template.
+        ResolverAssetRegex = '^MinUI-.*-base\.zip$'
+        # Templates
+        FileTemplate       = 'minui-$v.zip'
+        # Verification: MinUI publishes no checksum files or signatures — the
+        # resolver pins the SHA256 digest GitHub computes for the asset.
+        # ARM handheld firmware, not bootable in QEMU — acquisition + verification only.
+        DownloadOnly       = $true
+        OsFamily           = "linux"
+    },
+    @{
+        Id                 = "knulli"
+        Name               = "Knulli CFW (Anbernic RG34XX)"
+        Description        = "Batocera-based custom firmware for retro handhelds. RG34XX SD image. Download-only: flash to SD card."
+        # Dynamic Resolver Configuration
+        ResolverType       = "GitHubAsset"
+        ResolverRepo       = "knulli-cfw/distribution"
+        # Asset names embed per-device build dates and release codenames that do
+        # not match the release tag, so the file is resolved from the asset list.
+        # Swap the device slug (rg35xx-sp, rg-cubexx, trimui-brick, ...) to fetch
+        # a different image; (?!sp-) keeps rg34xx from matching rg34xx-sp.
+        ResolverAssetRegex = '^knulli-h700-rg34xx-(?!sp-).*\.img\.gz$'
+        # Templates
+        FileTemplate       = 'knulli-rg34xx-$v.img.gz'
+        # Verification: .sha256/.md5 companion assets + GitHub API asset digest,
+        # all wired up dynamically by the GitHubAsset resolver.
+        # ARM handheld firmware, not bootable in QEMU — acquisition + verification only.
+        DownloadOnly       = $true
+        OsFamily           = "linux"
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # macOS (Experimental — Requires OpenCore Shim)
     # ══════════════════════════════════════════════════════════════════════════
 

@@ -79,7 +79,7 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
     }
 
     $Resolved = Resolve-TargetVersion -Target $Matched[0]
-    $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
+    $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
     $DiskFile = if (-not [string]::IsNullOrEmpty($Instance)) {
         Join-Path $DataDir "instances\$Instance.qcow2"
     }
@@ -134,10 +134,10 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         $TrustFile = Join-Path $DataDir ".castle_trust.json"
         if (Test-Path $TrustFile) {
             $TrustStore = Get-PinnedTrustStore
-            $KeysToRemove = @($TrustStore.Keys) | Where-Object { 
-                $_ -eq $Resolved.File -or 
-                $_ -eq "$($Resolved.Id).iso" -or 
-                $_ -match "^$($Resolved.Id)-\d+\.iso$" 
+            $KeysToRemove = @($TrustStore.Keys) | Where-Object {
+                $_ -eq $Resolved.File -or
+                $_ -eq "$($Resolved.Id).iso" -or
+                $_ -match "^$($Resolved.Id)-.+\.(iso|zip|img\.gz)$"
             }
             foreach ($k in $KeysToRemove) {
                 Write-Host "  [CLEANUP] Removing pinned hash for: $k" -ForegroundColor Yellow
@@ -166,7 +166,7 @@ function Show-CastleMenu {
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
         
-        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -205,7 +205,7 @@ function Show-TargetDetails {
     $IsoPattern = Join-Path $DataDir $FileName
     $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
     
-    $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+    $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
     $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
     $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -217,8 +217,11 @@ function Show-TargetDetails {
         "Not downloaded (will fetch automatically)"
     }
 
-    $TargetDiskSize = if ($Entry.DiskSize) { $Entry.DiskSize } else { "40G" }
-    $DiskStatus = if ($CachedDisks.Count -gt 0) {
+    $TargetDiskSize = if ($Entry.DownloadOnly) { "N/A" } elseif ($Entry.DiskSize) { $Entry.DiskSize } else { "40G" }
+    $DiskStatus = if ($Entry.DownloadOnly) {
+        "N/A (download-only firmware target)"
+    }
+    elseif ($CachedDisks.Count -gt 0) {
         $DiskGB = "{0:N2}" -f ($CachedDisks[0].Length / 1GB)
         "Provisioned ($DiskGB GB) at $($CachedDisks[0].Name)"
     }
@@ -365,7 +368,7 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                     if ($DelOption -eq "1") {
                         $Confirm = Read-Host "   Are you sure you want to delete the virtual disk .qcow2 file? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
-                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
                             $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
                             $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
                             if ($CachedDisks.Count -gt 0) {
@@ -409,7 +412,7 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                         $Confirm = Read-Host "   Are you sure you want to perform a full purge (.qcow2, .iso, and trust hash)? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
                             # 1. Disk
-                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
                             $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
                             $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
                             if ($CachedDisks.Count -gt 0) {
@@ -436,10 +439,10 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                             $TrustFile = Join-Path $DataDir ".castle_trust.json"
                             if (Test-Path $TrustFile) {
                                 $TrustStore = Get-PinnedTrustStore
-                                $KeysToRemove = @($TrustStore.Keys) | Where-Object { 
-                                    $_ -eq $SelectedTarget.File -or 
-                                    $_ -eq "$($SelectedTarget.Id).iso" -or 
-                                    $_ -match "^$($SelectedTarget.Id)-\d+\.iso$" 
+                                $KeysToRemove = @($TrustStore.Keys) | Where-Object {
+                                    $_ -eq $SelectedTarget.File -or
+                                    $_ -eq "$($SelectedTarget.Id).iso" -or
+                                    $_ -match "^$($SelectedTarget.Id)-.+\.(iso|zip|img\.gz)$"
                                 }
                                 foreach ($k in $KeysToRemove) { $TrustStore.Remove($k) | Out-Null }
                                 Save-PinnedTrustStore -TrustStore $TrustStore
@@ -482,7 +485,7 @@ if ($Target -eq "list") {
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
         
-        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -621,6 +624,17 @@ while (-not $Verified) {
 $HttpClient.Dispose()
 
 # ==============================================================================
+# DOWNLOAD-ONLY TARGETS -- Firmware images that are flashed, not booted
+# ==============================================================================
+if ($Iso.DownloadOnly) {
+    Write-Host ""
+    Write-Host "  [OK] Download-only target verified and cached: $IsoPath" -ForegroundColor Green
+    Write-Host "  [i] This is handheld firmware -- flash/copy it to an SD card (e.g. balenaEtcher/Rufus)." -ForegroundColor DarkGray
+    Write-Host "  [i] QEMU provisioning and boot are skipped for this target." -ForegroundColor DarkGray
+    Exit 0
+}
+
+# ==============================================================================
 # PHASE 3 -- DISK PROVISIONING
 # ==============================================================================
 Write-Host ""
@@ -633,7 +647,7 @@ $DiskPath = if (-not [string]::IsNullOrEmpty($Instance)) {
     Join-Path $DataDir "instances\$Instance.qcow2"
 }
 else {
-    $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
+    $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
     Join-Path $DataDir $DiskName
 }
 $DiskSize = if ($Iso.DiskSize) { $Iso.DiskSize } else { "40G" }

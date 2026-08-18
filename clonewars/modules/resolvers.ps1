@@ -51,6 +51,64 @@ function Get-GitHubReleaseVersions {
     }
 }
 
+function Resolve-GitHubReleaseAsset {
+    <#
+    .SYNOPSIS
+        Resolves the concrete download asset for a "GitHubAsset" target.
+        Some repos (e.g. Knulli) name assets with per-device dates and release
+        codenames that do not match the release tag, so URL templates cannot
+        predict the filename. Instead we match ResolverAssetRegex against the
+        release's asset list, then wire up any companion checksum assets
+        (.sha256/.sha512/.md5) and the SHA256 digest GitHub computes for every
+        release asset.
+    #>
+    param (
+        [hashtable]$Target,
+        [string]$Version
+    )
+
+    try {
+        $ApiUrl = "https://api.github.com/repos/$($Target.ResolverRepo)/releases/tags/$Version"
+        $Headers = @{ "User-Agent" = "CastleVM-Provisioner" }
+        $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers
+    }
+    catch {
+        Write-Host "  [FAIL] Failed to query GitHub release '$Version' for $($Target.ResolverRepo): $_" -ForegroundColor Red
+        return $null
+    }
+
+    $Asset = @($Release.assets | Where-Object { $_.name -match $Target.ResolverAssetRegex }) | Select-Object -First 1
+    if (-not $Asset) {
+        Write-Host "  [FAIL] No asset in release '$Version' matches pattern: $($Target.ResolverAssetRegex)" -ForegroundColor Red
+        return $null
+    }
+
+    $Target.Url = $Asset.browser_download_url
+    $Target.IsoName = $Asset.name
+    Write-Host "  [OK] Resolved release asset: $($Asset.name)" -ForegroundColor Green
+
+    # Companion checksum files published alongside the image (e.g. Knulli)
+    $CompanionMap = @{ ".sha256" = "HashUrlSha256"; ".sha512" = "HashUrlSha512"; ".md5" = "HashUrlMd5" }
+    foreach ($Suffix in $CompanionMap.Keys) {
+        $Companion = @($Release.assets | Where-Object { $_.name -eq "$($Asset.name)$Suffix" }) | Select-Object -First 1
+        if ($Companion) {
+            $Target[$CompanionMap[$Suffix]] = $Companion.browser_download_url
+            Write-Host "     [+] Found companion checksum asset: $($Companion.name)" -ForegroundColor DarkGray
+        }
+    }
+
+    # GitHub computes a SHA256 digest for every release asset. Pin it as an
+    # extra verification layer -- for repos that publish no checksum files at
+    # all (e.g. MinUI) it is the only one available.
+    if ($Asset.digest -and $Asset.digest -match '^sha256:([a-fA-F0-9]{64})$') {
+        $Target.ExpectedHash = $Matches[1]
+        $Target.HashAlgorithm = "SHA256"
+        Write-Host "     [+] Pinned GitHub API asset digest (SHA256)." -ForegroundColor DarkGray
+    }
+
+    return $Target
+}
+
 function Invoke-VersionPrompt {
     param (
         [hashtable]$Target,
@@ -74,10 +132,10 @@ function Invoke-VersionPrompt {
         
         # 1. Determine the .qcow2 (Disk) filename
         $FileNamePattern = if ($Target.File) { 
-            $Target.File -replace '\.(iso|img\.gz)$', '.qcow2' 
+            $Target.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' 
         }
         elseif ($Target.FileTemplate) { 
-            ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(iso|img\.gz)$', '.qcow2' 
+            ($Target.FileTemplate -replace '\$v', $Ver) -replace '\.(iso|img\.gz|zip)$', '.qcow2' 
         }
         else { 
             "$($Target.Id).qcow2" 
@@ -157,7 +215,7 @@ function Resolve-TargetVersion {
             -Regex $Target.ResolverRegex `
             -Filter $Target.ResolverFilter
     }
-    elseif ($Target.ResolverType -eq "GitHub") {
+    elseif ($Target.ResolverType -eq "GitHub" -or $Target.ResolverType -eq "GitHubAsset") {
         $Versions = Get-GitHubReleaseVersions -Repo $Target.ResolverRepo
     }
 
@@ -184,6 +242,16 @@ function Resolve-TargetVersion {
         
         # Add the resolved string as the base property (e.g. UrlTemplate -> Url)
         $ResolvedTarget[$BaseKey] = $ResolvedString
+    }
+
+    # GitHubAsset targets resolve their download URL, checksum companions, and
+    # API digest directly from the selected release's asset list
+    if ($Target.ResolverType -eq "GitHubAsset") {
+        $ResolvedTarget = Resolve-GitHubReleaseAsset -Target $ResolvedTarget -Version $SelectedVersion
+        if (-not $ResolvedTarget) {
+            Write-Host "  [FAIL] Could not resolve a release asset for $($Target.Name)." -ForegroundColor Red
+            Exit 1
+        }
     }
 
     return $ResolvedTarget

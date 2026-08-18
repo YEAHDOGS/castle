@@ -107,6 +107,12 @@ function Test-CryptographicHash {
                             $ExpectedHash = $Matches[1]
                             Write-Host "     [+] Found $Algorithm hash via proximity fallback near filename: $ExpectedHash" -ForegroundColor DarkGray
                         }
+                        elseif ($FetchedData.Trim() -match "^([a-fA-F0-9]{$Length})$") {
+                            # Bare checksum file: just the hash, no filename column
+                            # (e.g. Knulli's per-image .sha256/.md5 release assets)
+                            $ExpectedHash = $Matches[1]
+                            Write-Host "     [+] Manifest is a bare $Algorithm checksum file: $ExpectedHash" -ForegroundColor DarkGray
+                        }
                         else {
                             Write-Host "     [?] File '$IsoName' not found in remote manifest." -ForegroundColor Yellow
                         }
@@ -363,49 +369,54 @@ function Test-IsoIntegrity {
 
     Write-Host "  [i] No pinned hash found. Running remote integrity checks..." -ForegroundColor DarkGray
 
-    # -- Path A: Static hardcoded hash (Windows evaluation ISOs, macOS shim) --
+    # Both layers run cumulatively: a target can carry a static/pinned hash AND
+    # remote manifest URLs (e.g. GitHubAsset targets pair the API asset digest
+    # with upstream .sha256/.md5 files), and every configured check must pass.
+    $HashMatch = $true
+    $HashChecksRun = 0
+
+    # -- Layer A: Static hash (Windows ISOs, macOS shim, GitHub asset digests) --
     if ($Target.ExpectedHash) {
+        $HashChecksRun++
         $Algo = if ($Target.HashAlgorithm) { $Target.HashAlgorithm } else { "SHA256" }
         $Result = Test-CryptographicHash `
             -FilePath $FilePath `
             -ExpectedHash $Target.ExpectedHash `
             -Algorithm $Algo `
             -HttpClient $HttpClient
-        
-        if ($Result) { $HashMatch = $true; $FinalHash = $Result }
+
+        if ($Result) { $FinalHash = $Result } else { $HashMatch = $false }
     }
-    # -- Path B: Remote hash manifest URL (multi-algorithm audit) --
-    else {
+
+    # -- Layer B: Remote hash manifest URLs (multi-algorithm audit) --
+    if ($HashMatch) {
         $HashKeys = @($Target.Keys) | Where-Object { $_ -like "HashUrl*" -and $_ -notlike "*Template" }
 
-        if ($HashKeys.Count -gt 0) {
-            $HashMatch = $true
+        foreach ($Key in $HashKeys) {
+            $HashChecksRun++
+            $KeyString = [string]$Key
+            $Algo = $KeyString -replace "^HashUrl", ""
+            $Url = $Target[$KeyString]
 
-            foreach ($Key in $HashKeys) {
-                $KeyString = [string]$Key
-                $Algo = $KeyString -replace "^HashUrl", ""
-                $Url = $Target[$KeyString]
+            $Result = Test-CryptographicHash `
+                -FilePath $FilePath `
+                -HashUrl $Url `
+                -Algorithm $Algo `
+                -IsoName $Target.IsoName `
+                -HttpClient $HttpClient
 
-                $Result = Test-CryptographicHash `
-                    -FilePath $FilePath `
-                    -HashUrl $Url `
-                    -Algorithm $Algo `
-                    -IsoName $Target.IsoName `
-                    -HttpClient $HttpClient
-
-                if ($Result) {
-                    $FinalHash = $Result
-                }
-                else {
-                    $HashMatch = $false
-                    break
-                }
+            if ($Result) {
+                $FinalHash = $Result
+            }
+            else {
+                $HashMatch = $false
+                break
             }
         }
-        else {
-            Write-Host "  [?] No hash verification data for this target. Proceeding unverified." -ForegroundColor Yellow
-            $HashMatch = $true
-        }
+    }
+
+    if ($HashChecksRun -eq 0) {
+        Write-Host "  [?] No hash verification data for this target. Proceeding unverified." -ForegroundColor Yellow
     }
 
     # -- GPG signature layer (runs only if hash passed) --
