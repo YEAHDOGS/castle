@@ -92,7 +92,25 @@ function New-VirtualDisk {
     )
 
     if (Test-Path $DiskPath) {
-        $DiskGB = "{0:N2}" -f ((Get-Item $DiskPath).Length / 1GB)
+        $DiskBytes = (Get-Item $DiskPath).Length
+        $DiskGB = "{0:N2}" -f ($DiskBytes / 1GB)
+
+        # A qcow2 that was created but never installed to holds only metadata (~200 KB).
+        # Booting it from disk lands on "no bootable device", so treat it as a first boot.
+        # Linked clones are legitimately tiny, so skip the check when a backing file exists.
+        $HasBacking = $false
+        try {
+            $Info = & $Script:QemuImg info --output=json $DiskPath 2>$null | ConvertFrom-Json
+            if ($Info.'backing-filename') { $HasBacking = $true }
+        }
+        catch { }
+
+        if ($DiskBytes -lt 4MB -and -not $HasBacking) {
+            Write-Host "  [DISK] Virtual disk exists but is blank: $DiskPath" -ForegroundColor Yellow
+            Write-Host "  [DISK] Nothing installed yet -- booting the installer from CD-ROM." -ForegroundColor Yellow
+            return $true
+        }
+
         Write-Host "  [DISK] Virtual disk exists: $DiskPath ($DiskGB GB on disk)" -ForegroundColor Green
         return $false
     }
@@ -137,8 +155,10 @@ function Build-QemuArgs {
 
     $OsFamily = if ($Target.OsFamily) { $Target.OsFamily } else { "linux" }
 
-    # Boot order: CD-ROM first for fresh installs, disk first for existing VMs
-    $BootOrder = if ($FirstBoot) { "d" } else { "c" }
+    # Boot order: CD-ROM first for fresh installs, disk first for existing VMs.
+    # Existing VMs keep the CD as a fallback so a disk that never got installed to
+    # drops through to the installer instead of dead-ending at the BIOS.
+    $BootOrder = if ($FirstBoot) { "dc" } else { "cd" }
 
     # Per-OS defaults
     $DiskInterface = switch ($OsFamily) {
@@ -174,10 +194,16 @@ function Build-QemuArgs {
         "-device", "usb-tablet"
     )
 
-    # Attach the /scripts folder as a Virtual FAT drive (skip for android target)
+    # Attach the /scripts folder as a Virtual FAT drive (skip for android target).
+    # It rides on USB rather than the default IDE bus: ide-hd refuses a read-only
+    # backing node ("Block node is read-only"), and USB keeps the share out of the
+    # hard-disk enumeration so it can never shadow the real boot disk.
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
     if ((Test-Path $ScriptsDir) -and $Target.Id -ne "android") {
-        $Args += @("-drive", "file=fat:ro:$ScriptsDir,format=raw,readonly=on")
+        $Args += @(
+            "-drive", "file=fat:ro:$ScriptsDir,format=raw,if=none,id=castlescripts,readonly=on"
+            "-device", "usb-storage,drive=castlescripts"
+        )
     }
 
     if ($Vnc) {
