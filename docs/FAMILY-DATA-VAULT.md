@@ -109,3 +109,15 @@ for devices that can't run Tailscale.
    shared receipts/ layout.)
 4. Tailscale onboarding flow per device + hosted DNS names per service.
 5. Guardian controls for under-18 accounts.
+6. Vault integrity: file manifest + drift audit. ✅ done
+   (`vault/manifest.py` builds a deterministic JSON manifest of a vault
+   directory — relative paths, sizes, SHA-256 (real crypto via
+   ``hashlib``, streamed in chunks), mtimes; symlinked targets, the
+   filesystem root, and manifests living inside the tree they describe
+   are all refused; symlinks and non-regular files are skipped, never
+   followed. `vault/verify.py` re-scans against a manifest and reports
+   ADDED / REMOVED / MODIFIED / UNCHANGED (exit 0 when clean, 2 with a
+   human-readable diff, 1 on a corrupt manifest — corruption is refused,
+   never trusted). `vault.py manifest <dir> --out FILE` and
+   `vault.py audit <dir> --manifest FILE` CLI. Manifests are 0600 and
+   byte-deterministic. 26 regression tests green, temp dirs only.)

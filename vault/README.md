@@ -43,6 +43,16 @@ python3 vault.py delete-user sally          # lists what would die
 python3 vault.py delete-user sally --yes sally   # key crypto-shredded, dirs wiped
 
 python3 vault.py verify
+
+# integrity: SHA-256 manifest + drift audit (FAMILY-DATA-VAULT step 6)
+python3 vault.py manifest ~/family-vaults/mom --out mom-manifest.json
+python3 vault.py audit ~/family-vaults/mom --manifest mom-manifest.json  # exit 0 = clean
+```
+
+```bash
+python3 test_vault.py   # 26 fixture-based regression tests, temp dirs only
+python3 test_manifest.py  # 13 regression tests: manifest build/write/load + refusals
+python3 test_verify.py    # 13 regression tests: ADDED/REMOVED/MODIFIED/UNCHANGED + CLI
 ```
 
 Layout under the vault root (`--dir`, default `~/.castle-vault`), all
