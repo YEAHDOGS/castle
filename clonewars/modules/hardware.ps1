@@ -68,8 +68,14 @@ function Get-HostHardwareProfile {
         }
     }
 
-    # RAM Allocation — 50% of total RAM, clamped between 4GB and 8GB
-    $MemoryGB = [Math]::Min(8, [Math]::Max(4, [Math]::Round($TotalRamGB / 2)))
+    # RAM Allocation -- 50% of total RAM, clamped between 4GB and a ceiling.
+    # The ceiling defaults to 8GB (safe on laptops) but can be raised for
+    # beefy home-server hosts:  $env:CASTLE_VM_MAX_RAM_GB = 32
+    $MaxRamGB = 8
+    if ($env:CASTLE_VM_MAX_RAM_GB -and ($env:CASTLE_VM_MAX_RAM_GB -as [int])) {
+        $MaxRamGB = [Math]::Max(4, [int]$env:CASTLE_VM_MAX_RAM_GB)
+    }
+    $MemoryGB = [Math]::Min($MaxRamGB, [Math]::Max(4, [Math]::Round($TotalRamGB / 2)))
 
     # CPU Profile Vendor Selection
     $CpuProfile = switch -Wildcard ($CpuVendor) {
