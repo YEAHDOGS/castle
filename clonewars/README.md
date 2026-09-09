@@ -211,3 +211,14 @@ docker run -d --device /dev/kvm -p 8006:8006 -v "$(pwd)/data:/app/data" castle-v
 - **WHPX Accelerator Error:** If QEMU fails to boot saying it cannot initialize WHPX, check if Hyper-V or another hypervisor (like VirtualBox or VMware) is locking host virtualization resources, or run the optional feature enablement command above.
 - **Boots back to installer:** If a VM keeps booting to the ISO install disk after installation, it is because it is still in the "First Boot" stage or you have deleted/moved the virtual disk. The pipeline determines boot priority automatically based on the existence of the `data/<target-id>.qcow2` file.
 - **NoVNC screen is blank:** Ensure the VNC parameter (`-Vnc`) is active or passed when invoking the container. QEMU must run headlessly with a VNC display bound to bridge with NoVNC.
+
+---
+
+## Kennel realm integration
+
+Clone Wars is the provisioning engine of the **Kennel realm** — Castle's
+device-farm domain (see `docs/modules/kennel.md`). The Kennel keeps the
+docked Android phones; Clone Wars keeps the golden images and provisions the
+VM sidecars (dashboard, SMS API, automation) that serve them. A dead phone
+gets re-flashed from its pinned golden image and re-docked — one realm, one
+provisioning story: Clone Wars builds it, Kennel runs it.

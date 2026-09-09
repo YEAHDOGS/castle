@@ -57,6 +57,24 @@ Phones are **untrusted peripherals**, not part of Castle's trusted core:
   internet and the services they need, they cannot reach the vault.
 - A compromised phone costs you the phone, never the Castle.
 
+## Clone Wars integration (Brando 2026-09-09)
+
+Clone Wars — the Castle Clone Factory (`clonewars/`) — is the Kennel realm's
+provisioning engine. The Kennel keeps the phones; Clone Wars keeps the
+golden images and the machines around them:
+
+- **Golden phone images:** a known-good image per phone role (Idleon farmer,
+  SMS gateway, automation hub). A phone dies at 3am? Flash a spare from the
+  golden image, re-dock it, back in business in minutes.
+- **VM sidecars:** the services that pair with kenneled phones (dashboard,
+  SMS API, automation brains) get provisioned through the same Clone Wars
+  pipeline — one system images everything in the realm.
+- **Trust pinning carries over:** Clone Wars' cryptographic verification
+  applies to phone images too. A golden image is checksummed and pinned;
+  a flashed phone that doesn't match the pin doesn't join the Kennel.
+
+One realm, one provisioning story: Clone Wars builds it, Kennel runs it.
+
 ## Roadmap
 
 1. Single phone over USB: persistent ADB, scrcpy in browser, charge limit.
