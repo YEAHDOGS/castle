@@ -201,3 +201,16 @@ for devices that can't run Tailscale.
    params in the header) alongside the openssl-backed format —
    `vault.py backup --chunks`; `backup-verify` auto-detects the
    format. Crypto choices and honest limitations: docs/CRYPTO-NOTES.md.
+   Restore lane ✅ done (2026-09-09): `vault/restore.py` closes step 8
+   — a backup you can't restore is a rumor. `vault.py restore FILE
+   --to DIR [--yes BASENAME]` opens either sealed format: the secret is
+   fully verified in memory first (HMAC + tarball hash + every
+   per-file SHA-256) and a tampered or wrong-key backup refuses with
+   nothing written; dry-run is the default, real restores need the
+   destination's basename; the destination must not exist or be empty
+   (root, symlinks, non-empty dirs, and the backup file living inside
+   the destination are all refused — no clobbering); extraction is
+   path-safe (tar-slip/symlink refusal), 0700/0600 perms restored,
+   every file re-hashed against the sealed manifest, and a restore
+   certificate is issued. 15 fixture-based regression tests green,
+   temp dirs only.
