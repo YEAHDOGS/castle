@@ -214,7 +214,7 @@ for devices that can't run Tailscale.
    every file re-hashed against the sealed manifest, and a restore
    certificate is issued. 15 fixture-based regression tests green,
    temp dirs only.
-   Inventory lane (2026-09-09): `vault.py backup-list --target-dir DIR`
+   lane (2026-09-09): `vault.py backup-list --target-dir DIR`
    is a read-only inventory of the sealed backups on a target — needs
    no secret, writes nothing. It reads each file's header line and the
    `<user>-<utc>.castle` naming convention only, and every entry carries
@@ -222,3 +222,19 @@ for devices that can't run Tailscale.
    until `backup-verify` proves them with the secret. One unreadable or
    foreign file never kills the listing. 10 regression tests green,
    temp dirs only.
+   Audit lane (2026-09-09): `vault.py backup-audit [--target-dir DIR |
+   $CASTLE_BACKUP_TARGET] [--ledger FILE] [--passphrase-file F | --keyfile F]`
+   is sealed-backup integrity verification — it reads the backup-list
+   inventory, recomputes each archive's SHA-256 against the
+   `castle-audit-ledger.json` baseline ledger, and reports per archive
+   OK / NEW (first sighting, baseline recorded — information, not
+   failure) / CORRUPT (fingerprint mismatch, or deep-proof failure) /
+   MISSING (in the ledger, gone from the target) / SKIPPED (foreign
+   files never fail the run). A CORRUPT baseline is never overwritten;
+   MISSING records persist until the operator re-baselines. With a
+   secret, every matching archive is also re-proved bit-exact via
+   `backup-verify` (tampered first sightings never become baselines).
+   Exit 0 when clean, 1 on refusal, 2 on any CORRUPT or MISSING.
+   Ledger is metadata only (0600), target-dir accepts the mounted
+   share — the 10TB SMB path + credentials are still pending from
+   Brando. 18 regression tests green, temp dirs only.

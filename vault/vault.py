@@ -595,6 +595,15 @@ def main(argv=None):
                             "(must be mode 0600)")
         return p
 
+    def _secret_args_optional(p):
+        g = p.add_mutually_exclusive_group(required=False)
+        g.add_argument("--passphrase-file",
+                       help="file holding the passphrase (must be mode 0600)")
+        g.add_argument("--keyfile",
+                       help="file holding a 32-byte raw key "
+                            "(must be mode 0600)")
+        return p
+
     p = _secret_args(sub.add_parser(
         "vault-init",
         help="seal a vault directory into an encrypted .castle file "
@@ -648,6 +657,20 @@ def main(argv=None):
              "fields are claims until backup-verify proves them)")
     p.add_argument("--target-dir", required=True,
                    help="backup target directory to inventory")
+
+    p = _secret_args_optional(sub.add_parser(
+        "backup-audit",
+        help="sealed-backup integrity verification: reads the backup-list "
+             "inventory, recomputes each archive's SHA-256 against the "
+             "audit ledger and reports OK/NEW/CORRUPT/MISSING/SKIPPED "
+             "(FAMILY-DATA-VAULT step 8 audit lane); exit 2 on any "
+             "CORRUPT or MISSING archive"))
+    p.add_argument("--target-dir",
+                   help="backup target directory (default: "
+                        "$CASTLE_BACKUP_TARGET)")
+    p.add_argument("--ledger", default=None,
+                   help="audit ledger path (default: "
+                        "<target>/castle-audit-ledger.json)")
 
     p = _secret_args(sub.add_parser(
         "restore",
@@ -918,6 +941,27 @@ def main(argv=None):
                 print(json.dumps(e, sort_keys=True))
             if not entries:
                 print("(no .castle backups in %s)" % a.target_dir)
+        elif a.cmd == "backup-audit":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import backup_audit as _ba  # noqa: E402
+            try:
+                report = _ba.audit_backups(a.target_dir,
+                                           passphrase_file=a.passphrase_file,
+                                           keyfile=a.keyfile,
+                                           ledger_path=a.ledger)
+            except _ba.AuditError as e:
+                print("refused: %s" % e)
+                return 1
+            for arch in report["archives"]:
+                print("%-8s %s (%s)" % (arch["status"], arch["file"],
+                                       arch["detail"]))
+            s = report["summary"]
+            print("audit %s: ok=%d new=%d corrupt=%d missing=%d%s" % (
+                report["target"], s["ok"], s["new"], s["corrupt"],
+                s["missing"],
+                ", deep-verify ON" if report["deep"] else ""))
+            if report["failures"]:
+                return 2
         elif a.cmd == "restore":
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import restore as _rs  # noqa: E402
