@@ -418,6 +418,22 @@ def main(argv=None):
     p.add_argument("frm"); p.add_argument("to"); p.add_argument("--by")
     p = sub.add_parser("revoke-share")
     p.add_argument("frm"); p.add_argument("to"); p.add_argument("--by")
+    p = sub.add_parser("revoke-device",
+                       help="revoke a registered device: child needs their "
+                            "guardian (--by), adults revoke their own "
+                            "(FAMILY-DATA-VAULT step 5)")
+    p.add_argument("user"); p.add_argument("device"); p.add_argument("--by")
+    p = sub.add_parser("guardian-revoke-share",
+                       help="a guardian revokes a share their child granted "
+                            "(FAMILY-DATA-VAULT step 5)")
+    p.add_argument("child"); p.add_argument("to")
+    p.add_argument("--by", required=True, help="the child's guardian")
+    p = sub.add_parser("graduate",
+                       help="guardian-approved child -> adult graduation; "
+                            "data comes with the account "
+                            "(FAMILY-DATA-VAULT step 5)")
+    p.add_argument("child"); p.add_argument("--by", required=True,
+                                            help="the child's guardian")
     p = sub.add_parser("show-shares")
     p.add_argument("user")
     p = sub.add_parser("delete-user")
@@ -514,6 +530,18 @@ def main(argv=None):
             print(grant_share(a.dir, a.frm, a.to, by=a.by))
         elif a.cmd == "revoke-share":
             print(revoke_share(a.dir, a.frm, a.to, by=a.by))
+        elif a.cmd == "revoke-device":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import guardian as _gd  # noqa: E402
+            print(_gd.revoke_device(a.dir, a.user, a.device, by=a.by))
+        elif a.cmd == "guardian-revoke-share":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import guardian as _gd  # noqa: E402
+            print(_gd.guardian_revoke_share(a.dir, a.child, a.to, a.by))
+        elif a.cmd == "graduate":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import guardian as _gd  # noqa: E402
+            print(_gd.graduate(a.dir, a.child, a.by))
         elif a.cmd == "show-shares":
             shares = show_shares(a.dir, a.user)
             print("shares from %s: %s" % (a.user,
