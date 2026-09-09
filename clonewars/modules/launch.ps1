@@ -183,8 +183,8 @@ function Build-QemuArgs {
         "-cpu", $Hardware.CpuProfile
         "-smp", $Hardware.CpuCores
         "-m", $Hardware.Memory
-        "-drive", "file=$DiskPath,if=$DiskInterface,format=qcow2"
-        "-drive", "file=$IsoPath,media=cdrom,readonly=on"
+        "-drive", "file=""$DiskPath"",if=$DiskInterface,format=qcow2"
+        "-drive", "file=""$IsoPath"",media=cdrom,readonly=on"
     )
 
     $Args += @(
@@ -201,7 +201,7 @@ function Build-QemuArgs {
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
     if ((Test-Path $ScriptsDir) -and $Target.Id -ne "android") {
         $Args += @(
-            "-drive", "file=fat:ro:$ScriptsDir,format=raw,if=none,id=castlescripts,readonly=on"
+            "-drive", "file=fat:ro:""$ScriptsDir"",format=raw,if=none,id=castlescripts,readonly=on"
             "-device", "usb-storage,drive=castlescripts"
         )
     }
@@ -216,11 +216,26 @@ function Build-QemuArgs {
 
     # -- UEFI firmware (Windows 11, modern targets) --
     if ($Target.Firmware -eq "uefi") {
-        $OvmfCandidates = @(
-            (Join-Path $Script:QemuDir "share\edk2-x86_64-code.fd"),
-            (Join-Path $Script:QemuDir "share\OVMF_CODE.fd"),
-            (Join-Path $Script:QemuDir "share\OVMF.fd")
-        )
+        # OVMF firmware lives in different places per platform. On Linux the
+        # Windows QEMU-dir variable is unset, so probe well-known system paths
+        # (Debian/Ubuntu ship them in /usr/share/OVMF via the 'ovmf' package).
+        $OvmfCandidates = if ($IsLinuxOS) {
+            @(
+                "/usr/share/OVMF/OVMF_CODE.fd",
+                "/usr/share/OVMF/OVMF_CODE_4M.fd",
+                "/usr/share/edk2/x86_64/OVMF_CODE.fd",
+                "/usr/share/qemu/OVMF.fd"
+            )
+        }
+        else {
+            $ShareDir = Join-Path $Script:QemuDir "share"
+            @(
+                (Join-Path $ShareDir "edk2-x86_64-code.fd"),
+                (Join-Path $ShareDir "OVMF_CODE.fd"),
+                (Join-Path $ShareDir "OVMF.fd")
+            )
+        }
+        $OvmfHint = if ($IsLinuxOS) { "/usr/share/OVMF/  (install the 'ovmf' package)" } else { (Join-Path $Script:QemuDir "share") }
         $OvmfPath = $OvmfCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         if ($OvmfPath) {
@@ -229,7 +244,7 @@ function Build-QemuArgs {
         }
         else {
             Write-Host "  [?] UEFI firmware (OVMF) not found -- falling back to BIOS." -ForegroundColor Yellow
-            Write-Host "     Windows 11 requires UEFI. Install OVMF in: $Script:QemuDir\share\" -ForegroundColor DarkGray
+            Write-Host "     Windows 11 requires UEFI. Install OVMF in: $OvmfHint" -ForegroundColor DarkGray
         }
     }
 
@@ -320,6 +335,15 @@ function New-UnattendedWindowsIso {
 
     Write-Host "  [ISO BUILD] Generating unattended ISO: $OutputIsoPath" -ForegroundColor Yellow
 
+    # oscdimg.exe is a Windows-only utility -- fail fast with a clear message
+    # instead of cascading into confusing path errors on Linux/macOS.
+    $IsWindowsOS = -not (($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true) -or ($IsMacOS -eq $true))
+    if (-not $IsWindowsOS) {
+        Write-Host "  [FAIL] Unattended Windows ISO generation requires Windows (oscdimg.exe)." -ForegroundColor Red
+        Write-Host "     Generate the ISO on your Windows host, then copy it into clonewars/data/." -ForegroundColor DarkGray
+        return $false
+    }
+
     # 1. Load keys from .env
     $EnvVars = @{}
     $EnvFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
@@ -338,7 +362,7 @@ function New-UnattendedWindowsIso {
 
     # 2. Read template autounattend.xml from phoenix project
     $PhoenixDir = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) "phoenix"
-    $TemplateXmlPath = Join-Path $PhoenixDir "win-install\autounattend.xml"
+    $TemplateXmlPath = Join-Path (Join-Path $PhoenixDir "win-install") "autounattend.xml"
     if (-not (Test-Path $TemplateXmlPath)) {
         Write-Host "  [FAIL] Unattended XML template not found at: $TemplateXmlPath" -ForegroundColor Red
         return $false
@@ -372,7 +396,7 @@ function New-UnattendedWindowsIso {
     $XmlText | Set-Content $TempXmlPath -Force -NoNewline
 
     # 6. Locate oscdimg.exe
-    $OscdimgPath = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+    $OscdimgPath = Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA "Microsoft") "WinGet") "Packages"
     $OscdimgFile = Get-ChildItem -Path $OscdimgPath -Filter "oscdimg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
 
     if (-not $OscdimgFile) {
@@ -387,8 +411,8 @@ function New-UnattendedWindowsIso {
     }
 
     # 7. Compile ISO
-    $EtfsBoot = Join-Path $SourceFolder "boot\etfsboot.com"
-    $EfiSys = Join-Path $SourceFolder "efi\microsoft\boot\efisys.bin"
+    $EtfsBoot = Join-Path (Join-Path $SourceFolder "boot") "etfsboot.com"
+    $EfiSys = Join-Path (Join-Path (Join-Path (Join-Path $SourceFolder "efi") "microsoft") "boot") "efisys.bin"
 
     Write-Host "  [ISO BUILD] Compiling bootable ISO..." -ForegroundColor Yellow
     $Process = Start-Process -FilePath $OscdimgFile -ArgumentList "-m", "-o", "-u2", "-udfver102", "-bootdata:2#p0,e,b`"$EtfsBoot`"#pEF,e,b`"$EfiSys`"", "`"$SourceFolder`"", "`"$OutputIsoPath`"" -NoNewWindow -PassThru -Wait

@@ -114,8 +114,9 @@ $TxtStatus = $Window.FindName("TxtStatus")
 
 # Load Target Data
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
-if (Test-Path "$ModuleRoot\targets.ps1") {
-    . "$ModuleRoot\targets.ps1"
+$TargetsModule = Join-Path $ModuleRoot "targets.ps1"
+if (Test-Path $TargetsModule) {
+    . $TargetsModule
     foreach ($Target in $IsoMatrix) {
         [void]$TargetListView.Items.Add([pscustomobject]@{
                 Id       = $Target.Id
@@ -126,7 +127,7 @@ if (Test-Path "$ModuleRoot\targets.ps1") {
     }
 }
 else {
-    $TxtStatus.Text = "[FAIL] Could not find modules\targets.ps1"
+    $TxtStatus.Text = "[FAIL] Could not find $TargetsModule"
     $TxtStatus.Foreground = "#FF5555"
 }
 
