@@ -185,3 +185,8 @@ for devices that can't run Tailscale.
    vault or the target are refused; wrong passphrase or tampered file
    fails closed; one activity record per backup (metadata only).
    23 fixture-based regression tests green, temp dirs only.)
+   Chunked lane (2026-09-09): `vault/chunkseal.py` adds a pure-stdlib
+   chunked container (castle-chunks/v1, per-chunk HMAC-SHA256, KDF
+   params in the header) alongside the openssl-backed format —
+   `vault.py backup --chunks`; `backup-verify` auto-detects the
+   format. Crypto choices and honest limitations: docs/CRYPTO-NOTES.md.
