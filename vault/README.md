@@ -47,12 +47,20 @@ python3 vault.py verify
 # integrity: SHA-256 manifest + drift audit (FAMILY-DATA-VAULT step 6)
 python3 vault.py manifest ~/family-vaults/mom --out mom-manifest.json
 python3 vault.py audit ~/family-vaults/mom --manifest mom-manifest.json  # exit 0 = clean
+
+# encrypted-at-rest sealing (FAMILY-DATA-VAULT step 7) — openssl only.
+# Secret files must already be mode 0600; lock is dry-run by default.
+python3 vault.py vault-init ~/family-vaults/mom --out mom.castle --passphrase-file ~/.castle-pw
+python3 vault.py vault-lock ~/family-vaults/mom --out mom.castle --passphrase-file ~/.castle-pw
+python3 vault.py vault-lock ~/family-vaults/mom --out mom.castle --passphrase-file ~/.castle-pw --yes mom  # burns plaintext
+python3 vault.py vault-unlock mom.castle --out ~/restored-mom --passphrase-file ~/.castle-pw
 ```
 
 ```bash
 python3 test_vault.py   # 26 fixture-based regression tests, temp dirs only
 python3 test_manifest.py  # 13 regression tests: manifest build/write/load + refusals
 python3 test_verify.py    # 13 regression tests: ADDED/REMOVED/MODIFIED/UNCHANGED + CLI
+python3 test_vault_lock.py  # 25 regression tests: init/lock/unlock, fail-closed refusals
 ```
 
 Layout under the vault root (`--dir`, default `~/.castle-vault`), all

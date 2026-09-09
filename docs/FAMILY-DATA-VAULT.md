@@ -121,3 +121,18 @@ for devices that can't run Tailscale.
    never trusted). `vault.py manifest <dir> --out FILE` and
    `vault.py audit <dir> --manifest FILE` CLI. Manifests are 0600 and
    byte-deterministic. 26 regression tests green, temp dirs only.)
+7. Vault init/lock/unlock: encrypted-at-rest sealing. ✅ done
+   (`vault/vault_lock.py`: `vault.py vault-init DIR --out F.castle`,
+   `vault-lock`, `vault-unlock` — openssl only, no new hosts.
+   `openssl enc` on this machine refuses AEAD ciphers, so the suite
+   fails closed to AES-256-CBC + encrypt-then-MAC HMAC-SHA256 (recorded
+   in the header for future GCM migration). Passphrase → PBKDF2-SHA256
+   (600k iters, 64 bytes split enc/MAC); keyfile must be exactly 32
+   bytes and already mode 0600 — the CLI checks permissions, never
+   chmods, and refuses 0777 keyfiles before any crypto runs. Lock is
+   dry-run by default, burns plaintext via the flamethrower
+   directory-burn only after the sealed copy decrypt-verifies in the
+   same run. Unlock verifies HMAC before decrypt, tarball SHA-256
+   before extract, per-file hashes after extract; tampered vaults and
+   wrong passphrases fail closed. 25 regression tests green, temp dirs
+   only.)
