@@ -86,4 +86,13 @@ interlocks.
    crypto-shred pointer; typed basename confirmation; dry-run default;
    deletion certificates; 32 regression tests)
 6. Deletion certificates + an audit log (ironic but necessary: the log
-   records *that* something was burned, never its contents). ← next
+   records *that* something was burned, never its contents). ✅ done
+   (`flamethrower/audit.py`: append-only JSONL audit log at
+   `<root>/audit.jsonl` with a SHA-256 hash chain — each entry links the
+   previous entry's hash, so edits, deletions, and reordering are all
+   detectable by `audit verify`; every Tier 1/2/3 burn appends one entry
+   per certificate — timestamp, operator, tier, cert id, fingerprint
+   (vault/key receipt, disk serial, file path — never key material or file
+   contents), method, media, verification result, success flag.
+   Incomplete records are refused, never guessed. Dry runs log nothing.
+   22 regression tests; 118 green total across the module.)
