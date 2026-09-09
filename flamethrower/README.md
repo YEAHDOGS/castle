@@ -52,10 +52,19 @@ python3 keyring.py destroy-master --yes DESTROY-ALL
 python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
 ```
 
-## What's next (per FLAMETHROWER.md build order)
+## What's done (per FLAMETHROWER.md build order)
 
-3. Media detection for Tier 2/3 (this module already ships a best-effort
-   `detect_media()` used on certificates).
+1–2. Tier 1 key lifecycle: generation, escrow, destruction ceremony,
+   deletion certificates (keyring.py).
+3. Media detection for Tier 2/3: `media.py` classifies HDD / SATA SSD /
+   NVMe / USB+SD flash / virtual / unknown from sysfs, emits the Tier-2
+   kill plan (`nvme format --ses=2`, ATA Secure Erase, nwipe-style,
+   crypto-shred), and structurally refuses to bless a software-overwrite
+   kill on anything but spinning rust. Read-only: it runs no destructive
+   commands.
+
+## What's next
+
 4. Tier 2 firmware-erase routines (NVMe format / ATA Secure Erase, shared
    with Phoenix tooling) — refusing to "overwrite" flash and call it done.
 5. Tier 3 HDD file shredder with honest media labeling.
