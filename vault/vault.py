@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+"""Castle family data vault core — FAMILY-DATA-VAULT.md build-order step 1.
+
+Vault-per-user data layout + age-tiered accounts, wired into the
+flamethrower Tier-1 keyring (FLAMETHROWER.md steps 1-2): every user vault
+gets a real 256-bit data key; deleting the key IS deleting the data
+(crypto-shredding), which is the honest deletion primitive for the
+flamethrower.
+
+The model (nuclear family, zero implicit trust):
+  - Every member gets a private vault. Nothing is shared unless shared
+    explicitly (the sharing ladder lands in step 2 of the vision doc;
+    this module ships the private-vault foundation it builds on).
+  - Age-tiered accounts: tier is a property of the account.
+      * adult (18+): full vault, integrations, device self-approval.
+      * child (<18): guardian approves new devices, escrowed key for
+        family recovery, restricted surface (no integrations).
+  - Key bytes never touch stdout, logs, certificates, or the activity
+    log — only receipt hashes (see keyring.py).
+
+Stdlib only. No network, no new hosts.
+
+Layout (under <root>, all 0700/0600):
+    users.json          account registry (0600)
+    activity.jsonl      append-only event log — who did what, when (0600)
+    vaults/<user>/      inbox documents photos receipts shared  (0700)
+    keys/               flamethrower keyring root (one key per vault)
+
+Usage:
+    vault.py init [--dir PATH]
+    vault.py create-user NAME [--tier adult|child] [--guardian NAME] [--dir PATH]
+    vault.py list-users [--dir PATH]
+    vault.py add-device USER DEVICE [--by NAME] [--dir PATH]
+    vault.py add-integration USER NAME [--dir PATH]
+    vault.py verify [--dir PATH]
+"""
+
+import argparse
+import json
+import os
+import shutil
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "..", "flamethrower"))
+import keyring  # noqa: E402  (Tier-1 crypto-shredding key lifecycle)
+
+TIERS = ("adult", "child")
+DEFAULT_DIR = os.path.expanduser("~/.castle-vault")
+SUBDIRS = ("inbox", "documents", "photos", "receipts", "shared")
+ACTIVITY_FILE = "activity.jsonl"
+
+
+# ---------------------------------------------------------------------------
+# plumbing
+# ---------------------------------------------------------------------------
+
+def _p(*parts):
+    return os.path.join(*parts)
+
+
+def _ts():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _atomic_write(path, obj, mode=0o600):
+    tmp = path + ".tmp.%d" % os.getpid()
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def keyroot(root):
+    return _p(root, "keys")
+
+
+def _ensure_dirs(root):
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    os.chmod(root, 0o700)
+    os.makedirs(_p(root, "vaults"), mode=0o700, exist_ok=True)
+    os.chmod(_p(root, "vaults"), 0o700)
+    keyring.init(keyroot(root))
+    users_path = _p(root, "users.json")
+    if not os.path.exists(users_path):
+        _atomic_write(users_path, {"version": 1, "users": {}})
+    os.chmod(users_path, 0o600)
+    act_path = _p(root, ACTIVITY_FILE)
+    if not os.path.exists(act_path):
+        open(act_path, "a").close()
+    os.chmod(act_path, 0o600)
+    return root
+
+
+def _load_users(root):
+    with open(_p(root, "users.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_users(root, doc):
+    _atomic_write(_p(root, "users.json"), doc)
+
+
+def _activity(root, actor, action, detail=""):
+    """Append one event to the activity log. Never records key material,
+    file bytes, or passwords — only WHO did WHAT to WHICH vault."""
+    line = {"ts": _ts(), "actor": actor, "action": action, "detail": detail}
+    with open(_p(root, ACTIVITY_FILE), "a", encoding="utf-8") as f:
+        f.write(json.dumps(line, sort_keys=True) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    return line
+
+
+def _require_user(users, name):
+    if name not in users["users"]:
+        raise ValueError("no such user: %s" % name)
+    return users["users"][name]
+
+
+# ---------------------------------------------------------------------------
+# accounts: age tiers, guardians, devices, integrations
+# ---------------------------------------------------------------------------
+
+def create_user(root, name, tier="adult", guardian=None):
+    """Create an account + private vault layout + flamethrower data key.
+
+    A child's key is always escrowed (family recovery), and a child
+    account needs an existing adult guardian. An adult account is the
+    full vault.
+    """
+    _ensure_dirs(root)
+    if not keyring._valid_name(name):
+        raise ValueError("invalid user name: %r" % name)
+    if tier not in TIERS:
+        raise ValueError("tier must be adult|child, got %r" % tier)
+    users = _load_users(root)
+    if name in users["users"]:
+        raise ValueError("user already exists: %s" % name)
+
+    if tier == "child":
+        if not guardian:
+            raise ValueError("child account requires --guardian (an adult)")
+        g = _require_user(users, guardian)
+        if g["tier"] != "adult":
+            raise ValueError("guardian must be an adult account: %s" % guardian)
+
+    vdir = _p(root, "vaults", name)
+    os.makedirs(vdir, mode=0o700, exist_ok=False)
+    for sub in SUBDIRS:
+        os.makedirs(_p(vdir, sub), mode=0o700)
+
+    escrow = (tier == "child")
+    keyring.create_vault(keyroot(root), name, escrow=escrow)
+
+    users["users"][name] = {
+        "name": name,
+        "tier": tier,
+        "guardian": guardian if tier == "child" else None,
+        "devices": [],
+        "integrations": [],
+        "shares": [],
+        "created": _ts(),
+        "escrowed": escrow,
+    }
+    _save_users(root, users)
+    _activity(root, name, "user.created",
+              "tier=%s guardian=%s escrow=%s" % (tier, guardian, escrow))
+    return "user %s created (tier=%s)" % (name, tier)
+
+
+def add_device(root, user, device, by=None):
+    """Register a device on an account. Under-18 accounts need their
+    guardian's approval; adults approve their own devices."""
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, user)
+    if not device or not device.strip():
+        raise ValueError("device name is required")
+    if device in rec["devices"]:
+        raise ValueError("device already registered: %s" % device)
+    if rec["tier"] == "child":
+        if by != rec["guardian"]:
+            raise ValueError(
+                "child device needs guardian approval: --by %s" % rec["guardian"])
+    rec["devices"].append(device)
+    _save_users(root, users)
+    _activity(root, by or user, "device.added",
+              "user=%s device=%s" % (user, device))
+    return "device %s registered for %s (approved by %s)" % (
+        device, user, by or user)
+
+
+def add_integration(root, user, integration):
+    """Add a third-party integration (POS push, email forward, API token).
+    Restricted surface: under-18 accounts cannot add integrations."""
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, user)
+    if rec["tier"] != "adult":
+        raise ValueError(
+            "integrations are adult-only (child account: %s)" % user)
+    if not integration or not integration.strip():
+        raise ValueError("integration name is required")
+    if integration in rec["integrations"]:
+        raise ValueError("integration already added: %s" % integration)
+    rec["integrations"].append(integration)
+    _save_users(root, users)
+    _activity(root, user, "integration.added", integration)
+    return "integration %s added for %s" % (integration, user)
+
+
+def list_users(root):
+    _ensure_dirs(root)
+    users = _load_users(root)
+    return sorted(users["users"].values(), key=lambda r: r["name"])
+
+
+# ---------------------------------------------------------------------------
+# sharing ladder (vision build-order step 2): explicit, revocable, logged
+# ---------------------------------------------------------------------------
+
+SPECIAL_SCOPES = ("family", "world")
+
+
+def grant_share(root, frm, to, by=None):
+    """Grant an explicit share: frm's vault visible to `to`.
+
+    `to` is one rung of the ladder: another member's name, "family", or
+    "world". Every grant is explicit, stored on the granting account, and
+    written to the activity log. Restrictions:
+      - under-18 accounts cannot share to "world";
+      - cannot share to yourself or to a non-existent member;
+      - duplicate grants are refused (revoke first).
+    """
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, frm)
+    actor = by or frm
+    if to == frm:
+        raise ValueError("cannot share to yourself")
+    if to == "world" and rec["tier"] == "child":
+        raise ValueError(
+            "child accounts cannot share to the world: %s" % frm)
+    if to not in SPECIAL_SCOPES and to not in users["users"]:
+        raise ValueError("no such share target: %s" % to)
+    if any(s["to"] == to for s in rec["shares"]):
+        raise ValueError("share already granted: %s -> %s (revoke first)"
+                         % (frm, to))
+    grant = {"to": to, "by": actor, "ts": _ts()}
+    rec["shares"].append(grant)
+    _save_users(root, users)
+    _activity(root, actor, "share.granted", "%s -> %s" % (frm, to))
+    return "share granted: %s -> %s" % (frm, to)
+
+
+def revoke_share(root, frm, to, by=None):
+    """Revoke a previously granted share. Revoking a non-existent grant
+    is a refusal, not a silent no-op."""
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, frm)
+    actor = by or frm
+    before = len(rec["shares"])
+    rec["shares"] = [s for s in rec["shares"] if s["to"] != to]
+    if len(rec["shares"]) == before:
+        raise ValueError("no such share to revoke: %s -> %s" % (frm, to))
+    _save_users(root, users)
+    _activity(root, actor, "share.revoked", "%s -> %s" % (frm, to))
+    return "share revoked: %s -> %s" % (frm, to)
+
+
+def show_shares(root, user):
+    """Who can see this user's vault right now (default: nobody)."""
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, user)
+    return list(rec["shares"])
+
+
+def activity_tail(root, n=20):
+    """Last n activity log entries."""
+    _ensure_dirs(root)
+    lines = []
+    with open(_p(root, ACTIVITY_FILE), encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                lines.append(json.loads(line))
+    return lines[-n:]
+
+
+# ---------------------------------------------------------------------------
+# true deletion: burn the vault's key (flamethrower Tier 1) and wipe the dirs
+# ---------------------------------------------------------------------------
+
+def delete_user(root, name, confirm=None):
+    """Delete a user's vault: crypto-shred their data key (deleting the
+    key IS deleting the data — irretrievable on any media), remove the
+    vault dirs, and retire the account record.
+
+    Dry-run is the default: it enumerates exactly what would die.
+    The real burn needs TYPED confirmation (the user's name)."""
+    _ensure_dirs(root)
+    users = _load_users(root)
+    rec = _require_user(users, name)
+
+    targets = ["vault dir: %s" % _p(root, "vaults", name)]
+    keyroot_dir = keyroot(root)
+    for label, path in (("keyring", _p(keyroot_dir, "keys", name + ".key")),
+                        ("escrow", _p(keyroot_dir, "escrow", name + ".key"))):
+        if os.path.exists(path):
+            targets.append("%s key copy: %s" % (label, path))
+
+    if confirm != name:
+        return {"dry_run": True, "would_destroy": targets,
+                "hint": "re-run with --yes %s to burn" % name}
+
+    burn = keyring.destroy_vault(keyroot_dir, name, confirm=name)
+    shutil.rmtree(_p(root, "vaults", name), ignore_errors=True)
+    del users["users"][name]
+    _save_users(root, users)
+    _activity(root, name, "user.deleted",
+              "crypto-shredded via keyring cert %s" % burn["cert_id"])
+    return {"dry_run": False, "kills": targets,
+            "certificate": burn["certificate"], "cert_id": burn["cert_id"]}
+
+
+# ---------------------------------------------------------------------------
+# verification
+# ---------------------------------------------------------------------------
+
+def verify(root):
+    """Regression-friendly consistency check: perms, registry shape,
+    every user has a vault dir + a keyring key, children are escrowed."""
+    problems = []
+    _ensure_dirs(root)
+
+    def perm(path, want):
+        try:
+            return (os.stat(path).st_mode & 0o777) == want
+        except FileNotFoundError:
+            return False
+
+    if not perm(root, 0o700):
+        problems.append("root dir perms not 0700")
+    for f in ("users.json", ACTIVITY_FILE):
+        if not perm(_p(root, f), 0o600):
+            problems.append("%s perms not 0600" % f)
+
+    try:
+        users = _load_users(root)
+        records = users["users"]
+    except Exception as e:  # noqa: BLE001 - verify reports, never crashes
+        return ["users.json unreadable: %s" % e]
+
+    vault_keys = set(n for n, _kid, _created, _esc
+                    in keyring.list_vaults(keyroot(root)))
+    for name, rec in records.items():
+        if not keyring._valid_name(name):
+            problems.append("invalid user name in registry: %r" % name)
+        if rec.get("tier") not in TIERS:
+            problems.append("bad tier for %s" % name)
+        if rec["tier"] == "child":
+            g = rec.get("guardian")
+            if not g or g not in records or records[g]["tier"] != "adult":
+                problems.append("child %s has no adult guardian" % name)
+            if not rec.get("escrowed"):
+                problems.append("child %s key not escrowed" % name)
+        for sub in SUBDIRS:
+            d = _p(root, "vaults", name, sub)
+            if not os.path.isdir(d):
+                problems.append("missing dir: vaults/%s/%s" % (name, sub))
+            elif not perm(d, 0o700):
+                problems.append("perms not 0700: vaults/%s/%s" % (name, sub))
+        if name not in vault_keys:
+            problems.append("no keyring key for user: %s" % name)
+        for s in rec.get("shares", []):
+            if s["to"] not in SPECIAL_SCOPES and s["to"] not in records:
+                problems.append("share to unknown target: %s -> %s"
+                                % (name, s["to"]))
+
+    extra_keys = vault_keys - set(records)
+    if extra_keys:
+        problems.append("orphan keyring keys: %s" % sorted(extra_keys))
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="vault.py",
+                                 description="Castle family data vault core")
+    ap.add_argument("--dir", default=DEFAULT_DIR)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("init")
+    p = sub.add_parser("create-user")
+    p.add_argument("name")
+    p.add_argument("--tier", default="adult", choices=TIERS)
+    p.add_argument("--guardian")
+    sub.add_parser("list-users")
+    p = sub.add_parser("add-device")
+    p.add_argument("user"); p.add_argument("device"); p.add_argument("--by")
+    p = sub.add_parser("add-integration")
+    p.add_argument("user"); p.add_argument("integration")
+    p = sub.add_parser("grant-share")
+    p.add_argument("frm"); p.add_argument("to"); p.add_argument("--by")
+    p = sub.add_parser("revoke-share")
+    p.add_argument("frm"); p.add_argument("to"); p.add_argument("--by")
+    p = sub.add_parser("show-shares")
+    p.add_argument("user")
+    p = sub.add_parser("delete-user")
+    p.add_argument("name"); p.add_argument("--yes")
+    p = sub.add_parser("activity")
+    p.add_argument("--tail", type=int, default=20)
+    sub.add_parser("verify")
+
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == "init":
+            _ensure_dirs(a.dir); print("vault root ready: %s" % a.dir)
+        elif a.cmd == "create-user":
+            print(create_user(a.dir, a.name, tier=a.tier, guardian=a.guardian))
+        elif a.cmd == "list-users":
+            for r in list_users(a.dir):
+                print("%-12s tier=%-5s guardian=%-8s devices=%d shares=%d" % (
+                    r["name"], r["tier"], r["guardian"] or "-",
+                    len(r["devices"]), len(r["shares"])))
+        elif a.cmd == "add-device":
+            print(add_device(a.dir, a.user, a.device, by=a.by))
+        elif a.cmd == "add-integration":
+            print(add_integration(a.dir, a.user, a.integration))
+        elif a.cmd == "grant-share":
+            print(grant_share(a.dir, a.frm, a.to, by=a.by))
+        elif a.cmd == "revoke-share":
+            print(revoke_share(a.dir, a.frm, a.to, by=a.by))
+        elif a.cmd == "show-shares":
+            shares = show_shares(a.dir, a.user)
+            print("shares from %s: %s" % (a.user,
+                  ", ".join(s["to"] for s in shares) or "(none — private)"))
+            for s in shares:
+                print("  -> %-10s by=%s ts=%s" % (s["to"], s["by"], s["ts"]))
+        elif a.cmd == "delete-user":
+            r = delete_user(a.dir, a.name, confirm=a.yes)
+            if r["dry_run"]:
+                print("DRY RUN — nothing burned. Would destroy:")
+                for t in r["would_destroy"]:
+                    print("  " + t)
+                print(r["hint"])
+                return 2
+            print("BURNED %s — crypto-shredded (cert %s)" % (a.name, r["cert_id"]))
+            print("certificate: %s" % r["certificate"])
+        elif a.cmd == "activity":
+            for e in activity_tail(a.dir, a.tail):
+                print("%s %-12s %-16s %s" % (e["ts"], e["actor"], e["action"], e["detail"]))
+        elif a.cmd == "verify":
+            problems = verify(a.dir)
+            if problems:
+                print("VERIFY FAILED:")
+                for p in problems:
+                    print("  - " + p)
+                return 1
+            print("verify: all green")
+    except ValueError as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
