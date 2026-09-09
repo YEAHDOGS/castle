@@ -69,6 +69,9 @@ A way to make data yours again
 | Directory | What it is |
 |---|---|
 | `clonewars/` | **Clone Factory** — modular PowerShell QEMU pipeline: download, cryptographically verify (hash + GPG + trust pinning), provision, and boot VM targets (CachyOS, Ubuntu, Windows, …). Interactive CLI (`start.ps1`), WPF GUI (`gui.ps1`), Docker + noVNC support. See `clonewars/README.md`. |
+| `vault/` | **Family Data Vault** — per-user encrypted vaults, age-tiered accounts, sharing ladder, receipt ingestion (email/POS/scan), manifest + drift audit, encrypted-at-rest sealing. See `vault/README.md` and `docs/FAMILY-DATA-VAULT.md`. |
+| `flamethrower/` | **True-deletion tooling** — Tier-1 crypto-shred keyring, Tier-2 firmware erase, Tier-3 file shredder, residue wiping, deletion certificates + hash-chained audit log, unified CLI. See `flamethrower/README.md` and `docs/FLAMETHROWER.md`. |
+| `backup/` | **Backup intake** — Castle's receiving end for machine backups (Phoenix emergency runbook's 10TB target): quarantine-aware intake with SHA-256 manifest + verify. See `backup/README.md` and `docs/BACKUP-INTAKE.md`. |
 | `arcade/` | **Retro asset pipeline** — acquire, hash-verify, extract, and organize console firmware/BIOS + ROM images into `arcade/data/`. See `arcade/README.md`. |
 | `saves/` | **SaveVault → Chains** — moved out of castle into its own standalone project ("git for video game save data": version control for emulator save files — SNES `.srm`, GBA `.sav`, save states). See the `chains` project. |
 | `server/` | **Castle sync server** (Kotlin/Ktor) — the Data Vault backend: file sync endpoints, vault storage root via `CASTLE_DATA_DIR`. |
