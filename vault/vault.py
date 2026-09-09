@@ -597,6 +597,10 @@ def main(argv=None):
                         "are never overwritten)")
     p.add_argument("--yes", default=None,
                    help="typed confirmation: the username")
+    p.add_argument("--chunks", action="store_true",
+                   help="seal with the pure-stdlib chunked container "
+                        "(castle-chunks/v1, per-chunk HMAC) instead of "
+                        "the openssl-backed format")
 
     p = _secret_args(sub.add_parser(
         "backup-verify",
@@ -798,7 +802,8 @@ def main(argv=None):
             try:
                 r = _bk.create_backup(a.dir, a.user, a.target_dir,
                                       passphrase_file=a.passphrase_file,
-                                      keyfile=a.keyfile, confirm=a.yes)
+                                      keyfile=a.keyfile, confirm=a.yes,
+                                      chunks=a.chunks)
             except _bk.BackupError as e:
                 print("refused: %s" % e)
                 return 1

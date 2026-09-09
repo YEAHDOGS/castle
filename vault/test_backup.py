@@ -206,8 +206,14 @@ class BackupWriteTest(unittest.TestCase):
                                          passphrase_file=pw, confirm="sam")
         self.assertNotEqual(r1["backup_file"], r2["backup_file"])
         self.assertEqual(len(os.listdir(target)), 2)
-        with open(r1["backup_file"], "rb") as f:
-            self.assertNotIn(b"v2", f.read())
+        # the first backup still proves restorable with only its own
+        # files — the second backup never overwrote it. (Decrypted
+        # proof, not a raw-byte scan: ciphertext is random, so a
+        # literal "v2" byte-pair can appear by chance.)
+        rep = vault_backup.verify_backup(r1["backup_file"],
+                                         passphrase_file=pw)
+        self.assertTrue(rep["ok"])
+        self.assertEqual(rep["file_count"], 1)
 
     def test_keyfile_mode_works(self):
         root, target, r, kw = self._backed_up(kind="keyfile")
@@ -312,6 +318,90 @@ class BackupCLITest(unittest.TestCase):
             code = vault.main(["--dir", root, "backup", "sam",
                                "--target-dir", target,
                                "--passphrase-file", pw, "--yes", "sam"])
+        self.assertEqual(code, 0)
+        files = os.listdir(target)
+        self.assertEqual(len(files), 1)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = vault.main(["--dir", root, "backup-verify",
+                               os.path.join(target, files[0]),
+                               "--passphrase-file", pw])
+        self.assertEqual(code, 0)
+        self.assertIn("VERIFIED", buf.getvalue())
+
+
+class BackupChunksTest(unittest.TestCase):
+    """The chunked container lane (castle-chunks/v1) through backup.py."""
+
+    def _backed_up_chunks(self):
+        root = mk_root(self)
+        target = fresh_dir(self, "castle-backup-test-target-")
+        put(root, "sam", "receipts/r1.txt", b"receipt one")
+        put(root, "sam", "documents/d1.txt", b"doc one")
+        pw = mk_passphrase(self)
+        r = vault_backup.create_backup(root, "sam", target,
+                                       passphrase_file=pw, confirm="sam",
+                                       chunks=True)
+        self.assertFalse(r["dry_run"])
+        return root, target, r, pw
+
+    def test_chunks_backup_seals_and_verifies(self):
+        root, target, r, pw = self._backed_up_chunks()
+        cert = r["certificate"]
+        self.assertEqual(cert["container"], "castle-chunks/v1")
+        self.assertEqual(cert["file_count"], 2)
+        self.assertEqual(cert["total_bytes"],
+                         len(b"receipt one") + len(b"doc one"))
+        rep = vault_backup.verify_backup(r["backup_file"],
+                                         passphrase_file=pw)
+        self.assertTrue(rep["ok"])
+        self.assertEqual(rep["container"], "castle-chunks/v1")
+        self.assertEqual(rep["file_count"], 2)
+
+    def test_chunks_backup_never_burns_live_vault(self):
+        root, target, r, pw = self._backed_up_chunks()
+        self.assertTrue(os.path.isfile(
+            os.path.join(root, "vaults", "sam", "receipts", "r1.txt")))
+
+    def test_chunks_wrong_passphrase_fails_closed(self):
+        root, target, r, pw = self._backed_up_chunks()
+        bad = mk_passphrase(self, "wrong-passphrase")
+        with self.assertRaises(vault_backup.BackupError):
+            vault_backup.verify_backup(r["backup_file"],
+                                       passphrase_file=bad)
+
+    def test_chunks_tampered_file_fails_closed(self):
+        root, target, r, pw = self._backed_up_chunks()
+        with open(r["backup_file"], "r+b") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(size - 10)
+            b = f.read(1)
+            f.seek(size - 10)
+            f.write(bytes([b[0] ^ 0xFF]))
+        with self.assertRaises(vault_backup.BackupError):
+            vault_backup.verify_backup(r["backup_file"],
+                                       passphrase_file=pw)
+
+    def test_chunks_dry_run_default(self):
+        root = mk_root(self)
+        target = fresh_dir(self, "castle-backup-test-target-")
+        pw = mk_passphrase(self)
+        r = vault_backup.create_backup(root, "sam", target,
+                                       passphrase_file=pw, chunks=True)
+        self.assertTrue(r["dry_run"])
+        self.assertEqual(os.listdir(target), [])
+
+    def test_cli_chunks_flag(self):
+        root = mk_root(self)
+        target = fresh_dir(self, "castle-backup-test-target-")
+        put(root, "sam", "receipts/r1.txt", b"x")
+        pw = mk_passphrase(self)
+        with redirect_stdout(io.StringIO()):
+            code = vault.main(["--dir", root, "backup", "sam",
+                               "--target-dir", target,
+                               "--passphrase-file", pw, "--yes", "sam",
+                               "--chunks"])
         self.assertEqual(code, 0)
         files = os.listdir(target)
         self.assertEqual(len(files), 1)
