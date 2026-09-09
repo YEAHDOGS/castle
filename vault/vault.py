@@ -32,6 +32,7 @@ Usage:
     vault.py list-users [--dir PATH]
     vault.py add-device USER DEVICE [--by NAME] [--dir PATH]
     vault.py add-integration USER NAME [--dir PATH]
+    vault.py ingest-receipt FILE [--dir PATH]
     vault.py verify [--dir PATH]
 """
 
@@ -418,6 +419,10 @@ def main(argv=None):
     p.add_argument("user")
     p = sub.add_parser("delete-user")
     p.add_argument("name"); p.add_argument("--yes")
+    p = sub.add_parser("ingest-receipt",
+                       help="ingest a forwarded email into the addressed "
+                            "user's receipts vault (FAMILY-DATA-VAULT step 3)")
+    p.add_argument("file", help="path to the raw RFC822 message")
     p = sub.add_parser("activity")
     p.add_argument("--tail", type=int, default=20)
     sub.add_parser("verify")
@@ -457,6 +462,15 @@ def main(argv=None):
                 return 2
             print("BURNED %s — crypto-shredded (cert %s)" % (a.name, r["cert_id"]))
             print("certificate: %s" % r["certificate"])
+        elif a.cmd == "ingest-receipt":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import receipts as _rcpt  # noqa: E402
+            with open(a.file, "rb") as f:
+                raw = f.read()
+            user, _msg = _rcpt.resolve_recipient(a.dir, raw)
+            r = _rcpt.ingest(a.dir, user, raw)
+            print("receipt %s -> %s's vault (merchant=%s total=%s)" % (
+                r["id"], user, r["merchant"], r["total"]))
         elif a.cmd == "activity":
             for e in activity_tail(a.dir, a.tail):
                 print("%s %-12s %-16s %s" % (e["ts"], e["actor"], e["action"], e["detail"]))

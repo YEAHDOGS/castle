@@ -71,6 +71,15 @@ for devices that can't run Tailscale.
    `delete-user` crypto-shreds key + wipes dirs behind typed confirmation;
    26 regression tests green, temp dirs only.)
 3. Receipt ingestion: email forward first (simplest), then scan/OCR,
-   then the Clover-style POS webhook receiver.
+   then the Clover-style POS webhook receiver. 🟡 email forward done
+   (`vault/receipts.py`: ingest raw RFC822 from `receipts@<you>.castle` into
+   the addressed user's receipts/ — merchant/total extraction with honest
+   confidence, attachments stored 0600 alongside the original .eml, ingest
+   refused unless the `email-forward` integration is registered (adult-only
+   surface), mis-addressed mail refused (never lands in the wrong vault),
+   idempotent by sha256 content hash, activity log carries metadata only —
+   never body/attachment bytes; 14 regression tests green, temp dirs only.
+   `vault.py ingest-receipt FILE` CLI). Scan/OCR and the POS webhook
+   receiver are next.
 4. Tailscale onboarding flow per device + hosted DNS names per service.
 5. Guardian controls for under-18 accounts.
