@@ -20,10 +20,10 @@ param(
 # MODULE LOADER
 # ==============================================================================
 $ModuleRoot = Join-Path (Split-Path $PSScriptRoot -Parent) "modules"
-. "$ModuleRoot\targets.ps1"
-. "$ModuleRoot\security.ps1"
-. "$ModuleRoot\archive.ps1"
-. "$ModuleRoot\network.ps1"
+. (Join-Path $ModuleRoot "targets.ps1")
+. (Join-Path $ModuleRoot "security.ps1")
+. (Join-Path $ModuleRoot "archive.ps1")
+. (Join-Path $ModuleRoot "network.ps1")
 
 $DataDir = Join-Path (Split-Path $PSScriptRoot -Parent) "data"
 

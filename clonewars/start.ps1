@@ -42,12 +42,12 @@ param (
 # MODULE LOADER
 # ==============================================================================
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
-. "$ModuleRoot\targets.ps1"
-. "$ModuleRoot\network.ps1"
-. "$ModuleRoot\verify.ps1"
-. "$ModuleRoot\hardware.ps1"
-. "$ModuleRoot\launch.ps1"
-. "$ModuleRoot\resolvers.ps1"
+. (Join-Path $ModuleRoot "targets.ps1")
+. (Join-Path $ModuleRoot "network.ps1")
+. (Join-Path $ModuleRoot "verify.ps1")
+. (Join-Path $ModuleRoot "hardware.ps1")
+. (Join-Path $ModuleRoot "launch.ps1")
+. (Join-Path $ModuleRoot "resolvers.ps1")
 
 $DataDir = Join-Path $PSScriptRoot "data"
 
@@ -81,7 +81,7 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
     $Resolved = Resolve-TargetVersion -Target $Matched[0]
     $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
     $DiskFile = if (-not [string]::IsNullOrEmpty($Instance)) {
-        Join-Path $DataDir "instances\$Instance.qcow2"
+        Join-Path (Join-Path $DataDir "instances") "$Instance.qcow2"
     }
     else {
         Join-Path $DataDir $DiskName
@@ -644,7 +644,7 @@ Write-Host "  -------------------------------------------" -ForegroundColor Dark
 if (-not (Test-QemuInstalled)) { Exit 1 }
 
 $DiskPath = if (-not [string]::IsNullOrEmpty($Instance)) {
-    Join-Path $DataDir "instances\$Instance.qcow2"
+    Join-Path (Join-Path $DataDir "instances") "$Instance.qcow2"
 }
 else {
     $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
