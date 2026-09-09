@@ -32,6 +32,11 @@ Usage:
     vault.py list-users [--dir PATH]
     vault.py add-device USER DEVICE [--by NAME] [--dir PATH]
     vault.py add-integration USER NAME [--dir PATH]
+    vault.py add-secret USER NAME [--secret-file FILE]   # stdin or 0600 file
+    vault.py get-secret USER NAME                        # stdout, not logged
+    vault.py list-secrets USER                           # names only
+    vault.py rotate-secret USER NAME [--secret-file FILE]
+    vault.py delete-secret USER NAME [--yes NAME]
     vault.py ingest-receipt FILE [--dir PATH]
     vault.py verify [--dir PATH]
     vault.py vault-init DIR --out FILE.castle --passphrase-file F
@@ -325,6 +330,17 @@ def delete_user(root, name, confirm=None):
                 "hint": "re-run with --yes %s to burn" % name}
 
     burn = keyring.destroy_vault(keyroot_dir, name, confirm=name)
+    # defense in depth: crypto-shred every secret ciphertext before the
+    # tree wipe, so no secret file survives even if the rmtree below
+    # were ever interrupted.
+    sdir = _p(root, "vaults", name, "secrets")
+    if os.path.isdir(sdir):
+        for fn in sorted(os.listdir(sdir)):
+            if fn.endswith(".secret"):
+                full = _p(sdir, fn)
+                if os.path.isfile(full) and not os.path.islink(full):
+                    keyring._overwrite_and_unlink(full)
+                    targets.append("secret ciphertext shredded: %s" % full)
     shutil.rmtree(_p(root, "vaults", name), ignore_errors=True)
     del users["users"][name]
     _save_users(root, users)
@@ -387,6 +403,18 @@ def verify(root):
             if s["to"] not in SPECIAL_SCOPES and s["to"] not in records:
                 problems.append("share to unknown target: %s -> %s"
                                 % (name, s["to"]))
+        # secrets store: tight perms on the dir, the registry, and every
+        # ciphertext file (checked only when the store exists)
+        sdir = _p(root, "vaults", name, "secrets")
+        if os.path.isdir(sdir):
+            if not perm(sdir, 0o700):
+                problems.append("perms not 0700: vaults/%s/secrets" % name)
+            for fn in sorted(os.listdir(sdir)):
+                full = _p(sdir, fn)
+                if fn == "index.json" or fn.endswith(".secret"):
+                    if not perm(full, 0o600):
+                        problems.append("perms not 0600: vaults/%s/secrets/%s"
+                                        % (name, fn))
 
     extra_keys = vault_keys - set(records)
     if extra_keys:
@@ -414,6 +442,29 @@ def main(argv=None):
     p.add_argument("user"); p.add_argument("device"); p.add_argument("--by")
     p = sub.add_parser("add-integration")
     p.add_argument("user"); p.add_argument("integration")
+    p = sub.add_parser("add-secret",
+                       help="store an encrypted secret (API key/token) for "
+                            "an adult user — reads from stdin or "
+                            "--secret-file (never a CLI arg)")
+    p.add_argument("user"); p.add_argument("name")
+    p.add_argument("--secret-file", default=None,
+                   help="file holding the secret (must be mode 0600)")
+    p = sub.add_parser("get-secret",
+                       help="print a secret to stdout (nothing is logged)")
+    p.add_argument("user"); p.add_argument("name")
+    p = sub.add_parser("list-secrets",
+                       help="list a user's secret names (never values)")
+    p.add_argument("user")
+    p = sub.add_parser("rotate-secret",
+                       help="replace a secret's value (fresh IV + "
+                            "ciphertext, same name)")
+    p.add_argument("user"); p.add_argument("name")
+    p.add_argument("--secret-file", default=None,
+                   help="file holding the new secret (must be mode 0600)")
+    p = sub.add_parser("delete-secret",
+                       help="crypto-shred a secret: typed confirmation "
+                            "burns the ciphertext")
+    p.add_argument("user"); p.add_argument("name"); p.add_argument("--yes")
     p = sub.add_parser("grant-share")
     p.add_argument("frm"); p.add_argument("to"); p.add_argument("--by")
     p = sub.add_parser("revoke-share")
@@ -551,6 +602,34 @@ def main(argv=None):
             print(add_device(a.dir, a.user, a.device, by=a.by))
         elif a.cmd == "add-integration":
             print(add_integration(a.dir, a.user, a.integration))
+        elif a.cmd in ("add-secret", "get-secret", "list-secrets",
+                       "rotate-secret", "delete-secret"):
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import secretstore as _sec  # noqa: E402
+            if a.cmd == "add-secret":
+                print(_sec.add_secret(a.dir, a.user, a.name,
+                                      _sec.read_secret_input(a.secret_file)))
+            elif a.cmd == "get-secret":
+                sys.stdout.buffer.write(
+                    _sec.get_secret(a.dir, a.user, a.name))
+                sys.stdout.buffer.flush()
+            elif a.cmd == "list-secrets":
+                names = _sec.list_secrets(a.dir, a.user)
+                print("\n".join(names) if names else "(no secrets)")
+            elif a.cmd == "rotate-secret":
+                print(_sec.rotate_secret(a.dir, a.user, a.name,
+                                         _sec.read_secret_input(
+                                             a.secret_file)))
+            elif a.cmd == "delete-secret":
+                r = _sec.delete_secret(a.dir, a.user, a.name, confirm=a.yes)
+                if r["dry_run"]:
+                    print("DRY RUN — nothing burned. Would destroy:")
+                    for t in r["would_destroy"]:
+                        print("  " + t)
+                    print(r["hint"])
+                    return 2
+                print("BURNED secret %s for %s — ciphertext crypto-shredded"
+                      % (a.name, a.user))
         elif a.cmd == "grant-share":
             print(grant_share(a.dir, a.frm, a.to, by=a.by))
         elif a.cmd == "revoke-share":
