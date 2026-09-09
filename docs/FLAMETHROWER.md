@@ -122,3 +122,16 @@ interlocks.
    inside it. Symlinks, non-regular files, hardlink duplicates, and
    paths resolving outside the target abort the whole burn before
    anything dies (canary-tested). 8 regression tests, temp dirs only.)
+9. Unified true-deletion CLI (`flamethrower/flamethrower.py`). One
+   entrypoint: `plan` shows what would die; `burn` is dry-run by
+   default (exit 2, nothing touched). Real deletion needs BOTH an
+   explicit `--i-understand` admission AND the typed basename of every
+   target (`--confirm` or interactive TTY) — a mismatch on either side
+   aborts with nothing destroyed. Multi-pass overwrite for files
+   (CSPRNG x (n-1), final zero pass, fsync'd every pass, read-back
+   sample verification of the final pass, then rename → truncate →
+   unlink), flash targets labeled BEST EFFORT with the Tier-1 pointer.
+   Every real deletion emits a deletion certificate AND appends one
+   audit record per certificate to `<root>/audit.jsonl` (cert id, file
+   path, size, method, media, verification — never contents). 9
+   fixture-based regression tests, temp dirs only.
