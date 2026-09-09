@@ -122,7 +122,9 @@ if (Test-Path $TargetsModule) {
                 Id       = $Target.Id
                 Name     = $Target.Name
                 OsFamily = $Target.OsFamily
-                DiskSize = if ($Target.DiskSize) { $Target.DiskSize } else { "40G" }
+                # Download-only firmware targets (MinUI/Knulli) are flashed to
+                # SD cards, never provisioned as VM disks.
+                DiskSize = if ($Target.DownloadOnly) { "--" } elseif ($Target.DiskSize) { $Target.DiskSize } else { "40G" }
             })
     }
 }
