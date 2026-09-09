@@ -135,3 +135,17 @@ interlocks.
    audit record per certificate to `<root>/audit.jsonl` (cert id, file
    path, size, method, media, verification — never contents). 9
    fixture-based regression tests, temp dirs only.
+10. Residue wiping: slack space + free space (Tier-3-adjacent). ✅ done
+    (`flamethrower/slack.py`: `wipe-slack` extends a file to the next
+    filesystem block boundary with CSPRNG bytes, fsyncs, truncates back
+    to the exact original size and fsyncs — contents and size preserved,
+    only the slack tail destroyed; `wipe-free` fills every free cluster
+    under a directory with CSPRNG filler files to ENOSPC, fsyncs each,
+    unlinks them all, fsyncs the directory. Media is detected, never
+    assumed — unmappable media refuses; flash targets are labeled BEST
+    EFFORT with the Tier-1 crypto-shred pointer, never blessed as a
+    kill. Dry-run is the default; real wipes need typed basename
+    confirmation. Symlinks, non-regular files, and the filesystem root
+    are refused. Every wipe issues a deletion certificate + one tier-3
+    audit record (hashes only — never contents). 15 fixture-based
+    regression tests, temp dirs only.)
