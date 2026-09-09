@@ -34,6 +34,9 @@ Usage:
     vault.py add-integration USER NAME [--dir PATH]
     vault.py ingest-receipt FILE [--dir PATH]
     vault.py verify [--dir PATH]
+    vault.py vault-init DIR --out FILE.castle --passphrase-file F
+    vault.py vault-lock DIR --out FILE.castle --passphrase-file F [--yes NAME]
+    vault.py vault-unlock FILE.castle --out DIR --passphrase-file F
 """
 
 import argparse
@@ -458,6 +461,40 @@ def main(argv=None):
     p.add_argument("--json", action="store_true",
                    help="machine-readable output instead of the diff")
 
+    def _secret_args(p):
+        g = p.add_mutually_exclusive_group(required=True)
+        g.add_argument("--passphrase-file",
+                       help="file holding the passphrase (must be mode 0600)")
+        g.add_argument("--keyfile",
+                       help="file holding a 32-byte raw key "
+                            "(must be mode 0600)")
+        return p
+
+    p = _secret_args(sub.add_parser(
+        "vault-init",
+        help="seal a vault directory into an encrypted .castle file "
+             "(FAMILY-DATA-VAULT step 7); plaintext left untouched"))
+    p.add_argument("dir", help="plaintext vault directory to seal")
+    p.add_argument("--out", required=True,
+                   help="where to write the locked .castle file")
+
+    p = _secret_args(sub.add_parser(
+        "vault-lock",
+        help="seal a vault directory then burn the plaintext "
+             "(dry-run unless --yes BASENAME)"))
+    p.add_argument("dir", help="plaintext vault directory to seal and burn")
+    p.add_argument("--out", required=True,
+                   help="where to write the locked .castle file")
+    p.add_argument("--yes", default=None,
+                   help="typed confirmation: the directory's basename")
+
+    p = _secret_args(sub.add_parser(
+        "vault-unlock",
+        help="open an encrypted .castle file into a directory"))
+    p.add_argument("file", help="the locked .castle file")
+    p.add_argument("--out", required=True,
+                   help="empty (or new) directory to restore into")
+
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
@@ -544,6 +581,37 @@ def main(argv=None):
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import verify as _va  # noqa: E402
             return _va.run_audit(a.dir, a.manifest, json_out=a.json)
+        elif a.cmd in ("vault-init", "vault-lock", "vault-unlock"):
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import vault_lock as _vl  # noqa: E402
+            try:
+                if a.cmd == "vault-init":
+                    h = _vl.vault_init(a.dir, a.out,
+                                       passphrase_file=a.passphrase_file,
+                                       keyfile=a.keyfile)
+                    print("sealed %d file(s) -> %s (%s+%s)" % (
+                        h["file_count"], a.out, h["cipher"], h["mac"]))
+                elif a.cmd == "vault-lock":
+                    r = _vl.vault_lock(a.dir, a.out,
+                                       passphrase_file=a.passphrase_file,
+                                       keyfile=a.keyfile, confirm=a.yes)
+                    if r["dry_run"]:
+                        print("DRY RUN — plaintext untouched.")
+                        print("  sealed: %s" % r["sealed"])
+                        print("  would burn: %s" % r["would_burn"])
+                        print(r["hint"])
+                        return 2
+                    print("LOCKED %s — plaintext burned (cert manifest %s)" % (
+                        r["sealed"], r["burn"]["manifest"]))
+                else:
+                    r = _vl.vault_unlock(a.file, a.out,
+                                         passphrase_file=a.passphrase_file,
+                                         keyfile=a.keyfile)
+                    print("unlocked %d file(s) -> %s (all hashes verified)" % (
+                        r["files"], r["unlocked"]))
+            except _vl.VaultLockError as e:
+                print("error: %s" % e, file=sys.stderr)
+                return 1
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
