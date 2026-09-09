@@ -66,6 +66,15 @@ class BackupError(Exception):
     """Anything that makes a backup untrustworthy is a hard refusal."""
 
 
+def _locked_call(fn, *args, **kwargs):
+    """Run a vault_lock operation, translating its refusals into ours
+    so callers (and the CLI) only ever see BackupError."""
+    try:
+        return fn(*args, **kwargs)
+    except vault_lock.VaultLockError as e:
+        raise BackupError(str(e))
+
+
 def _ts_compact():
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
@@ -198,10 +207,12 @@ def _verify_tarball_bytes(header, tar_bytes):
 def _prove_restorable(out_path, passphrase_file, keyfile):
     """Re-read the sealed backup and prove it opens with the same
     secret, bit-exact. Fail closed on anything wrong."""
-    header, ct = vault_lock._read_locked(out_path)
-    kind, secret = vault_lock._read_secret(passphrase_file, keyfile)
+    header, ct = _locked_call(vault_lock._read_locked, out_path)
+    kind, secret = _locked_call(vault_lock._read_secret,
+                                passphrase_file, keyfile)
     try:
-        tar_bytes = vault_lock._open_ciphertext(header, ct, kind, secret)
+        tar_bytes = _locked_call(vault_lock._open_ciphertext,
+                                 header, ct, kind, secret)
     finally:
         del secret
     n = _verify_tarball_bytes(header, tar_bytes)
@@ -227,8 +238,8 @@ def create_backup(root, user, target_dir, passphrase_file=None, keyfile=None,
     core = vault_core
     # seal (non-destructive: vault_init never burns the plaintext —
     # a backup that destroys the original is a fire, not a backup)
-    vault_lock.vault_init(plan["vault_dir"], out,
-                          passphrase_file=passphrase_file, keyfile=keyfile)
+    _locked_call(vault_lock.vault_init, plan["vault_dir"], out,
+                 passphrase_file=passphrase_file, keyfile=keyfile)
     # prove it restores before calling it a backup
     header, verified = _prove_restorable(out, passphrase_file, keyfile)
     with open(out, "rb") as f:
