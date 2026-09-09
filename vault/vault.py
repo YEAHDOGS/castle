@@ -684,6 +684,37 @@ def main(argv=None):
                    help="typed confirmation: the destination "
                         "directory's basename")
 
+    p = sub.add_parser(
+        "backup-job-validate",
+        help="validate a backup-jobs.json manifest (FAMILY-DATA-VAULT "
+             "step 8 scheduled lane); refuses embedded secrets, bad "
+             "schedules, insane retention")
+    p.add_argument("jobs_file", help="the backup-jobs.json manifest")
+
+    p = sub.add_parser(
+        "backup-job-plan",
+        help="dry-run: which scheduled jobs are due and what they would "
+             "do (writes nothing)")
+    p.add_argument("jobs_file", help="the backup-jobs.json manifest")
+
+    p = sub.add_parser(
+        "backup-job-run-due",
+        help="run every enabled, due backup job (secrets come from the "
+             "environment at run time — never from the manifest)")
+    p.add_argument("jobs_file", help="the backup-jobs.json manifest")
+    p.add_argument("--execute", action="store_true",
+                   help="actually run the due backups (without it: "
+                        "dry-run plan, nothing written)")
+
+    p = sub.add_parser(
+        "backup-prune",
+        help="enforce a job's retention policy (deletes old backups); "
+             "dry-run unless --yes JOBNAME")
+    p.add_argument("jobs_file", help="the backup-jobs.json manifest")
+    p.add_argument("--job", required=True, help="job name")
+    p.add_argument("--yes", default=None,
+                   help="typed confirmation: the job name")
+
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
@@ -962,6 +993,81 @@ def main(argv=None):
                 ", deep-verify ON" if report["deep"] else ""))
             if report["failures"]:
                 return 2
+        elif a.cmd == "backup-job-validate":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import jobs as _jb  # noqa: E402
+            try:
+                jobs = _jb.load_jobs(a.dir, a.jobs_file)
+            except _jb.JobError as e:
+                print("refused: %s" % e)
+                return 1
+            print("manifest OK: %d job(s)" % len(jobs))
+            for j in jobs:
+                print("  %-20s user=%-8s %s every=%s enabled=%s" % (
+                    j["name"], j["user"], j["target_dir"],
+                    (j["schedule"]["at"] + " UTC daily"
+                     if j["schedule"]["kind"] == "daily" else
+                     "%sh interval" % j["schedule"]["hours"]),
+                    j["enabled"]))
+        elif a.cmd == "backup-job-plan":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import jobs as _jb  # noqa: E402
+            try:
+                r = _jb.run_due(a.dir, a.jobs_file, execute=False)
+            except _jb.JobError as e:
+                print("refused: %s" % e)
+                return 1
+            print("DRY RUN — nothing written.")
+            for s in r["skipped"]:
+                print("  skipped %-20s (%s)" % (s["name"], s["reason"]))
+            for p in r["plans"]:
+                print("  would back up %-12s user=%s %d files (%d bytes) "
+                      "-> %s" % (p["name"], p["user"], p["file_count"],
+                                 p["total_bytes"], p["would_write"]))
+            if not r["plans"]:
+                print("  (no jobs due)")
+            return 2 if r["plans"] else 0
+        elif a.cmd == "backup-job-run-due":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import jobs as _jb  # noqa: E402
+            try:
+                r = _jb.run_due(a.dir, a.jobs_file, execute=a.execute)
+            except _jb.JobError as e:
+                print("refused: %s" % e)
+                return 1
+            if r["dry_run"]:
+                print("DRY RUN — pass --execute to run. Due jobs:")
+                for p in r["plans"]:
+                    print("  %-20s user=%s %d files -> %s" % (
+                        p["name"], p["user"], p["file_count"],
+                        p["would_write"]))
+                return 2 if r["plans"] else 0
+            for s in r["skipped"]:
+                print("  skipped %s (%s)" % (s["name"], s["reason"]))
+            for x in r["ran"]:
+                print("  BACKED UP %s -> %s (cert %s)" % (
+                    x["name"], x["file"], x["cert"]))
+        elif a.cmd == "backup-prune":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import jobs as _jb  # noqa: E402
+            try:
+                r = _jb.prune(a.dir, a.jobs_file, a.job, confirm=a.yes)
+            except _jb.JobError as e:
+                print("refused: %s" % e)
+                return 1
+            if r["dry_run"]:
+                print("DRY RUN — nothing deleted. Job %s keeps %d; "
+                      "would delete %d:" % (
+                          r["job"], r["kept"], len(r["would_delete"])))
+                for v in r["would_delete"]:
+                    print("  %s (sealed %s, age %.1fd, %s)" % (
+                        v["file"], v["sealed_at"], v["age_days"],
+                        v["reason"]))
+                print(r["hint"])
+                return 2
+            print("PRUNED job %s: deleted %d backup(s): %s" % (
+                r["job"], len(r["deleted"]),
+                ", ".join(r["deleted"]) or "(none)"))
         elif a.cmd == "restore":
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import restore as _rs  # noqa: E402

@@ -238,3 +238,21 @@ for devices that can't run Tailscale.
    Ledger is metadata only (0600), target-dir accepts the mounted
    share — the 10TB SMB path + credentials are still pending from
    Brando. 18 regression tests green, temp dirs only.
+   Scheduled lane (2026-09-09): `vault/jobs.py` turns the one-shot
+   primitive into unattended backups — a `backup-jobs.json` manifest
+   (data only, NEVER secrets: it holds env var NAMES, `passphrase_env`
+   / `keyfile_env`, and a manifest that embeds a passphrase value is
+   refused at validate time) with interval (`{"kind":"interval",
+   "hours":24}`) or daily (`{"kind":"daily","at":"02:00"}` UTC)
+   schedules, a 0600 metadata-only `.state` file tracking last_run per
+   job, and a retention policy (`keep_last` / `max_age_days`). Runner
+   is dry-run by default (`backup-job-plan`, `--execute` to run real);
+   real backups only WRITE new timestamped files so unattended runs
+   can't destroy the archive; a missing secret env var is a LOUD
+   refusal, never a silent skip (a silently-skipped backup is how
+   families lose data). Retention pruning is the destructive half:
+   dry-run plan unless `--yes JOBNAME`, oldest dies first, newest
+   `keep_last` always survive, flamethrower overwrite+unlink on delete.
+   `vault.py backup-job-validate|backup-job-plan|backup-job-run-due|
+   backup-prune` CLI. 27 fixture-based regression tests green, temp
+   dirs only.
