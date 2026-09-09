@@ -641,6 +641,18 @@ def main(argv=None):
              "(nothing is extracted to disk)"))
     p.add_argument("file", help="the .castle backup file to verify")
 
+    p = _secret_args(sub.add_parser(
+        "restore",
+        help="restore an encrypted .castle backup into a directory "
+             "(FAMILY-DATA-VAULT step 8 restore lane); dry-run unless "
+             "--yes DEST-BASENAME"))
+    p.add_argument("file", help="the .castle backup file to restore")
+    p.add_argument("--to", dest="dest", required=True,
+                   help="empty (or new) directory to restore into")
+    p.add_argument("--yes", default=None,
+                   help="typed confirmation: the destination "
+                        "directory's basename")
+
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
@@ -886,6 +898,30 @@ def main(argv=None):
                   "per-file SHA-256 match (sealed %s)" % (
                       r["backup_file"], r["file_count"], r["total_bytes"],
                       r["sealed_at"]))
+        elif a.cmd == "restore":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import restore as _rs  # noqa: E402
+            try:
+                r = _rs.restore_backup(a.file, a.dest,
+                                       passphrase_file=a.passphrase_file,
+                                       keyfile=a.keyfile,
+                                       confirm=a.yes)
+            except _rs.RestoreError as e:
+                print("refused: %s" % e)
+                return 1
+            if r["dry_run"]:
+                print("DRY RUN — nothing written. Would restore:")
+                print("  backup:    %s" % r["backup_file"])
+                print("  container: %s" % r["container"])
+                print("  files:     %d (%d bytes, sealed %s)" % (
+                    r["file_count"], r["total_bytes"], r["sealed_at"]))
+                print("  dest:      %s" % r["dest_dir"])
+                print(r["hint"])
+                return 2
+            c = r["certificate"]
+            print("RESTORED %d file(s) -> %s (cert %s, all hashes "
+                  "verified)" % (c["file_count"], c["dest_dir"],
+                                  c["cert_id"]))
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
