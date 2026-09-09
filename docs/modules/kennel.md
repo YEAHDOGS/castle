@@ -1,8 +1,7 @@
 # Kennel — docked Android phones as Castle nodes
 
-Working title: **Kennel**. (Alternatives: Pound, Squire, Doghouse. Brando
-picks the final name.) The idea: old Android phones go in the Kennel instead
-of a drawer. Castle charges them over USB and each phone becomes a 24/7 node
+**Kennel.** Name confirmed by Brando (2026-09-09). Old Android phones go in
+the Kennel instead of a drawer. Castle charges them over USB and each phone becomes a 24/7 node
 you can reach from anywhere — SSH/VNC into it, run apps on it, automate it —
 like a tiny VM farm made of hardware you already own.
 
