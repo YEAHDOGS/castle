@@ -587,6 +587,23 @@ def main(argv=None):
     p.add_argument("--out", required=True,
                    help="empty (or new) directory to restore into")
 
+    p = _secret_args(sub.add_parser(
+        "backup",
+        help="seal a user's vault into an encrypted backup on a backup "
+             "target (FAMILY-DATA-VAULT step 8); dry-run unless --yes USER"))
+    p.add_argument("user", help="vault user to back up")
+    p.add_argument("--target-dir", required=True,
+                   help="backup target directory (existing .castle files "
+                        "are never overwritten)")
+    p.add_argument("--yes", default=None,
+                   help="typed confirmation: the username")
+
+    p = _secret_args(sub.add_parser(
+        "backup-verify",
+        help="prove an encrypted backup file restores bit-exact "
+             "(nothing is extracted to disk)"))
+    p.add_argument("file", help="the .castle backup file to verify")
+
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
@@ -775,6 +792,43 @@ def main(argv=None):
             except _vl.VaultLockError as e:
                 print("error: %s" % e, file=sys.stderr)
                 return 1
+        elif a.cmd == "backup":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import backup as _bk  # noqa: E402
+            try:
+                r = _bk.create_backup(a.dir, a.user, a.target_dir,
+                                      passphrase_file=a.passphrase_file,
+                                      keyfile=a.keyfile, confirm=a.yes)
+            except _bk.BackupError as e:
+                print("refused: %s" % e)
+                return 1
+            if r["dry_run"]:
+                print("DRY RUN — nothing written. Would back up:")
+                print("  user:      %s" % r["user"])
+                print("  vault dir: %s" % r["vault_dir"])
+                print("  files:     %d (%d bytes)" % (r["file_count"],
+                                                      r["total_bytes"]))
+                print("  write to:  %s" % r["would_write"])
+                print(r["hint"])
+                return 2
+            c = r["certificate"]
+            print("BACKED UP %s -> %s (cert %s, %d files verified "
+                  "bit-exact)" % (a.user, r["backup_file"], c["cert_id"],
+                                  c["file_count"]))
+        elif a.cmd == "backup-verify":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import backup as _bk  # noqa: E402
+            try:
+                r = _bk.verify_backup(a.file,
+                                      passphrase_file=a.passphrase_file,
+                                      keyfile=a.keyfile)
+            except _bk.BackupError as e:
+                print("refused: %s" % e)
+                return 1
+            print("VERIFIED %s — %d file(s), %d bytes, HMAC + every "
+                  "per-file SHA-256 match (sealed %s)" % (
+                      r["backup_file"], r["file_count"], r["total_bytes"],
+                      r["sealed_at"]))
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
