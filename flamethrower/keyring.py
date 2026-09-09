@@ -41,6 +41,9 @@ import sys
 import time
 import uuid
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import audit  # noqa: E402  (cross-burn audit log, build-order step 6)
+
 KEY_BYTES = 32          # AES-256
 OVERWRITE_PASSES = 3
 DEFAULT_DIR = os.path.expanduser("~/.castle-flamethrower")
@@ -228,6 +231,18 @@ def _issue_certificate(root, name, entry, kills, media):
     }
     path = _p(root, "certificates", cert["cert_id"] + ".json")
     _atomic_write(path, cert)
+    try:
+        audit.append(root, tier="1", cert_id=cert["cert_id"],
+                     fingerprint={"vault": name, "key_id": entry["key_id"],
+                                  "key_sha256_receipt": entry["key_sha256"]},
+                     method=cert["method"], media=media,
+                     success=all(c.get("unlinked") for c in kills),
+                     verification=cert["verification"])
+    except OSError as e:
+        # The burn is real and the certificate exists; the audit log just
+        # missed it. Say so loudly on stderr — never silently.
+        print("warning: burn completed but the audit log could not be "
+              "appended: %s" % e, file=sys.stderr)
     return cert, path
 
 

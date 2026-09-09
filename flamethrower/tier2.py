@@ -48,6 +48,7 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import media
+import audit  # noqa: E402  (cross-burn audit log, build-order step 6)
 
 SYSFS = "/sys"
 MOUNTS = "/proc/mounts"
@@ -529,6 +530,17 @@ def erase(dev, confirm_serial_arg=None, dry_run=True, runner=None,
         json.dump(cert, f, indent=2)
     os.chmod(cert_path, 0o600)
     log_fn("certificate: %s" % cert_path)
+    try:
+        audit.append(root, tier="2", cert_id=cert_id,
+                     fingerprint={"device": dev, "serial": info.serial,
+                                  "model": info.model},
+                     method=cert["method"], media=info.media,
+                     success=not failed, verification=cert["verification"])
+    except OSError as e:
+        # The burn is real and the certificate exists; the audit log just
+        # missed it. Say so loudly — never silently.
+        log_fn("WARNING: burn completed but the audit log could not be "
+               "appended: %s" % e)
     return (0 if not failed else 1), cert
 
 
