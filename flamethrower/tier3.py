@@ -50,6 +50,7 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import media
+import audit  # noqa: E402  (cross-burn audit log, build-order step 6)
 
 SYSFS = "/sys"
 KEYRING_ROOT = os.path.expanduser("~/.castle-flamethrower")
@@ -447,6 +448,17 @@ def shred(paths, confirm_arg=None, dry_run=True, sysfs=SYSFS,
             json.dump(cert, f, indent=2)
         os.chmod(cert_path, 0o600)
         log_fn("certificate: %s" % cert_path)
+        try:
+            audit.append(root, tier="3", cert_id=cert["cert_id"],
+                         fingerprint={"file": t.real, "size_bytes": t.size,
+                                      "inode": t.inode},
+                         method=cert["method"], media=cert["media"],
+                         success=ok, verification=cert["verification"])
+        except OSError as e:
+            # The burn is real and the certificate exists; the audit log
+            # just missed it. Say so loudly — never silently.
+            log_fn("WARNING: burn completed but the audit log could not be "
+                   "appended: %s" % e)
         certs.append(cert)
 
     with open(log_path, "w", encoding="utf-8") as f:
