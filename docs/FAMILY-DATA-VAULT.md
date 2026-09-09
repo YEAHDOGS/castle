@@ -92,6 +92,20 @@ for devices that can't run Tailscale.
    `raw.json`, activity log carries metadata only; 16 regression tests
    green, temp dirs only. No network listener on purpose — HTTP surface
    stays outside; this module owns the trust boundary.)
-   Scan/OCR is next.
+   Scan/OCR ✅ done
+   (`vault/scan.py`: ingests a scan image + its OCR text into the named
+   user's receipts/ — the caller supplies the image and the OCR text,
+   Castle never runs the OCR engine itself. Image validated by magic
+   bytes (JPEG/PNG/WebP, 1KB–50MB) so renamed junk is refused; OCR text
+   must be non-empty (a scan without extracted text is not a receipt);
+   merchant = stated hint (high confidence) or first OCR line (low),
+   total via the same honest extraction as email ingestion (unknown, never
+   zero); idempotent by sha256(image+text); unsafe filenames refused
+   before any write (canary test proves no directory escape); `scan`
+   integration required (adult-only to register); image/OCR/receipt all
+   0600, activity log metadata only; `vault.py ingest-scan FILE --ocr
+   TEXT --user NAME` CLI; 23 regression tests green, temp dirs only.
+   Step 3 fully done — email + POS webhook + scan/OCR all land in the
+   shared receipts/ layout.)
 4. Tailscale onboarding flow per device + hosted DNS names per service.
 5. Guardian controls for under-18 accounts.

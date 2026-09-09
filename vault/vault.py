@@ -428,6 +428,14 @@ def main(argv=None):
                             "addressed user's receipts vault "
                             "(FAMILY-DATA-VAULT step 3)")
     p.add_argument("file", help="path to the JSON push body")
+    p = sub.add_parser("ingest-scan",
+                       help="ingest a scanned receipt image + OCR text into a "
+                            "user's receipts vault (FAMILY-DATA-VAULT step 3)")
+    p.add_argument("file", help="path to the scan image (JPEG/PNG/WebP)")
+    p.add_argument("--ocr", required=True, help="path to the OCR text file")
+    p.add_argument("--user", required=True, help="vault user to ingest into")
+    p.add_argument("--merchant", default=None,
+                   help="merchant name as stated (optional, high confidence)")
     p = sub.add_parser("activity")
     p.add_argument("--tail", type=int, default=20)
     sub.add_parser("verify")
@@ -485,6 +493,18 @@ def main(argv=None):
             r = _pos.ingest(a.dir, user, raw)
             print("pos receipt %s -> %s's vault (merchant=%s total=%s %s)" % (
                 r["id"], user, r["merchant"], r["total"], r["currency"]))
+        elif a.cmd == "ingest-scan":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import scan as _scan  # noqa: E402
+            with open(a.file, "rb") as f:
+                img = f.read()
+            with open(a.ocr, "r", encoding="utf-8") as f:
+                ocr_text = f.read()
+            r = _scan.ingest(a.dir, a.user, img, ocr_text,
+                             filename=os.path.basename(a.file),
+                             hint_merchant=a.merchant)
+            print("scan %s -> %s's vault (merchant=%s total=%s)" % (
+                r["id"], a.user, r["merchant"], r["total"]))
         elif a.cmd == "activity":
             for e in activity_tail(a.dir, a.tail):
                 print("%s %-12s %-16s %s" % (e["ts"], e["actor"], e["action"], e["detail"]))
