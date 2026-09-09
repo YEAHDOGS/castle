@@ -37,6 +37,7 @@ import time
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import vault as _vault  # noqa: E402  (registry, perms, activity plumbing)
+import apiauth as _apiauth  # noqa: E402  (scoped bearer-token auth)
 
 INTEGRATION = "email-forward"
 ADDRESS_RE = re.compile(
@@ -150,12 +151,14 @@ def resolve_recipient(root, raw):
     return user, msg
 
 
-def ingest(root, user, raw):
+def ingest(root, user, raw, *, api_token=None):
     """Ingest one forwarded email's raw bytes into `user`'s receipts vault.
 
     Returns the stored receipt record. Raises ValueError on any refusal:
     unknown user, missing email-forward integration, mis-addressed mail,
-    empty payload, or a message already ingested.
+    empty payload, a message already ingested — or, when the vault root
+    has api tokens required for this purpose (see vault/apiauth.py), a
+    missing/invalid api_token.
     """
     _vault._ensure_dirs(root)
     users = _vault._load_users(root)
@@ -164,6 +167,7 @@ def ingest(root, user, raw):
         raise ValueError("refused: %s has no %r integration "
                          "(register it with add-integration first)" % (
                              user, INTEGRATION))
+    _apiauth.enforce(root, user, INTEGRATION, api_token)
     if not raw or not raw.strip():
         raise ValueError("refused: empty message")
 

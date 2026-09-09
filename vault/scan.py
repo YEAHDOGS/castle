@@ -47,6 +47,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import vault as _vault  # noqa: E402  (registry, perms, activity plumbing)
 import receipts as _receipts  # noqa: E402  (shared receipts/ layout + total regex)
+import apiauth as _apiauth  # noqa: E402  (scoped bearer-token auth)
 
 INTEGRATION = "scan"
 SOURCE = "scan"
@@ -114,11 +115,13 @@ def _validate_filename(name):
 
 
 def ingest(root, user, image_bytes, ocr_text, filename=None,
-           hint_merchant=None):
+           hint_merchant=None, *, api_token=None):
     """Ingest one scanned receipt image + its OCR text into `user`'s
     receipts vault. Returns the stored receipt record. Raises ValueError
     on any refusal: unknown user, missing scan integration, bad image
-    bytes, empty OCR text, unsafe filename, or an already-ingested scan.
+    bytes, empty OCR text, unsafe filename, an already-ingested scan —
+    or, when the vault root has api tokens required for this purpose
+    (see vault/apiauth.py), a missing/invalid api_token.
     """
     _vault._ensure_dirs(root)
     users = _vault._load_users(root)
@@ -127,6 +130,7 @@ def ingest(root, user, image_bytes, ocr_text, filename=None,
         raise ValueError("refused: %s has no %r integration "
                          "(register it with add-integration first)" % (
                              user, INTEGRATION))
+    _apiauth.enforce(root, user, INTEGRATION, api_token)
     if not image_bytes or len(image_bytes) < MIN_IMAGE_BYTES:
         raise ValueError("refused: image too small to be a scan "
                          "(%d bytes)" % (len(image_bytes or b"")))

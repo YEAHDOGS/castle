@@ -107,6 +107,17 @@ for devices that can't run Tailscale.
    TEXT --user NAME` CLI; 23 regression tests green, temp dirs only.
    Step 3 fully done — email + POS webhook + scan/OCR all land in the
    shared receipts/ layout.)
+   API-token auth (2026-09-09): `vault/apiauth.py` wires the DOGS Token
+   Authority into the ingestion trust boundary — scoped, short-lived,
+   revocable bearer tokens (`iss=aud=castle-vault`, sub = the vault user,
+   purpose = the integration name) for machine callers like a Clover POS
+   push. OFF by default (zero behavior change); `vault.py api-auth
+   --purpose pos-webhook --on` flips a purpose to token-required per
+   vault root, `vault.py mint-api-token USER --purpose ...` mints (stdout
+   — bearer credential; the activity log records jti only, never the
+   token), `revoke-api-token` kills a leaked one. Removing an
+   integration voids its tokens implicitly. 21 regression tests green,
+   temp dirs only.
 4. Tailscale onboarding flow per device + hosted DNS names per service. ✅ done
    (`vault/tailnet.py`: `tailnet-onboard` starts onboarding for a device
    that's already registered on the account (guardian approval for kids

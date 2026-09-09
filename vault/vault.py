@@ -38,6 +38,9 @@ Usage:
     vault.py rotate-secret USER NAME [--secret-file FILE]
     vault.py delete-secret USER NAME [--yes NAME]
     vault.py ingest-receipt FILE [--dir PATH]
+    vault.py mint-api-token USER --purpose pos-webhook [--ttl 3600] [--dir PATH]
+    vault.py api-auth --purpose pos-webhook --on|--off [--dir PATH]
+    vault.py revoke-api-token JTI_OR_TOKEN [--reason R] [--dir PATH]
     vault.py verify [--dir PATH]
     vault.py vault-init DIR --out FILE.castle --passphrase-file F
     vault.py vault-lock DIR --out FILE.castle --passphrase-file F [--yes NAME]
@@ -493,11 +496,17 @@ def main(argv=None):
                        help="ingest a forwarded email into the addressed "
                             "user's receipts vault (FAMILY-DATA-VAULT step 3)")
     p.add_argument("file", help="path to the raw RFC822 message")
+    p.add_argument("--api-token", default=None,
+                   help="scoped bearer token (required if the vault root "
+                        "has api-auth on for email-forward)")
     p = sub.add_parser("ingest-pos",
                        help="ingest a POS webhook JSON body into the "
                             "addressed user's receipts vault "
                             "(FAMILY-DATA-VAULT step 3)")
     p.add_argument("file", help="path to the JSON push body")
+    p.add_argument("--api-token", default=None,
+                   help="scoped bearer token (required if the vault root "
+                        "has api-auth on for pos-webhook)")
     p = sub.add_parser("ingest-scan",
                        help="ingest a scanned receipt image + OCR text into a "
                             "user's receipts vault (FAMILY-DATA-VAULT step 3)")
@@ -506,6 +515,30 @@ def main(argv=None):
     p.add_argument("--user", required=True, help="vault user to ingest into")
     p.add_argument("--merchant", default=None,
                    help="merchant name as stated (optional, high confidence)")
+    p.add_argument("--api-token", default=None,
+                   help="scoped bearer token (required if the vault root "
+                        "has api-auth on for scan)")
+    p = sub.add_parser("mint-api-token",
+                       help="mint a scoped bearer token for one user vault "
+                            "+ one ingestion purpose (vault/apiauth.py)")
+    p.add_argument("user", help="vault user the token is minted for")
+    p.add_argument("--purpose", required=True,
+                   choices=("pos-webhook", "email-forward", "scan"))
+    p.add_argument("--ttl", type=int, default=3600,
+                   help="seconds, 60..86400 (default 3600)")
+    p = sub.add_parser("api-auth",
+                       help="require (or stop requiring) api tokens for one "
+                            "ingestion purpose on this vault root")
+    p.add_argument("--purpose", required=True,
+                   choices=("pos-webhook", "email-forward", "scan"))
+    p.add_argument("--on", action="store_true",
+                   help="require api tokens for this purpose")
+    p.add_argument("--off", action="store_true",
+                   help="stop requiring api tokens for this purpose")
+    p = sub.add_parser("revoke-api-token",
+                       help="revoke an api token by jti or full token")
+    p.add_argument("jti_or_token")
+    p.add_argument("--reason", default="")
     p = sub.add_parser("activity")
     p.add_argument("--tail", type=int, default=20)
     p = sub.add_parser("tailnet-onboard",
@@ -689,7 +722,7 @@ def main(argv=None):
             with open(a.file, "rb") as f:
                 raw = f.read()
             user, _msg = _rcpt.resolve_recipient(a.dir, raw)
-            r = _rcpt.ingest(a.dir, user, raw)
+            r = _rcpt.ingest(a.dir, user, raw, api_token=a.api_token)
             print("receipt %s -> %s's vault (merchant=%s total=%s)" % (
                 r["id"], user, r["merchant"], r["total"]))
         elif a.cmd == "ingest-pos":
@@ -698,7 +731,7 @@ def main(argv=None):
             with open(a.file, "rb") as f:
                 raw = f.read()
             user, _payload = _pos.resolve_recipient(a.dir, raw)
-            r = _pos.ingest(a.dir, user, raw)
+            r = _pos.ingest(a.dir, user, raw, api_token=a.api_token)
             print("pos receipt %s -> %s's vault (merchant=%s total=%s %s)" % (
                 r["id"], user, r["merchant"], r["total"], r["currency"]))
         elif a.cmd == "ingest-scan":
@@ -710,9 +743,28 @@ def main(argv=None):
                 ocr_text = f.read()
             r = _scan.ingest(a.dir, a.user, img, ocr_text,
                              filename=os.path.basename(a.file),
-                             hint_merchant=a.merchant)
+                             hint_merchant=a.merchant,
+                             api_token=a.api_token)
             print("scan %s -> %s's vault (merchant=%s total=%s)" % (
                 r["id"], a.user, r["merchant"], r["total"]))
+        elif a.cmd == "mint-api-token":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import apiauth as _aa  # noqa: E402
+            print(_aa.mint_api_token(a.dir, a.user, a.purpose, ttl=a.ttl))
+        elif a.cmd == "api-auth":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import apiauth as _aa  # noqa: E402
+            if a.on == a.off:
+                print("error: pass exactly one of --on or --off",
+                      file=sys.stderr)
+                return 1
+            print(_aa.set_api_auth(a.dir, a.purpose, a.on))
+        elif a.cmd == "revoke-api-token":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import apiauth as _aa  # noqa: E402
+            r = _aa.revoke_api_token(a.dir, a.jti_or_token,
+                                     reason=a.reason)
+            print("revoked api token jti %s" % r["jti"])
         elif a.cmd == "activity":
             for e in activity_tail(a.dir, a.tail):
                 print("%s %-12s %-16s %s" % (e["ts"], e["actor"], e["action"], e["detail"]))
