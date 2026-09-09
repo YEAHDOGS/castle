@@ -47,6 +47,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import vault as _vault  # noqa: E402  (registry, perms, activity plumbing)
 import receipts as _receipts  # noqa: E402  (shared receipts/ layout)
+import apiauth as _apiauth  # noqa: E402  (scoped bearer-token auth)
 
 INTEGRATION = "pos-webhook"
 SOURCE = "pos-webhook"
@@ -140,13 +141,15 @@ def _validate(payload):
             "occurred_at": occurred, "items": items}
 
 
-def ingest(root, user, raw):
+def ingest(root, user, raw, *, api_token=None):
     """Ingest one POS webhook JSON body into `user`'s receipts vault.
 
     Returns the stored receipt record. Raises ValueError on any refusal:
     unknown user, missing pos-webhook integration, payload addressed to
-    a different user, invalid JSON, incomplete/invalid record, or a
-    payload (or transaction_id) already ingested.
+    a different user, invalid JSON, incomplete/invalid record, a payload
+    (or transaction_id) already ingested — or, when the vault root has
+    api tokens required for this purpose (see vault/apiauth.py), a
+    missing/invalid api_token.
     """
     _vault._ensure_dirs(root)
     users = _vault._load_users(root)
@@ -155,6 +158,7 @@ def ingest(root, user, raw):
         raise ValueError("refused: %s has no %r integration "
                          "(register it with add-integration first)" % (
                              user, INTEGRATION))
+    _apiauth.enforce(root, user, INTEGRATION, api_token)
     if not raw or not raw.strip():
         raise ValueError("refused: empty payload")
 
