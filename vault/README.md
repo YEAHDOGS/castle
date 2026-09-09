@@ -52,6 +52,15 @@ python3 vault.py create-user sally --tier child --guardian mom
 python3 vault.py add-device sally sally-phone --by mom
 python3 vault.py add-integration dad clover-pos
 
+# secrets store: encrypted API keys/tokens per adult vault (0600 files,
+# AES-256-CBC + HMAC-SHA256 via the user's own keyring data key).
+# The value arrives via stdin or a 0600 file — never a CLI arg.
+printf 'sk-live-...' | python3 vault.py add-secret dad alpaca-key
+python3 vault.py get-secret dad alpaca-key        # stdout only, not logged
+python3 vault.py list-secrets dad                 # names only, never values
+printf 'sk-live-new' | python3 vault.py rotate-secret dad alpaca-key
+python3 vault.py delete-secret dad alpaca-key --yes alpaca-key  # shredded
+
 # sharing ladder: explicit, revocable, logged
 python3 vault.py grant-share mom family
 python3 vault.py grant-share mom dad
@@ -84,6 +93,7 @@ python3 vault.py vault-unlock mom.castle --out ~/restored-mom --passphrase-file 
 
 ```bash
 python3 test_vault.py   # 26 fixture-based regression tests, temp dirs only
+python3 test_secrets.py  # secrets store: encrypt-at-rest, adult gate, shred
 python3 test_guardian.py  # 18 regression tests: guardian controls, graduation
 python3 test_manifest.py  # 13 regression tests: manifest build/write/load + refusals
 python3 test_verify.py    # 13 regression tests: ADDED/REMOVED/MODIFIED/UNCHANGED + CLI
