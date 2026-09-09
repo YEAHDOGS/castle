@@ -26,6 +26,14 @@ python3 intake.py register --machine brando-laptop --kind data \
   --label DATA-2026-09-09 --sha256 <64-hex> /path/to/backup.zip
 python3 intake.py verify               # exit 2 on drift
 python3 intake.py list --machine brando-laptop
+python3 intake.py retire --id <16-hex-id> --confirm-label <EXACT-LABEL>
+#   destroys the intake file (2x CSPRNG overwrite + zero pass, fsync'd,
+#   read-back sampled, then rename→truncate→unlink) and appends a
+#   "retirement" record to intake.jsonl — fingerprints only, never
+#   contents. Refuses: unknown id, already retired, confirmation not an
+#   exact label match, file missing from disk, or file hash drifting
+#   from the manifest (never destroy data you can't verify).
+#   Quarantined images need --release-quarantine (forensics evidence).
 ```
 
 ## Security rules this module enforces
@@ -41,5 +49,5 @@ python3 intake.py list --machine brando-laptop
 ## Tests
 
 ```bash
-python3 test_intake.py   # 18 fixture-based regression tests, temp dirs only
+python3 test_intake.py   # 28 fixture-based regression tests, temp dirs only
 ```

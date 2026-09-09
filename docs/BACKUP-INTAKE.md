@@ -52,6 +52,16 @@ python3 intake.py register --machine brando-laptop --kind data \
 python3 intake.py verify
 python3 intake.py verify --machine brando-laptop
 
+# retire a superseded backup (typed confirmation, honest destruction)
+python3 intake.py retire --id <16-hex-id> --confirm-label <EXACT-LABEL>
+#   — 2x CSPRNG overwrite + zero pass (fsync'd), read-back sampled,
+#   then rename→truncate→unlink; appends a "retirement" record with the
+#   file's sha256 fingerprint (never contents) so the manifest stays a
+#   true history. verify skips retired intakes; list marks them RETIRED.
+#   Refuses: unknown id, already retired, label mismatch, missing file,
+#   sha drift (never destroy data you can't verify), and quarantined
+#   images without --release-quarantine (forensics evidence).
+
 # manifest (metadata only)
 python3 intake.py list
 ```
@@ -106,7 +116,10 @@ new backup file into the manifest.
 
 ## Tests
 
-`backup/test_intake.py` — 18 fixture-based regression tests (temp dirs
+`backup/test_intake.py` — 28 fixture-based regression tests (temp dirs
 only): layout, refusals (sha mismatch, unsafe names, symlinks, bad kinds),
 idempotency, quarantine layout + marker, verify clean/corrupt/missing,
-corrupt-log refusal, metadata-only logs, CLI exit codes.
+corrupt-log refusal, metadata-only logs, CLI exit codes, plus 10 retire
+tests (typed-confirmation refusals, double-retire, corrupt/missing-file
+refusals, quarantine release-gate, verify-skip/list-flag, metadata-only
+retirement records).

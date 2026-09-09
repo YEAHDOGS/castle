@@ -27,6 +27,8 @@ Usage:
         [--quarantine] [--note "..."] [--dir PATH]
     intake.py verify [--machine LAPTOP1] [--dir PATH]
     intake.py list   [--machine LAPTOP1] [--dir PATH]
+    intake.py retire --id ID16 --confirm-label LABEL [--release-quarantine]
+        [--dir PATH]
 
 exit codes: 0 clean/success, 1 usage/refusal, 2 verify found drift.
 """
@@ -190,6 +192,7 @@ def register(root, machine, kind, label, src, sha256, quarantine=False, note="")
     os.chmod(dest, 0o600)
 
     rec = {
+        "type": "intake",
         "id": digest[:16],
         "ts": _ts(),
         "machine": machine,
@@ -209,18 +212,23 @@ def register(root, machine, kind, label, src, sha256, quarantine=False, note="")
 
 
 def verify(root, machine=None):
-    """Re-hash every registered file. Returns (ok_count, issues).
+    """Re-hash every live registered file. Returns (ok_count, issues).
 
     issues: list of (relpath, problem) — CORRUPT (sha mismatch) or MISSING.
-    The intake log itself being unreadable is a hard refusal, not a pass.
+    Retired intakes (superseded backups destroyed via retire) are skipped —
+    they point at files that are supposed to be gone. The intake log itself
+    being unreadable is a hard refusal, not a pass.
     """
     root = _ensure_dirs(root)
     recs = _read_records(root)
     if machine is not None:
         recs = [r for r in recs if r["machine"] == machine]
+    retired_ids = {r["intake_id"] for r in recs if r.get("type") == "retirement"}
     ok = 0
     issues = []
     for r in recs:
+        if r.get("type", "intake") != "intake" or r["id"] in retired_ids:
+            continue
         path = _p(root, r["relpath"])
         if not os.path.isfile(path):
             issues.append((r["relpath"], "MISSING"))
@@ -233,12 +241,162 @@ def verify(root, machine=None):
 
 
 def list_entries(root, machine=None):
-    """Manifest entries only — never file bytes."""
+    """Manifest entries only — never file bytes.
+
+    Each intake record carries a "retired" flag when a retirement record
+    exists for it, so `list` shows the full lifecycle, not a lie of
+    omission. Retirement records themselves are history, not inventory.
+    """
     root = _ensure_dirs(root)
     recs = _read_records(root)
-    if machine is not None:
-        recs = [r for r in recs if r["machine"] == machine]
-    return recs
+    retired_ids = {r["intake_id"] for r in recs if r.get("type") == "retirement"}
+    out = []
+    for r in recs:
+        if r.get("type", "intake") != "intake":
+            continue
+        if machine is not None and r["machine"] != machine:
+            continue
+        r = dict(r)
+        r["retired"] = r["id"] in retired_ids
+        out.append(r)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# retire — safe destruction of superseded backups (flamethrower-adjacent)
+# ---------------------------------------------------------------------------
+
+_BURN_PASSES = 2          # CSPRNG passes before the final zero pass
+_SAMPLE = 32 * 1024       # read-back sample size per spot (head/mid/tail)
+
+
+def _burn_file(path):
+    """Overwrite → read-back-verify → rename → truncate → unlink.
+
+    2x CSPRNG passes + 1 zero pass, fsync after every pass, then a sampled
+    read-back (head/mid/tail) that must be all zeros — a sample that fails
+    raises LOUDLY before unlink. Honest media note: software overwrite
+    cannot guarantee destruction on NAND flash (wear leveling, spare
+    area); the certificate says so plainly.
+    """
+    size = os.path.getsize(path)
+    with open(path, "r+b") as f:
+        for i in range(_BURN_PASSES):
+            f.seek(0)
+            remaining = size
+            while remaining > 0:
+                chunk = os.urandom(min(_CHUNK, remaining))
+                f.write(chunk)
+                remaining -= len(chunk)
+            f.flush()
+            os.fsync(f.fileno())
+        f.seek(0)
+        remaining = size
+        zeros = b"\x00" * min(_CHUNK, 1024 * 1024)
+        while remaining > 0:
+            n = min(remaining, len(zeros))
+            f.write(zeros[:n])
+            remaining -= n
+        f.flush()
+        os.fsync(f.fileno())
+        for spot in (0, max(0, size // 2 - _SAMPLE // 2),
+                     max(0, size - _SAMPLE)):
+            f.seek(spot)
+            sample = f.read(_SAMPLE)
+            if sample.strip(b"\x00"):
+                raise ValueError(
+                    "read-back verification FAILED at offset %d — "
+                    "bytes survived the overwrite; refusing to unlink" % spot)
+    verification = "sampled-read-back-clean"
+    # rename → truncate → unlink, so the name dies with the bytes
+    d = os.path.dirname(path)
+    tombstone = _p(d, ".retired-%s.tmp" % os.urandom(8).hex())
+    os.rename(path, tombstone)
+    with open(tombstone, "r+b") as f:
+        f.truncate(0)
+        f.flush()
+        os.fsync(f.fileno())
+    os.unlink(tombstone)
+    dfd = os.open(d, os.O_DIRECTORY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+    method = "overwrite-%dx-csprng+zero-verify" % _BURN_PASSES
+    return method, verification
+
+
+def retire(root, record_id, confirm_label, release_quarantine=False,
+           actor="operator"):
+    """Destroy an intake file and close its manifest loop.
+
+    Refusals (ValueError) before anything is destroyed: unknown id,
+    already retired, confirmation not an exact match of the record's
+    label, quarantined image without --release-quarantine, file missing
+    from disk, or file hash drifting from the manifest (CORRUPT — never
+    destroy data you can't verify). Success appends a "retirement"
+    record (fingerprints only — never contents) and logs activity.
+    Returns the retirement record.
+    """
+    root = _ensure_dirs(root)
+    recs = _read_records(root)
+    targets = [r for r in recs
+               if r.get("type", "intake") == "intake" and r["id"] == record_id]
+    if not targets:
+        raise ValueError("no intake record with id %r — nothing retired"
+                         % record_id)
+    rec = targets[0]
+    prior = [r for r in recs if r.get("type") == "retirement"
+             and r["intake_id"] == rec["id"]]
+    if prior:
+        raise ValueError("record %s already retired at %s — refusing a second burn"
+                         % (record_id, prior[0]["ts"]))
+    if confirm_label != rec["label"]:
+        raise ValueError(
+            "confirmation %r does not exactly match record label %r — "
+            "nothing destroyed" % (confirm_label, rec["label"]))
+    if rec.get("quarantine") and not release_quarantine:
+        raise ValueError(
+            "quarantined image — destroying forensics evidence. Re-run with "
+            "--release-quarantine only after the analysis is done.")
+    path = _p(root, rec["relpath"])
+    if not os.path.isfile(path):
+        raise ValueError(
+            "file missing at %s — manifest drift; investigate before "
+            "retiring, never cover it up" % rec["relpath"])
+    if _sha256(path) != rec["sha256"]:
+        raise ValueError(
+            "file at %s is CORRUPT (sha drift vs manifest) — refusing to "
+            "destroy data I cannot verify" % rec["relpath"])
+
+    method, verification = _burn_file(path)
+
+    ret = {
+        "type": "retirement",
+        "ts": _ts(),
+        "intake_id": rec["id"],
+        "machine": rec["machine"],
+        "kind": rec["kind"],
+        "label": rec["label"],
+        "relpath": rec["relpath"],
+        "bytes": rec["bytes"],
+        "sha256": rec["sha256"],
+        "quarantine": bool(rec.get("quarantine")),
+        "quarantine_released": bool(rec.get("quarantine") and release_quarantine),
+        "method": method,
+        "verification": verification,
+        "media_note": ("software overwrite verified by read-back; on NAND "
+                       "flash this is best-effort — for guarantees use "
+                       "crypto-shred (flamethrower Tier-1)"),
+        "actor": actor,
+    }
+    _append_record(root, ret)
+    _activity(root, actor, "retire",
+              "id=%s machine=%s kind=%s label=%s bytes=%d method=%s "
+              "verification=%s quarantine=%s" % (
+                  rec["id"], rec["machine"], rec["kind"], rec["label"],
+                  rec["bytes"], method, verification, rec.get("quarantine")))
+    return ret
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +425,14 @@ def main(argv=None):
     p = sub.add_parser("list", help="show intake manifest (metadata only)")
     p.add_argument("--machine", default=None)
 
+    p = sub.add_parser("retire", help="destroy an intake file and close its "
+                                       "manifest loop (typed confirmation)")
+    p.add_argument("--id", required=True, help="intake record id (16-hex)")
+    p.add_argument("--confirm-label", required=True,
+                   help="must EXACTLY match the record's label")
+    p.add_argument("--release-quarantine", action="store_true",
+                   help="required to retire a quarantined image")
+
     a = ap.parse_args(argv)
     try:
         if a.cmd == "register":
@@ -284,10 +450,17 @@ def main(argv=None):
                 return 2
         elif a.cmd == "list":
             for r in list_entries(a.dir, a.machine):
-                print("%s  %-10s %-9s %s  %s  %d bytes%s" % (
+                print("%s  %-10s %-9s %s  %s  %d bytes%s%s" % (
                     r["ts"][:10], r["machine"], r["kind"], r["label"],
                     r["sha256"][:16], r["bytes"],
-                    "  [QUARANTINE — do not mount]" if r["quarantine"] else ""))
+                    "  [QUARANTINE — do not mount]" if r["quarantine"] else "",
+                    "  [RETIRED %s]" % r["retired"] if r.get("retired") else ""))
+        elif a.cmd == "retire":
+            ret = retire(a.dir, a.id, a.confirm_label,
+                         release_quarantine=a.release_quarantine)
+            print("retired: %s (%d bytes, %s, %s)" % (
+                ret["relpath"], ret["bytes"], ret["method"],
+                ret["verification"]))
     except ValueError as e:
         print("refused: %s" % e, file=sys.stderr)
         return 1

@@ -257,6 +257,150 @@ def t_activity_log_records_intake():
     assert "SECRET" not in lines
 
 
+# ---------------------------------------------------------------------------
+# retire
+# ---------------------------------------------------------------------------
+
+def t_retire_happy_path_destroys_file_and_closes_loop():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"superseded-backup" * 50)
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    path = os.path.join(root, rec["relpath"])
+    ret = intake.retire(root, rec["id"], "L1")
+    assert not os.path.exists(path), "intake file must be gone"
+    assert ret["intake_id"] == rec["id"]
+    assert ret["sha256"] == rec["sha256"]  # fingerprint, not contents
+    assert ret["verification"] == "sampled-read-back-clean"
+    assert "flash" in ret["media_note"]  # honest media labeling
+    ok, issues = intake.verify(root)
+    assert ok == 0 and issues == [], "retired intakes are not drift"
+    recs = intake.list_entries(root)
+    assert len(recs) == 1 and recs[0]["retired"] is True
+
+
+def t_retire_wrong_confirm_label_refuses_and_keeps_file():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"keep-me")
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    try:
+        intake.retire(root, rec["id"], "l1")  # case mismatch
+    except ValueError as e:
+        assert "does not exactly match" in str(e)
+    else:
+        raise AssertionError("mismatched confirmation accepted")
+    assert os.path.isfile(os.path.join(root, rec["relpath"]))
+
+
+def t_retire_unknown_id_refuses():
+    root = _tmp()
+    intake._ensure_dirs(root)
+    try:
+        intake.retire(root, "deadbeefdeadbeef", "L")
+    except ValueError as e:
+        assert "no intake record" in str(e)
+    else:
+        raise AssertionError("unknown id accepted")
+
+
+def t_retire_twice_refuses():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"once")
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    intake.retire(root, rec["id"], "L1")
+    try:
+        intake.retire(root, rec["id"], "L1")
+    except ValueError as e:
+        assert "already retired" in str(e)
+    else:
+        raise AssertionError("double retire accepted")
+    recs = [r for r in intake._read_records(root)
+            if r.get("type") == "retirement"]
+    assert len(recs) == 1
+
+
+def t_retire_corrupt_file_refuses_before_destroying():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"original")
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    path = os.path.join(root, rec["relpath"])
+    with open(path, "r+b") as fh:
+        fh.seek(0)
+        fh.write(b"X")
+    try:
+        intake.retire(root, rec["id"], "L1")
+    except ValueError as e:
+        assert "CORRUPT" in str(e)
+    else:
+        raise AssertionError("corrupt file burned anyway")
+    assert os.path.isfile(path), "corrupt evidence must survive the refusal"
+
+
+def t_retire_missing_file_refuses():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"gone")
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    os.unlink(os.path.join(root, rec["relpath"]))
+    try:
+        intake.retire(root, rec["id"], "L1")
+    except ValueError as e:
+        assert "missing" in str(e)
+    else:
+        raise AssertionError("missing file retired")
+
+
+def t_retire_quarantine_needs_release_flag():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "infected.img", b"forensics-pending")
+    rec = intake.register(root, "m", "disk-image", "INFECTED", f, _sha(f),
+                          quarantine=True)
+    path = os.path.join(root, rec["relpath"])
+    try:
+        intake.retire(root, rec["id"], "INFECTED")
+    except ValueError as e:
+        assert "quarantined image" in str(e)
+    else:
+        raise AssertionError("quarantine retired without release flag")
+    assert os.path.isfile(path)
+    ret = intake.retire(root, rec["id"], "INFECTED", release_quarantine=True)
+    assert ret["quarantine"] is True and ret["quarantine_released"] is True
+    assert not os.path.exists(path)
+
+
+def t_retirement_record_is_metadata_only():
+    root, srcdir = _tmp(), _tmp()
+    secret = b"DO-NOT-ECHO-PLAINTEXT"
+    f = _blob(srcdir, "a.img", secret)
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    intake.retire(root, rec["id"], "L1")
+    blob = "\n".join(open(os.path.join(root, intake.INTAKE_LOG)).read().splitlines())
+    assert secret.decode() not in blob
+    blob += open(os.path.join(root, intake.ACTIVITY_FILE)).read()
+    assert secret.decode() not in blob
+
+
+def t_cli_retire_exit_codes():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"cli-retire")
+    rc = intake.main(["--dir", root, "register", "--machine", "m",
+                      "--kind", "data", "--label", "D1",
+                      "--sha256", _sha(f), f])
+    assert rc == 0
+    rec = intake.list_entries(root)[0]
+    assert intake.main(["--dir", root, "retire", "--id", rec["id"],
+                        "--confirm-label", "nope"]) == 1
+    assert intake.main(["--dir", root, "retire", "--id", rec["id"],
+                        "--confirm-label", "D1"]) == 0
+    assert intake.main(["--dir", root, "verify"]) == 0
+
+
+def t_retire_leaves_directory_tree_intact():
+    root, srcdir = _tmp(), _tmp()
+    f = _blob(srcdir, "a.img", b"x")
+    rec = intake.register(root, "m", "disk-image", "L1", f, _sha(f))
+    intake.retire(root, rec["id"], "L1")
+    assert os.path.isdir(os.path.join(root, "machines", "m", "images"))
+
+
 for name, fn in sorted([(k, v) for k, v in globals().items()
                         if k.startswith("t_")]):
     check(name, fn)
