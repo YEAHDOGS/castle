@@ -96,3 +96,16 @@ interlocks.
    contents), method, media, verification result, success flag.
    Incomplete records are refused, never guessed. Dry runs log nothing.
    22 regression tests; 118 green total across the module.)
+7. Per-file crypto-shred (the first true-deletion primitive at file
+   granularity). ✅ done
+   (`flamethrower/fileburn.py`: `seal` a file with a fresh random 256-bit
+   per-file key — ciphertext (SHA-256 counter-mode stream cipher,
+   prototype; production path = AES-256-GCM) lives in a designated
+   `files/` dir, keys in `filekeys/` (+ optional escrow) — then `burn`
+   destroys every key copy (CSPRNG overwrite x3, fsync, unlink) AND
+   overwrites + unlinks the ciphertext. Dry-run is the default, real
+   burns need typed confirmation (the file name), names are strictly
+   validated so a burn can never leave the designated dirs, every burn
+   issues a deletion certificate + one tier-1 audit record (hashes only —
+   never key material or file contents), post-burn `unseal` is impossible.
+   11 regression tests, temp dirs only.)
