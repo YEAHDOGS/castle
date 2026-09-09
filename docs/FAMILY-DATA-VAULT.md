@@ -108,7 +108,18 @@ for devices that can't run Tailscale.
    Step 3 fully done — email + POS webhook + scan/OCR all land in the
    shared receipts/ layout.)
 4. Tailscale onboarding flow per device + hosted DNS names per service.
-5. Guardian controls for under-18 accounts.
+5. Guardian controls for under-18 accounts. ✅ done
+   (`vault/guardian.py`: scoped guardian power — only over the guardian's
+   OWN children, never adults (no family-admin backdoor, per the vision).
+   `revoke_device`: guardian revokes a child's device (lost/rogue), adults
+   self-revoke; `guardian_revoke_share`: guardian revokes any share their
+   child granted; `graduate`: guardian-approved child → adult tier with
+   data, devices, shares and escrow preserved (adult surface unlocks:
+   world shares, integrations); `guardian_review`: metadata-only activity
+   filter for supervision. Phantom/unauthorized attempts are refusals, not
+   silent no-ops; every exercise is activity-logged. `vault.py` CLI:
+   `revoke-device`, `guardian-revoke-share`, `graduate`; 18 fixture-based
+   regression tests green, temp dirs only.)
 6. Vault integrity: file manifest + drift audit. ✅ done
    (`vault/manifest.py` builds a deterministic JSON manifest of a vault
    directory — relative paths, sizes, SHA-256 (real crypto via
