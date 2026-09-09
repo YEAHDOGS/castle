@@ -1,0 +1,8 @@
+# Keep large local artifacts and secrets out of the Docker build context
+data/
+*.iso
+*.qcow2
+*.img.gz
+*.zip
+.env
+.git
