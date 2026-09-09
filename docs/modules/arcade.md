@@ -60,12 +60,47 @@ a window with buttons. Browser fallback where a native client doesn't exist.
 - The mod's own options (camera pitch, tilt-shift, world curvature) surface
   in the Arcade UI, not buried in a config file.
 
-## Saves: Chains
+## One listing
 
-Every save is versioned in **Chains** ("git for save data"): snapshot, diff,
-restore, sync. Start Pokémon on the TV, continue on the phone on the bus,
-roll back the save you corrupted at 2am. The save follows the player, not
-the device.
+The library is game-centric, not file-centric. There is one listing —
+**The Legend of Zelda: Ocarina of Time** — and every edition lives under it
+as a playable choice:
+
+- N64 original (emulation)
+- GameCube / Master Quest (emulation)
+- Ocarina of Time 3D (emulation)
+- Ship of Harkinian PC port (native lane — 60fps, widescreen, mod support)
+- Switch 2 remake (Nov 5, 2026 — full voice acting, orchestral score,
+  reworked camera, hum-to-play ocarina)
+
+Same for Link's Awakening: GB original, DX, Switch remake — one listing,
+pick your edition, press start. New editions slot in as they release; the
+listing never duplicates, the history never resets. The box picks the best
+engine it can run for the edition you chose, and tells you honestly when an
+edition needs more muscle than the current box has.
+
+## Saves: Chains — one timeline per game
+
+Every save is versioned in **Chains** ("git for save data") and the timeline
+is unified per game, across editions and devices:
+
+- **Permanent record.** Every save, every device, timestamped, forever.
+  Pull up the save you made two weeks ago on the laptop and it's there —
+  browse the history like a photo album, restore any point in one tap.
+- **Cross-device.** Play the same level on your phone on the bus, sit down
+  at the laptop, keep going from exactly where you left off. The save
+  follows the player, not the device — Castle syncs it, Chains versions it.
+- **Honest about formats.** An N64 save won't load in the Switch 2 remake —
+  different editions, different save formats. Chains doesn't fake
+  compatibility; it keeps one timeline *per game* and syncs seamlessly
+  *within* each edition. The history view shows everything: "you've played
+  OoT in 3 editions, 47 saves, first one 8 months ago."
+- **Conflicts branch, never overwrite.** Phone and laptop both save offline?
+  Both survive — Chains branches and lets you pick, the way git does. A sync
+  conflict never eats a save.
+
+Start on the TV, continue on the phone, roll back the save you corrupted at
+2am. That's the whole feature.
 
 ## Controllers
 
