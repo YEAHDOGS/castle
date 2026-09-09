@@ -641,6 +641,14 @@ def main(argv=None):
              "(nothing is extracted to disk)"))
     p.add_argument("file", help="the .castle backup file to verify")
 
+    p = sub.add_parser(
+        "backup-list",
+        help="read-only inventory of sealed .castle backups on a backup "
+             "target (reads header lines only, needs no secret; header "
+             "fields are claims until backup-verify proves them)")
+    p.add_argument("--target-dir", required=True,
+                   help="backup target directory to inventory")
+
     p = _secret_args(sub.add_parser(
         "restore",
         help="restore an encrypted .castle backup into a directory "
@@ -898,6 +906,18 @@ def main(argv=None):
                   "per-file SHA-256 match (sealed %s)" % (
                       r["backup_file"], r["file_count"], r["total_bytes"],
                       r["sealed_at"]))
+        elif a.cmd == "backup-list":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import backup as _bk  # noqa: E402
+            try:
+                entries = _bk.list_backups(a.target_dir)
+            except _bk.BackupError as e:
+                print("refused: %s" % e)
+                return 1
+            for e in entries:
+                print(json.dumps(e, sort_keys=True))
+            if not entries:
+                print("(no .castle backups in %s)" % a.target_dir)
         elif a.cmd == "restore":
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import restore as _rs  # noqa: E402

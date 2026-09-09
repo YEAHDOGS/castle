@@ -214,3 +214,11 @@ for devices that can't run Tailscale.
    every file re-hashed against the sealed manifest, and a restore
    certificate is issued. 15 fixture-based regression tests green,
    temp dirs only.
+   Inventory lane (2026-09-09): `vault.py backup-list --target-dir DIR`
+   is a read-only inventory of the sealed backups on a target — needs
+   no secret, writes nothing. It reads each file's header line and the
+   `<user>-<utc>.castle` naming convention only, and every entry carries
+   `verified: false` with the honest note that header fields are claims
+   until `backup-verify` proves them with the secret. One unreadable or
+   foreign file never kills the listing. 10 regression tests green,
+   temp dirs only.

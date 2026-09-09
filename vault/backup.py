@@ -49,12 +49,14 @@ Usage (via vault.py):
     vault.py backup USER --target-dir DIR --passphrase-file F [--yes USER]
                  [--chunks]
     vault.py backup-verify FILE.castle --passphrase-file F
+    vault.py backup-list --target-dir DIR
 """
 
 import hashlib
 import io
 import json
 import os
+import re
 import tarfile
 import time
 
@@ -361,6 +363,125 @@ def verify_backup(locked_path, passphrase_file=None, keyfile=None):
         "mac": header.get("mac"),
         "sealed_at": header.get("created"),
     }
+
+
+# ---------------------------------------------------------------------------
+# backup inventory — read-only listing of a backup target
+# ---------------------------------------------------------------------------
+
+_LIST_NAME_RE = re.compile(
+    r"^(?P<user>.+)-(?P<ts>\d{8}T\d{6}Z)(?:-\d+)?\.castle$")
+_MAX_HEADER_BYTES = 8 * 1024 * 1024
+_KNOWN_FORMATS = (chunkseal.FORMAT, vault_lock.FORMAT)
+
+
+def _read_sealed_header(path):
+    """Read the first line of a sealed file (bounded). Returns the header
+    dict. Raises BackupError on any read/parse failure. No secret is
+    needed — and no authentication is performed here: the returned
+    fields are CLAIMS, not proof (proof is backup_verify)."""
+    chunks = []
+    total = 0
+    with open(path, "rb") as f:
+        while True:
+            piece = f.read(65536)
+            if not piece:
+                raise BackupError("sealed file has no header line")
+            nl = piece.find(b"\n")
+            if nl != -1:
+                chunks.append(piece[:nl])
+                break
+            chunks.append(piece)
+            total += len(piece)
+            if total > _MAX_HEADER_BYTES:
+                raise BackupError("sealed header exceeds %d bytes — refusing"
+                                  % _MAX_HEADER_BYTES)
+    try:
+        header = json.loads(b"".join(chunks).decode("utf-8"))
+    except ValueError:
+        raise BackupError("sealed header is not JSON")
+    if not isinstance(header, dict) or not isinstance(
+            header.get("format"), str):
+        raise BackupError("sealed header missing format id")
+    return header
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1048576), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def list_backups(target_dir):
+    """Read-only inventory of sealed ``.castle`` backups in ``target_dir``.
+
+    Needs no secret and writes nothing — it reads each file's header
+    line and the naming convention (``<user>-<utc>.castle``) only. Every
+    header field is a CLAIM until ``verify_backup`` proves it, so each
+    entry carries ``verified: False`` and a note saying exactly that.
+
+    One bad file never kills the listing: unreadable headers become
+    ``skipped`` entries, unknown format ids become ``unrecognized
+    format`` entries. Refusals, never guesses: a symlinked or missing
+    target dir is refused outright.
+    """
+    if not isinstance(target_dir, str) or not target_dir:
+        raise BackupError("target dir required")
+    if os.path.islink(target_dir):
+        raise BackupError("backup target is a symlink — refusing")
+    if not os.path.isdir(target_dir):
+        raise BackupError("backup target is not a directory: %s"
+                          % target_dir)
+    entries = []
+    for name in sorted(os.listdir(target_dir)):
+        if not name.endswith(".castle"):
+            continue
+        path = os.path.join(target_dir, name)
+        if os.path.islink(path) or not os.path.isfile(path):
+            entries.append({"file": name,
+                            "status": "skipped: not a regular file"})
+            continue
+        try:
+            header = _read_sealed_header(path)
+        except BackupError as e:
+            entries.append({"file": name, "status": "skipped: %s" % e})
+            continue
+        fmt = header.get("format")
+        m = _LIST_NAME_RE.match(name)
+        kdf = header.get("kdf")
+        if isinstance(kdf, dict):
+            kdf_name = kdf.get("name") or kdf.get("kdf")
+        else:
+            kdf_name = kdf
+        if fmt == chunkseal.FORMAT:
+            files = header.get("files") or {}
+            file_count = len(files)
+            total_bytes = header.get("payload_bytes")
+        else:
+            file_count = header.get("file_count")
+            total_bytes = header.get("total_bytes")
+        entry = {
+            "file": name,
+            "user": m.group("user") if m else None,
+            "sealed_at": header.get("created"),
+            "container": fmt,
+            "cipher": header.get("cipher"),
+            "mac": header.get("mac"),
+            "kdf": kdf_name,
+            "file_count": file_count,
+            "total_bytes": total_bytes,
+            "size_bytes": os.path.getsize(path),
+            "file_sha256": _sha256_file(path),
+            "verified": False,
+            "note": ("header claims unverified — run backup-verify with "
+                     "the secret to prove integrity"),
+        }
+        if fmt not in _KNOWN_FORMATS:
+            entry["status"] = "unrecognized format id: %s" % fmt
+        entries.append(entry)
+    return entries
 
 
 if __name__ == "__main__":
