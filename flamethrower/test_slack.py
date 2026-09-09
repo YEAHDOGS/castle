@@ -362,4 +362,6 @@ failed = [n for n, r in results if r != "ok"]
 for n, r in results:
     print("%-42s %s" % (n, r))
 print("%d/%d green" % (len(results) - len(failed), len(results)))
-sys.exit(1 if failed else 0)
+
+if __name__ == "__main__":
+    sys.exit(1 if failed else 0)
