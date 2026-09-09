@@ -1,7 +1,8 @@
 # Family Data Vault — core (`vault.py`)
 
-Implements FAMILY-DATA-VAULT.md build-order step 1: vault-per-user data
-layout + age-tiered accounts, wired into the flamethrower Tier-1 keyring.
+Implements FAMILY-DATA-VAULT.md build-order steps 1 (vault-per-user data
+layout + age-tiered accounts) and 5 (guardian controls), wired into the
+flamethrower Tier-1 keyring.
 
 ## The model
 
@@ -21,22 +22,47 @@ data (crypto-shredding, media-independent).
 | **Integrations** (POS push, API tokens) | ✅ | ❌ refused |
 | Device approval | self | guardian approves (`--by <guardian>`) |
 | Key escrow (family recovery) | optional | always on |
+| **Guardian controls** (step 5) | immune — nobody touches an adult's account | guardian revokes child's devices/shares, approves graduation |
+
+## Guardian controls (FAMILY-DATA-VAULT.md step 5)
+
+Scoped power: a guardian can act only on their **own** children — never
+on an adult. Dad can't touch Mom's devices or shares (no family-admin
+backdoor). Every exercise is logged in `activity.jsonl`.
+
+```bash
+python3 vault.py revoke-device sally sally-phone --by mom   # lost phone
+python3 vault.py guardian-revoke-share sally dad --by mom   # take back a bad share
+python3 vault.py graduate sally --by mom                    # child -> adult, data comes with
+```
+
+Kids can't self-revoke devices (that would make approval theater), can't
+share to the world, can't add integrations. Graduation flips the tier,
+clears the guardian, and keeps data + escrow (family recovery keeps
+working); the adult surface (world shares, integrations) unlocks after.
 
 ## Usage
 
 ```bash
 python3 vault.py init
 python3 vault.py create-user dad --tier adult
+python3 vault.py create-user mom --tier adult
 python3 vault.py create-user sally --tier child --guardian mom
 
 python3 vault.py add-device sally sally-phone --by mom
 python3 vault.py add-integration dad clover-pos
 
 # sharing ladder: explicit, revocable, logged
-python3 vault.py grant-share mom --to family
-python3 vault.py grant-share mom --to dad
-python3 vault.py revoke-share mom --to dad
+python3 vault.py grant-share mom family
+python3 vault.py grant-share mom dad
+python3 vault.py revoke-share mom dad
 python3 vault.py show-shares mom
+
+# guardian controls (FAMILY-DATA-VAULT.md step 5): guardian acts only on
+# their own children — never on an adult's account
+python3 vault.py revoke-device sally sally-phone --by mom
+python3 vault.py guardian-revoke-share sally dad --by mom
+python3 vault.py graduate sally --by mom   # child -> adult, data comes with
 
 # true deletion: dry-run default; typed confirmation burns
 python3 vault.py delete-user sally          # lists what would die
@@ -58,6 +84,7 @@ python3 vault.py vault-unlock mom.castle --out ~/restored-mom --passphrase-file 
 
 ```bash
 python3 test_vault.py   # 26 fixture-based regression tests, temp dirs only
+python3 test_guardian.py  # 18 regression tests: guardian controls, graduation
 python3 test_manifest.py  # 13 regression tests: manifest build/write/load + refusals
 python3 test_verify.py    # 13 regression tests: ADDED/REMOVED/MODIFIED/UNCHANGED + CLI
 python3 test_vault_lock.py  # 25 regression tests: init/lock/unlock, fail-closed refusals
