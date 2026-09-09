@@ -101,4 +101,5 @@ python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
 python3 test_media.py     # 14 classification tests, fake sysfs
 python3 test_tier2.py     # 39 firmware-erase tests, fake sysfs/probes/runner
 python3 test_tier3.py     # 32 file-shredder tests, fake sysfs/st_dev/stdin
+python3 test_flamethrower.py  # 9 unified-CLI tests, fake sysfs/temp dirs
 ```
