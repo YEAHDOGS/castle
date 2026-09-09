@@ -155,6 +155,130 @@ def t_media_detection_returns_sane_label():
     assert keyring.detect_media(tempfile.gettempdir()) in ("hdd", "ssd", "unknown")
 
 
+def _drop_live_key(root, name):
+    os.unlink(os.path.join(root, "keys", name + ".key"))
+
+
+def t_recover_dry_run_restores_nothing():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    _drop_live_key(root, "mom")
+    r = keyring.recover_vault(root, "mom")
+    assert r["dry_run"] is True
+    assert not os.path.exists(os.path.join(root, "keys", "mom.key"))
+
+
+def t_recover_needs_typed_confirmation():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    _drop_live_key(root, "mom")
+    r = keyring.recover_vault(root, "mom", confirm="wrong")
+    assert r["dry_run"] is True
+    assert not os.path.exists(os.path.join(root, "keys", "mom.key"))
+
+
+def t_recover_restores_key_and_issues_cert():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    _drop_live_key(root, "mom")
+    r = keyring.recover_vault(root, "mom", confirm="mom")
+    assert r["dry_run"] is False
+    kp = os.path.join(root, "keys", "mom.key")
+    assert os.path.exists(kp)
+    assert oct(os.stat(kp).st_mode & 0o777) == "0o600"
+    # restored bytes are exactly the recorded key
+    with open(kp, "rb") as f:
+        restored = f.read()
+    entry = [v for n, v in _meta_vaults(root).items() if n == "mom"][0]
+    import hashlib
+    assert hashlib.sha256(restored).hexdigest() == entry["key_sha256"]
+    # escrow copy preserved — recovery must not destroy the recovery path
+    assert r["escrow_preserved"] is True
+    assert os.path.exists(os.path.join(root, "escrow", "mom.key"))
+    # recovery certificate exists and identifies the recovery
+    with open(r["certificate"], encoding="utf-8") as f:
+        cert = json.load(f)
+    assert cert["certificate"] == "flamethrower-recovery"
+    assert cert["cert_id"] == r["cert_id"] == cert["cert_id"]
+    assert cert["escrow_preserved"] is True
+
+
+def _meta_vaults(root):
+    with open(os.path.join(root, "keyring.json"), encoding="utf-8") as f:
+        return json.load(f)["vaults"]
+
+
+def t_recover_refuses_without_escrow():
+    root = fresh()
+    keyring.create_vault(root, "mom")  # no escrow
+    _drop_live_key(root, "mom")
+    try:
+        keyring.recover_vault(root, "mom", confirm="mom")
+    except ValueError as e:
+        assert "cannot be recovered" in str(e)
+    else:
+        raise AssertionError("expected refusal without escrow")
+    assert not os.path.exists(os.path.join(root, "keys", "mom.key"))
+
+
+def t_recover_refuses_when_live_key_present():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    try:
+        keyring.recover_vault(root, "mom", confirm="mom")
+    except ValueError as e:
+        assert "fork" in str(e)
+    else:
+        raise AssertionError("expected refusal with live key present")
+
+
+def t_recover_refuses_corrupt_escrow():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    _drop_live_key(root, "mom")
+    with open(os.path.join(root, "escrow", "mom.key"), "wb") as f:
+        f.write(b"\x00" * 32)  # corrupt: not the recorded key
+    try:
+        keyring.recover_vault(root, "mom", confirm="mom")
+    except ValueError as e:
+        assert "cannot be recovered" in str(e)
+    else:
+        raise AssertionError("expected refusal on corrupt escrow")
+    assert not os.path.exists(os.path.join(root, "keys", "mom.key"))
+
+
+def t_recovery_leaks_no_key_material():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    with open(os.path.join(root, "escrow", "mom.key"), "rb") as f:
+        key = f.read()
+    _drop_live_key(root, "mom")
+    r = keyring.recover_vault(root, "mom", confirm="mom")
+    import base64
+    secrets = (key.hex(), base64.b64encode(key).decode())
+    with open(r["certificate"], encoding="utf-8") as f:
+        cert_text = f.read()
+    with open(os.path.join(root, "audit.jsonl"), encoding="utf-8") as f:
+        audit_text = f.read()
+    for s in secrets:
+        assert s not in cert_text, "key material in certificate"
+        assert s not in audit_text, "key material in audit log"
+    # ...but the audit log does record THAT a recovery happened
+    assert "recovery" in audit_text
+    assert r["cert_id"] in audit_text
+
+
+def t_recover_cli_dry_run_exits_2():
+    root = fresh()
+    keyring.create_vault(root, "mom", escrow=True)
+    _drop_live_key(root, "mom")
+    rc = keyring.main(["--dir", root, "recover-vault", "mom"])
+    assert rc == 2
+    rc = keyring.main(["--dir", root, "recover-vault", "mom", "--yes", "mom"])
+    assert rc == 0
+    assert os.path.exists(os.path.join(root, "keys", "mom.key"))
+
+
 TESTS = [
     ("create lists vault, key file 0600", t_create_lists_vault),
     ("duplicate vault rejected", t_duplicate_rejected),
@@ -168,6 +292,16 @@ TESTS = [
     ("master burn needs DESTROY-ALL", t_master_burn_needs_typed_confirmation),
     ("tampered cert fails verification", t_tampered_cert_fails_verification),
     ("media detection returns sane label", t_media_detection_returns_sane_label),
+    ("recover dry-run restores nothing", t_recover_dry_run_restores_nothing),
+    ("recover needs typed confirmation", t_recover_needs_typed_confirmation),
+    ("recover restores key and issues cert",
+     t_recover_restores_key_and_issues_cert),
+    ("recover refuses without escrow", t_recover_refuses_without_escrow),
+    ("recover refuses when live key present",
+     t_recover_refuses_when_live_key_present),
+    ("recover refuses corrupt escrow", t_recover_refuses_corrupt_escrow),
+    ("recovery leaks no key material", t_recovery_leaks_no_key_material),
+    ("recover CLI dry-run exits 2", t_recover_cli_dry_run_exits_2),
 ]
 
 
