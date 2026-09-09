@@ -79,7 +79,19 @@ for devices that can't run Tailscale.
    surface), mis-addressed mail refused (never lands in the wrong vault),
    idempotent by sha256 content hash, activity log carries metadata only —
    never body/attachment bytes; 14 regression tests green, temp dirs only.
-   `vault.py ingest-receipt FILE` CLI). Scan/OCR and the POS webhook
-   receiver are next.
+   `vault.py ingest-receipt FILE` CLI). POS webhook receiver ✅ done
+   (`vault/poshook.py`: `ingest-pos` ingests one JSON push body into the
+   addressed user's receipts/ — `"user"` in the payload must match the
+   vault being written to, address mismatches/unknown users refused;
+   `pos-webhook` integration required (add-integration is adult-only, so
+   child accounts can't enable the surface); money is an exact decimal
+   string — float totals refused, never rounded; idempotent by sha256 of
+   canonical JSON plus per-user `transaction_id` dedupe (webhook retries
+   never dupe); shares receipts/ storage with email ingestion (rcpt dirs,
+   index.jsonl with a `source` field); 0600/0700 perms, raw push kept as
+   `raw.json`, activity log carries metadata only; 16 regression tests
+   green, temp dirs only. No network listener on purpose — HTTP surface
+   stays outside; this module owns the trust boundary.)
+   Scan/OCR is next.
 4. Tailscale onboarding flow per device + hosted DNS names per service.
 5. Guardian controls for under-18 accounts.
