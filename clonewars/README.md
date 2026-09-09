@@ -103,6 +103,14 @@ clonewars/
 └── scripts/               # Linux guest autoinstall shell/YAML assets
 ```
 
+### Guest Provisioning Scripts
+
+Every VM boot attaches `clonewars/scripts/` as a **read-only USB drive** inside the guest, so provisioning assets are reachable with zero networking:
+
+- `scripts/cachyos/autoinstall-cachy.{sh,yml}` — unattended CachyOS install driver + config.
+- `scripts/cachyos/main-install.sh` — post-install provisioner implementing the `qemu-notes.md` checklist (WireGuard, Tailscale, `ufw` default-deny + SSH allow, Samba, OpenSSH, Docker, `qemu-guest-agent`, btrfs tooling). Run with sudo inside the guest; set `CASTLE_INSTALL_OLLAMA=1` to also install Ollama.
+- `scripts/cachyos/test.sh` — smoke test verifying the provisioner (binaries + enabled services).
+
 ---
 
 ## Core Pipeline Architecture
