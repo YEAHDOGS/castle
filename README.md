@@ -62,3 +62,17 @@ A way to make data yours again
   • Storage Array Shell Administration          • Access to Personal Storage Buckets
   • Firewall Ruleset Modification               • Basic Compute Allocation Access
   • Global Ledger Overwatch                      • No Root System File Permissions
+---
+
+## Components
+
+| Directory | What it is |
+|---|---|
+| `clonewars/` | **Clone Factory** — modular PowerShell QEMU pipeline: download, cryptographically verify (hash + GPG + trust pinning), provision, and boot VM targets (CachyOS, Ubuntu, Windows, …). Interactive CLI (`start.ps1`), WPF GUI (`gui.ps1`), Docker + noVNC support. See `clonewars/README.md`. |
+| `arcade/` | **Retro asset pipeline** — acquire, hash-verify, extract, and organize console firmware/BIOS + ROM images into `arcade/data/`. See `arcade/README.md`. |
+| `saves/` | **SaveVault** — "git for save data": version control for emulator save files (SNES `.srm`, GBA `.sav`, save states) with commit/diff/restore. See `saves/README.md`. |
+| `server/` | **Castle sync server** (Kotlin/Ktor) — the Data Vault backend: file sync endpoints, vault storage root via `CASTLE_DATA_DIR`. |
+| `app/` | **Sync client** (Kotlin multiplatform) — talks to the server; point `baseUrl` at your Castle box on the LAN. |
+| `swarm/` | Agent-team design notes. |
+
+**The idea:** Castle is a router replacement with built-in local network storage — a self-hosted Google Drive on your own LAN. Clonewars builds the compute nodes, arcade + saves cover the retro-gaming thread, and the sync server/app are the storage heart. Future: warehouse facilities for encrypted offsite backup.
