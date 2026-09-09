@@ -166,3 +166,22 @@ for devices that can't run Tailscale.
    before extract, per-file hashes after extract; tampered vaults and
    wrong passphrases fail closed. 25 regression tests green, temp dirs
    only.)
+8. Encrypted backups: seal a user's vault to the backup target, proved
+   restorable. ✅ done
+   (`vault/backup.py`: `vault.py backup USER --target-dir DIR
+   --passphrase-file F [--yes USER]` seals one user's vault into a
+   timestamped `<user>-<utc>.castle` on the backup target using the
+   step-7 lock (AES-256-CBC + encrypt-then-MAC, passphrase or raw
+   keyfile) — the live vault is NEVER touched or burned (a backup that
+   destroys the original is a fire, not a backup). The backup is
+   decrypt-verified in the same run: HMAC, tarball SHA-256, then every
+   per-file SHA-256 in the header checked against the tarball members —
+   a backup that hasn't been proven restorable is a rumor.
+   `vault.py backup-verify FILE.castle` re-proves an existing backup
+   bit-exact without extracting to disk. Dry-run is the default, real
+   backups need typed confirmation (the username); existing backups are
+   never overwritten (new timestamped names are minted); targets that
+   are/inside/contain the vault are refused; secrets living inside the
+   vault or the target are refused; wrong passphrase or tampered file
+   fails closed; one activity record per backup (metadata only).
+   23 fixture-based regression tests green, temp dirs only.)
