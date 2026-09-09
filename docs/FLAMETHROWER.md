@@ -77,7 +77,18 @@ interlocks.
 
 1. Per-vault encryption at rest (makes Tier 1 possible at all).
 2. Key lifecycle: generation, escrow (family recovery!), destruction
-   ceremony with certificate.
+   ceremony with certificate. ✅ done
+   (`flamethrower/keyring.py`: `create-vault` generates a 256-bit data
+   key (CSPRNG) with an optional escrow copy; `destroy-vault` burns every
+   copy and issues a deletion certificate + tier-1 audit record. Family
+   recovery closes the loop: `recover-vault NAME [--yes NAME]` restores
+   a lost live key from its escrow copy — refused if no usable escrow
+   exists, refused if the live key is still present (recovery would fork
+   the key), escrow bytes SHA-256-checked against the recorded receipt
+   before the write and the installed copy verified after (foreign
+   keys fail closed), escrow copy preserved, dry-run default, typed
+   confirmation, recovery certificate + one tier-1 audit record, hashes
+   only — never key material. 19 regression tests green, temp dirs only.)
 3. Media detection (HDD vs SATA SSD vs NVMe vs removable flash).
 4. Tier 2 firmware-erase routines (shared with Phoenix tooling). ✅ done
 5. Tier 3 file shredder with honest media labeling. ✅ done
