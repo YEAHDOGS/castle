@@ -140,13 +140,20 @@ Based on the target's `OsFamily` (Linux, Windows, macOS) and `Firmware` metadata
 
 ## Prerequisites & Configuration
 
-1. **QEMU for Windows:** QEMU must be installed at `C:\Program Files\qemu`.
+1. **QEMU for Windows:** QEMU must be installed at `C:\Program Files\qemu` (or available on `PATH`).
 2. **Windows Hypervisor Platform (WHPX):** To run VMs at native speeds, enable WHPX:
    - Run PowerShell as Administrator:
      ```powershell
      Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
      ```
 3. **GnuPG (Optional):** To verify target signatures (like Arch/CachyOS) on the first run, install `gpg` and ensure it is available on your System `PATH`.
+4. **Unattended Windows installs (Optional):** The `win11-home` / `win11-pro` targets build an unattended ISO from a local retail copy. Copy `.env-template` to `.env` and fill in your product keys:
+   ```powershell
+   Copy-Item .env-template .env
+   ```
+   Without `.env`, the pipeline falls back to Microsoft's generic default install keys (unactivated). `.env` is git-ignored — never commit it. Building requires `oscdimg.exe` (`winget install Microsoft.OSCDIMG`) and a sibling `phoenix` checkout containing `win-install\autounattend.xml`.
+
+**Graphical UI:** `gui.ps1` launches a zero-dependency WPF front-end over the same pipeline (launch, background, VNC, disk/ISO cleanup, purge).
 
 ---
 
@@ -185,17 +192,8 @@ docker run -d --device /dev/kvm -p 8006:8006 -v "$(pwd)/data:/app/data" castle-v
 > [!TIP]
 > **Performance Tip:** The `--device /dev/kvm` flag enables Linux KVM hardware acceleration inside the container. If this device is missing (e.g. nested virtualization is disabled in WSL2), the engine automatically falls back to software emulation (`tcg`), which runs slower.
 
----
-
-## Prerequisites & Configuration
-
-1. **QEMU for Windows:** QEMU must be installed at `C:\Program Files\qemu` (for native host execution).
-2. **Windows Hypervisor Platform (WHPX):** To run VMs at native speeds on Windows, enable WHPX:
-   - Run PowerShell as Administrator:
-     ```powershell
-     Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
-     ```
-3. **GnuPG (Optional):** To verify target signatures (like Arch/CachyOS) on the first run, install `gpg` and ensure it is available on your System `PATH`.
+> [!NOTE]
+> **Container knobs:** `entrypoint.sh` honors `NOVNC_PORT` (default `8006`) and `VNC_TARGET` (default `localhost:5900`, i.e. QEMU display `:0`). Only display `:0` is bridged to the web gateway — extra `-Vnc` instances pick free displays (`:1`, `:2`, ...) that are not web-reachable.
 
 ---
 
