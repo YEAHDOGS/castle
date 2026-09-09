@@ -107,7 +107,26 @@ for devices that can't run Tailscale.
    TEXT --user NAME` CLI; 23 regression tests green, temp dirs only.
    Step 3 fully done — email + POS webhook + scan/OCR all land in the
    shared receipts/ layout.)
-4. Tailscale onboarding flow per device + hosted DNS names per service.
+4. Tailscale onboarding flow per device + hosted DNS names per service. ✅ done
+   (`vault/tailnet.py`: `tailnet-onboard` starts onboarding for a device
+   that's already registered on the account (guardian approval for kids
+   is inherited from step 1's `add-device`), and prints an operator
+   runbook — the exact `sudo tailscale up --authkey <PASTE-AUTH-KEY>`
+   command with a slugged hostname; the auth key is never stored,
+   never logged, only pasted by the operator. `tailnet-claim` marks a
+   pending device active after it joins, accepting ONLY 100.64.0.0/10
+   addresses — LAN/loopback/public IPs are refused, not recorded.
+   `tailnet-status` resolves tailnet records against the live registry
+   so revoked devices drop out of the active set; `tailnet-drop`
+   purges a record for re-homing. `tailnet-dns --castle-ip 100.X`
+   writes the Pi-hole dnsmasq fragment naming the services from the
+   vision doc (`address=/vault.castle/...`, `address=/receipts.castle/...`);
+   Castle never reloads DNS itself — the operator installs the
+   fragment. No network calls anywhere in the module (zero outbound).
+   `vault.py tailnet-onboard|tailnet-claim|tailnet-status|tailnet-drop|
+   tailnet-dns` CLI; tailnet.json is 0600, dnsmasq.d is 0700, the
+   activity log carries metadata only. 23 fixture-based regression
+   tests green, temp dirs only.)
 5. Guardian controls for under-18 accounts. ✅ done
    (`vault/guardian.py`: scoped guardian power — only over the guardian's
    OWN children, never adults (no family-admin backdoor, per the vision).
