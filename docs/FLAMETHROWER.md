@@ -134,7 +134,13 @@ interlocks.
    Every real deletion emits a deletion certificate AND appends one
    audit record per certificate to `<root>/audit.jsonl` (cert id, file
    path, size, method, media, verification — never contents). 9
-   fixture-based regression tests, temp dirs only.
+   fixture-based regression tests, temp dirs only. ✅ done
+   (`flamethrower/flamethrower.py`: wraps tier3.py with the mission's
+   arming ritual — dry-run default, `--i-understand` + typed basename
+   per target, CSPRNG multi-pass + final zero pass with read-back
+   verification, rename→truncate→unlink, certificates in
+   `<root>/certificates/` + one tier-3 audit record per cert. 9 fixture
+   tests; 116 green across the flamethrower module.)
 10. Residue wiping: slack space + free space (Tier-3-adjacent). ✅ done
     (`flamethrower/slack.py`: `wipe-slack` extends a file to the next
     filesystem block boundary with CSPRNG bytes, fsyncs, truncates back
