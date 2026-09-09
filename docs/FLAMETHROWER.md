@@ -109,3 +109,16 @@ interlocks.
    issues a deletion certificate + one tier-1 audit record (hashes only —
    never key material or file contents), post-burn `unseal` is impossible.
    11 regression tests, temp dirs only.)
+8. Whole-directory burn with manifest + verify pass. ✅ done
+   (`flamethrower/dirburn.py`: `burn_directory` runs the step-7 seal+burn
+   primitive on every regular file in a target dir, then overwrites +
+   unlinks the originals, writes a JSON manifest (path, bytes,
+   sha256-before, timestamp — hashes only, never contents) to
+   `<root>/manifests/<burn_id>.json`, removes the emptied dir tree, and
+   runs a verify pass that fails LOUDLY with the path of any surviving
+   file. Dry-run is the default; real burns need typed confirmation (the
+   target's basename). The target must be a real directory — not a
+   symlink, not `/`, not the fileburn root, not containing it, not
+   inside it. Symlinks, non-regular files, hardlink duplicates, and
+   paths resolving outside the target abort the whole burn before
+   anything dies (canary-tested). 8 regression tests, temp dirs only.)
