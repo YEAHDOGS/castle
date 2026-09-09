@@ -439,6 +439,24 @@ def main(argv=None):
     p = sub.add_parser("activity")
     p.add_argument("--tail", type=int, default=20)
     sub.add_parser("verify")
+    p = sub.add_parser("manifest",
+                       help="write a SHA-256 file manifest of a vault "
+                            "directory (FAMILY-DATA-VAULT step 6)")
+    p.add_argument("dir", help="vault directory to inventory")
+    p.add_argument("--out", required=True,
+                   help="where to write the manifest JSON (not inside the "
+                        "tree it describes)")
+    p.add_argument("--label", default=None,
+                   help="root label recorded in the manifest")
+    p = sub.add_parser("audit",
+                       help="audit a vault directory against a manifest: "
+                            "ADDED/REMOVED/MODIFIED/UNCHANGED "
+                            "(FAMILY-DATA-VAULT step 6)")
+    p.add_argument("dir", help="vault directory to re-scan")
+    p.add_argument("--manifest", required=True,
+                   help="manifest file written by the manifest command")
+    p.add_argument("--json", action="store_true",
+                   help="machine-readable output instead of the diff")
 
     a = ap.parse_args(argv)
     try:
@@ -516,6 +534,16 @@ def main(argv=None):
                     print("  - " + p)
                 return 1
             print("verify: all green")
+        elif a.cmd == "manifest":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import manifest as _manifest  # noqa: E402
+            doc = _manifest.write_manifest(a.dir, a.out, root_label=a.label)
+            print("manifest written: %s (%d file(s), %d skipped)" % (
+                a.out, len(doc["entries"]), len(doc["skipped"])))
+        elif a.cmd == "audit":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import verify as _va  # noqa: E402
+            return _va.run_audit(a.dir, a.manifest, json_out=a.json)
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
