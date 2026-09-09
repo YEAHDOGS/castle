@@ -59,9 +59,17 @@ for devices that can't run Tailscale.
 
 ## Build order
 
-1. Vault-per-user data layout + auth (users, age tier on the account).
+1. Vault-per-user data layout + auth (users, age tier on the account). ✅ done
+   (`vault/vault.py`: registry + 0700 layout with inbox/documents/photos/
+   receipts/shared, a real flamethrower Tier-1 data key per vault, age
+   tiers with guardian approval for child devices, forced escrow for
+   children, integrations adult-only, `verify` consistency check.)
 2. Sharing ladder (private → member → family → world), all explicit,
-   all revocable, all logged.
+   all revocable, all logged. ✅ done
+   (`vault/vault.py` grant/revoke: child world-share refused, dup grants
+   and phantom revokes refused, every event in append-only activity.jsonl,
+   `delete-user` crypto-shreds key + wipes dirs behind typed confirmation;
+   26 regression tests green, temp dirs only.)
 3. Receipt ingestion: email forward first (simplest), then scan/OCR,
    then the Clover-style POS webhook receiver.
 4. Tailscale onboarding flow per device + hosted DNS names per service.
