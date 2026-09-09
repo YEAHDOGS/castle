@@ -86,7 +86,13 @@ python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
 
 ## What's next
 
-6. Wire the keyring into the vault-per-user layout from FAMILY-DATA-VAULT.md.
+6. Cross-burn audit log (`audit.py`, build-order step 6): every Tier 1/2/3
+   burn appends one entry per certificate to `<root>/audit.jsonl` —
+   timestamp, operator, tier, cert id, fingerprint, method, media,
+   verification result. SHA-256 hash chain (`audit verify`) detects edits,
+   deletions, and reordering. 22 regression tests.
+7. Wire the keyring into the vault-per-user layout from
+   FAMILY-DATA-VAULT.md.
 
 ## Tests
 
