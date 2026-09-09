@@ -457,6 +457,31 @@ def main(argv=None):
                    help="merchant name as stated (optional, high confidence)")
     p = sub.add_parser("activity")
     p.add_argument("--tail", type=int, default=20)
+    p = sub.add_parser("tailnet-onboard",
+                       help="start tailnet onboarding for a registered "
+                            "device: prints the operator runbook "
+                            "(FAMILY-DATA-VAULT step 4)")
+    p.add_argument("user"); p.add_argument("device"); p.add_argument("--by")
+    p = sub.add_parser("tailnet-claim",
+                       help="mark a pending device active once it joined "
+                            "the tailnet (100.64.0.0/10 only)")
+    p.add_argument("user"); p.add_argument("device")
+    p.add_argument("--ip", required=True,
+                   help="the device's tailnet address, from the admin console")
+    p = sub.add_parser("tailnet-status",
+                       help="pending/active tailnet devices, registry-resolved")
+    p = sub.add_parser("tailnet-drop",
+                       help="purge a device's tailnet record "
+                            "(after revoke-device, or to re-home)")
+    p.add_argument("user"); p.add_argument("device"); p.add_argument("--by")
+    p = sub.add_parser("tailnet-dns",
+                       help="write the Pi-hole dnsmasq fragment naming the "
+                            ".castle services (FAMILY-DATA-VAULT step 4)")
+    p.add_argument("--castle-ip", required=True,
+                   help="Castle's own tailnet address (100.64.0.0/10)")
+    p.add_argument("--out", default=None,
+                   help="where to write the fragment "
+                        "(default: <root>/dnsmasq.d/10-castle.conf)")
     sub.add_parser("verify")
     p = sub.add_parser("manifest",
                        help="write a SHA-256 file manifest of a vault "
@@ -591,6 +616,37 @@ def main(argv=None):
         elif a.cmd == "activity":
             for e in activity_tail(a.dir, a.tail):
                 print("%s %-12s %-16s %s" % (e["ts"], e["actor"], e["action"], e["detail"]))
+        elif a.cmd in ("tailnet-onboard", "tailnet-claim", "tailnet-status",
+                       "tailnet-drop", "tailnet-dns"):
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import tailnet as _tn  # noqa: E402
+            if a.cmd == "tailnet-onboard":
+                r = _tn.onboard(a.dir, a.user, a.device, by=a.by)
+                print("onboarding started: %s/%s is tailnet-pending" % (
+                    r["user"], r["device"]))
+                print()
+                print("OPERATOR RUNBOOK (run this on the device):")
+                print(r["runbook"])
+            elif a.cmd == "tailnet-claim":
+                r = _tn.claim(a.dir, a.user, a.device, a.ip)
+                print("tailnet-active: %s/%s @ %s" % (
+                    r["user"], r["device"], r["ip"]))
+            elif a.cmd == "tailnet-status":
+                rows = _tn.status(a.dir)
+                if not rows:
+                    print("(no tailnet devices)")
+                for r in rows:
+                    print("%-12s %-14s %-7s %s" % (
+                        r["user"], r["device"], r["state"], r["ip"] or "-"))
+            elif a.cmd == "tailnet-drop":
+                print(_tn.drop(a.dir, a.user, a.device, by=a.by))
+            elif a.cmd == "tailnet-dns":
+                r = _tn.dns_refresh(a.dir, a.castle_ip, out=a.out)
+                print("hosted DNS fragment written: %s" % r["out"])
+                print("services: %s -> %s" % (
+                    ", ".join(r["services"]), r["castle_ip"]))
+                print("install: drop it into Pi-hole's dnsmasq.d, "
+                      "then restart pihole-FTL (operator step)")
         elif a.cmd == "verify":
             problems = verify(a.dir)
             if problems:
