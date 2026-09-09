@@ -1,5 +1,10 @@
 # Castle Arcade — Retro Console Asset Pipeline
 
+> **Experience design:** the player-facing vision lives in
+> [`docs/modules/arcade.md`](../docs/modules/arcade.md) — two engines
+> (emulation + native recomp ports), streaming to every device, Chains
+> save sync, and the voxel-mod bar (Gen 1 recomp + Dramatic Shape).
+
 Arcade is the retro-gaming arm of Castle: a modular, zero-dependency PowerShell pipeline that **acquires, cryptographically verifies, extracts, and organizes** retro console assets (system firmware/BIOS files and ROM images) into a tidy local library.
 
 ```powershell
