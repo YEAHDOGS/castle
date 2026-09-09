@@ -28,6 +28,7 @@ Usage:
     keyring.py list [--dir PATH]
     keyring.py destroy-vault NAME [--yes NAME] [--dir PATH]
     keyring.py destroy-master [--yes DESTROY-ALL] [--dir PATH]
+    keyring.py recover-vault NAME [--yes NAME] [--dir PATH]
     keyring.py verify-cert FILE
 """
 
@@ -301,6 +302,118 @@ def destroy_master(root, confirm=None):
     return {"dry_run": False, "burned": results}
 
 
+def _issue_recovery_certificate(root, name, entry, media):
+    cert = {
+        "certificate": "flamethrower-recovery",
+        "cert_id": uuid.uuid4().hex,
+        "vault": name,
+        "key_id": entry["key_id"],
+        "key_sha256_receipt": entry["key_sha256"],  # proves WHICH key was restored
+        "method": "escrow recovery (lost live key restored from escrow copy)",
+        "media": media,
+        "media_note": "crypto-shredding is media-independent; the escrow copy "
+                      "IS the same key, so the restored key decrypts the vault",
+        "escrow_preserved": True,
+        "verification": "restored key SHA-256 equals the recorded key "
+                        "receipt; installed key file is 0600",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # The log records THAT a recovery happened, never key material.
+        "note": "this certificate attests to a recovery; it contains no key material",
+    }
+    path = _p(root, "certificates", cert["cert_id"] + ".json")
+    _atomic_write(path, cert)
+    try:
+        audit.append(root, tier="1", cert_id=cert["cert_id"],
+                     fingerprint={"vault": name, "key_id": entry["key_id"],
+                                  "key_sha256_receipt": entry["key_sha256"]},
+                     method=cert["method"], media=media,
+                     success=True, verification=cert["verification"])
+    except OSError as e:
+        # The recovery is real and the certificate exists; the audit log just
+        # missed it. Say so loudly on stderr — never silently.
+        print("warning: recovery completed but the audit log could not be "
+              "appended: %s" % e, file=sys.stderr)
+    return cert, path
+
+
+def recover_vault(root, name, confirm=None):
+    """Family recovery ceremony: restore a lost vault key from its escrow copy.
+
+    Interlocks (refusals, never silent no-ops):
+      - the vault must exist and have an escrow copy ON DISK — the flag in
+        the metadata alone is not enough; the file must be a readable
+        32-byte key. A vault with no usable escrow cannot be recovered,
+        and the refusal says so honestly: ciphertext without its key is
+        unrecoverable.
+      - the live key must be GONE. Recovery with the live key present would
+        silently fork the key; if the live key is dead, destroy-vault it
+        first, then recover.
+      - typed confirmation: confirm == name, else a dry-run plan.
+        Dry-run is the default; the real run is the exception.
+
+    A real run installs the escrow bytes at keys/<name>.key (0600). The escrow
+    bytes are SHA-256-checked against the recorded key receipt before the
+    write AND the installed copy is verified after — on any mismatch the
+    partial install is unlinked and the recovery is refused. The escrow
+    copy is PRESERVED — recovery must not destroy the recovery path. Key bytes never touch stdout or logs.
+    Every recovery issues a recovery certificate and one tier-1 audit
+    record (hashes only — never key material).
+    """
+    _ensure_dirs(root)
+    if not _valid_name(name):
+        raise ValueError("invalid vault name: %r" % name)
+    meta = _load_meta(root)
+    if name not in meta["vaults"]:
+        raise ValueError("no such vault: %s" % name)
+    entry = meta["vaults"][name]
+
+    key_path = _p(root, "keys", name + ".key")
+    esc_path = _p(root, "escrow", name + ".key")
+    if os.path.exists(key_path):
+        raise ValueError(
+            "live key still present for %r: recovery would fork the key. "
+            "If the live key is dead, destroy-vault it first, then recover "
+            "from escrow." % name)
+    escrow = None
+    if os.path.exists(esc_path):
+        with open(esc_path, "rb") as f:
+            escrow = f.read()
+    if not entry.get("escrow") or escrow is None or len(escrow) != KEY_BYTES \
+            or hashlib.sha256(escrow).hexdigest() != entry["key_sha256"]:
+        raise ValueError(
+            "no usable escrow copy for %r: this vault cannot be recovered "
+            "(escrow was never created, the file is missing, or it is "
+            "corrupt). Ciphertext without its key is unrecoverable." % name)
+
+    if confirm != name:
+        # Dry-run is the default. The real run is the exception.
+        return {"dry_run": True,
+                "would_restore": "keys/%s.key from escrow copy" % name,
+                "hint": "re-run with --yes %s to recover" % name}
+
+    with open(key_path, "wb") as f:
+        f.write(escrow)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(key_path, 0o600)
+    # Fail closed: re-read the installed copy; it must be exactly the
+    # recorded key. On any mismatch, unlink and refuse.
+    with open(key_path, "rb") as f:
+        installed = f.read()
+    if installed != escrow or hashlib.sha256(installed).hexdigest() != entry["key_sha256"]:
+        try:
+            os.unlink(key_path)
+        finally:
+            raise ValueError(
+                "installed key for %r failed the receipt check: refusing a "
+                "foreign key; nothing was restored." % name)
+    media = detect_media(root)
+    cert, cert_path = _issue_recovery_certificate(root, name, entry, media)
+    return {"dry_run": False, "key_restored": key_path,
+            "escrow_preserved": os.path.exists(esc_path),
+            "certificate": cert_path, "cert_id": cert["cert_id"]}
+
+
 def verify_cert(path):
     with open(path, encoding="utf-8") as f:
         cert = json.load(f)
@@ -330,6 +443,8 @@ def main(argv=None):
     p.add_argument("--yes", default=None, help="typed confirmation (vault name)")
     p = sub.add_parser("destroy-master")
     p.add_argument("--yes", default=None, help="typed confirmation (DESTROY-ALL)")
+    p = sub.add_parser("recover-vault"); p.add_argument("name")
+    p.add_argument("--yes", default=None, help="typed confirmation (vault name)")
     p = sub.add_parser("verify-cert"); p.add_argument("file")
 
     a = ap.parse_args(argv)
@@ -352,6 +467,11 @@ def main(argv=None):
             print(json.dumps(r, indent=2))
             if r.get("dry_run"):
                 return 2
+        elif a.cmd == "recover-vault":
+            r = recover_vault(a.dir, a.name, a.yes)
+            print(json.dumps(r, indent=2))
+            if r.get("dry_run"):
+                return 2  # dry-run exits nonzero: nothing restored
         elif a.cmd == "verify-cert":
             print(json.dumps(verify_cert(a.file), indent=2))
     except ValueError as e:
