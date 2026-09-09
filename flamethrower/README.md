@@ -62,10 +62,17 @@ python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
    crypto-shred), and structurally refuses to bless a software-overwrite
    kill on anything but spinning rust. Read-only: it runs no destructive
    commands.
+4. Tier 2 firmware-erase routines (`tier2.py`): NVMe Format SES=2 crypto
+   erase (Sanitize fallback), ATA Secure Erase (enhanced when offered,
+   frozen-state and unsupported-state refusals), and a stdlib HDD
+   single-pass zero overwrite with read-back sample verification. Flash
+   with no firmware erase is REFUSED (crypto-shred only) — the module
+   never offers an overwrite fallback on flash. Dry-run default, typed
+   serial confirmation, mounted-partition/root-device structural
+   refusals, last-second serial re-verification, abort window, and a
+   deletion certificate per burn (same envelope as the keyring certs).
 
 ## What's next
 
-4. Tier 2 firmware-erase routines (NVMe format / ATA Secure Erase, shared
-   with Phoenix tooling) — refusing to "overwrite" flash and call it done.
 5. Tier 3 HDD file shredder with honest media labeling.
 6. Wire the keyring into the vault-per-user layout from FAMILY-DATA-VAULT.md.
