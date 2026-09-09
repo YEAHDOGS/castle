@@ -79,7 +79,11 @@ interlocks.
 2. Key lifecycle: generation, escrow (family recovery!), destruction
    ceremony with certificate.
 3. Media detection (HDD vs SATA SSD vs NVMe vs removable flash).
-4. Tier 2 firmware-erase routines (shared with Phoenix tooling).
-5. Tier 3 file shredder with honest media labeling.
+4. Tier 2 firmware-erase routines (shared with Phoenix tooling). ✅ done
+5. Tier 3 file shredder with honest media labeling. ✅ done
+   (`flamethrower/tier3.py`: HDD overwrite→verify→rename→truncate→unlink;
+   flash runs the same sequence labeled BEST EFFORT with a Tier-1
+   crypto-shred pointer; typed basename confirmation; dry-run default;
+   deletion certificates; 32 regression tests)
 6. Deletion certificates + an audit log (ironic but necessary: the log
-   records *that* something was burned, never its contents).
+   records *that* something was burned, never its contents). ← next

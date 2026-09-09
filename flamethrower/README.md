@@ -71,8 +71,28 @@ python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
    serial confirmation, mounted-partition/root-device structural
    refusals, last-second serial re-verification, abort window, and a
    deletion certificate per burn (same envelope as the keyring certs).
+5. Tier 3 file shredder with honest media labeling (`tier3.py`):
+   explicit files only (no globs, no recursion). HDD targets get
+   overwrite → read-back sample verify → random rename → truncate →
+   unlink, a real kill on spinning rust. Flash/virtual/unknown targets
+   run the same sequence as a labeled BEST EFFORT — the plan, dry-run,
+   and certificate all say plainly that unmapped flash pages may retain
+   data and point at Tier 1 crypto-shredding for guarantees. Typed
+   basename confirmation, dry-run default, abort window, structural
+   refusals (directories, dangling symlinks, duplicate inodes,
+   keyring-root targets, unmappable devices), one deletion certificate
+   per file. The certificate records THAT something burned, never its
+   contents.
 
 ## What's next
 
-5. Tier 3 HDD file shredder with honest media labeling.
 6. Wire the keyring into the vault-per-user layout from FAMILY-DATA-VAULT.md.
+
+## Tests
+
+```bash
+python3 test_keyring.py   # 11 fixture-based regression tests, temp dirs only
+python3 test_media.py     # 14 classification tests, fake sysfs
+python3 test_tier2.py     # 39 firmware-erase tests, fake sysfs/probes/runner
+python3 test_tier3.py     # 32 file-shredder tests, fake sysfs/st_dev/stdin
+```
