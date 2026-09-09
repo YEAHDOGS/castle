@@ -47,6 +47,7 @@ hosts, no installs.
 
 Usage (via vault.py):
     vault.py backup USER --target-dir DIR --passphrase-file F [--yes USER]
+                 [--chunks]
     vault.py backup-verify FILE.castle --passphrase-file F
 """
 
@@ -58,6 +59,7 @@ import tarfile
 import time
 
 import vault_lock
+import chunkseal
 import manifest as vault_manifest
 import vault as vault_core
 
@@ -72,6 +74,14 @@ def _locked_call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except vault_lock.VaultLockError as e:
+        raise BackupError(str(e))
+
+
+def _chunk_call(fn, *args, **kwargs):
+    """Same translation for the chunked container's typed errors."""
+    try:
+        return fn(*args, **kwargs)
+    except chunkseal.ChunkSealError as e:
         raise BackupError(str(e))
 
 
@@ -220,37 +230,95 @@ def _prove_restorable(out_path, passphrase_file, keyfile):
     return header, n
 
 
+def _prove_restorable_chunks(out_path, passphrase_file, keyfile):
+    """Same proof for the chunked container: every chunk's HMAC is
+    re-verified on open, then the tarball and per-file inventory."""
+    fmt = _chunk_call(chunkseal.peek_format, out_path)
+    if fmt != chunkseal.FORMAT:
+        raise BackupError("not a chunked backup: %s" % out_path)
+    kind, secret = _locked_call(vault_lock._read_secret,
+                                passphrase_file, keyfile)
+    try:
+        header, payload = _chunk_call(chunkseal.open_file,
+                                      out_path, (kind, secret))
+    finally:
+        del secret
+    n = _verify_tarball_bytes(header, payload)
+    del payload
+    return header, n
+
+
+def _seal_chunks(vdir, out_path, passphrase_file, keyfile):
+    """Seal vdir's tarball into the chunked container. Returns the
+    header dict. Non-destructive — the live vault is untouched."""
+    kind, secret = _locked_call(vault_lock._read_secret,
+                                passphrase_file, keyfile)
+    _locked_call(vault_lock._check_secret_not_inside,
+                 passphrase_file or keyfile, vdir)
+    try:
+        man = vault_manifest.build_manifest(vdir)
+        files = {e["path"]: {"size": e["size"], "sha256": e["sha256"]}
+                 for e in man["entries"]}
+        if man["skipped"]:
+            raise BackupError(
+                "refusing to back up: non-regular files in vault: %s"
+                % ", ".join(s["path"] for s in man["skipped"]))
+        tar_bytes = _locked_call(vault_lock._build_tarball, vdir)
+        header, body = _chunk_call(chunkseal.seal, tar_bytes,
+                                   (kind, secret), files=files)
+        _chunk_call(chunkseal._write_chunked, out_path, header, body)
+    finally:
+        del secret
+    return header
+
+
 def _backup_cert_id():
     return "bkp-" + __import__("secrets").token_hex(6)
 
 
 def create_backup(root, user, target_dir, passphrase_file=None, keyfile=None,
-                  confirm=None):
+                  confirm=None, chunks=False):
     """Seal a user's vault into an encrypted backup on the target dir.
 
     Dry-run is the default. The real backup needs typed confirmation
-    (the username). Returns a dict with the plan or the backup
-    certificate."""
+    (the username). ``chunks=True`` seals with the pure-stdlib chunked
+    container (castle-chunks/v1, per-chunk HMAC) instead of the
+    openssl-backed .castle format. Returns a dict with the plan or the
+    backup certificate."""
     plan = plan_backup(root, user, target_dir, passphrase_file, keyfile)
     if confirm != user:
         return plan
     out = plan["would_write"]
     core = vault_core
-    # seal (non-destructive: vault_init never burns the plaintext —
-    # a backup that destroys the original is a fire, not a backup)
-    _locked_call(vault_lock.vault_init, plan["vault_dir"], out,
-                 passphrase_file=passphrase_file, keyfile=keyfile)
-    # prove it restores before calling it a backup
-    header, verified = _prove_restorable(out, passphrase_file, keyfile)
+    if chunks:
+        # seal with the chunked container (non-destructive: the live
+        # vault is NEVER burned — a backup that destroys the original
+        # is a fire, not a backup)
+        header = _seal_chunks(plan["vault_dir"], out,
+                              passphrase_file, keyfile)
+        header, verified = _prove_restorable_chunks(out, passphrase_file,
+                                                    keyfile)
+    else:
+        # seal (non-destructive: vault_init never burns the plaintext —
+        # a backup that destroys the original is a fire, not a backup)
+        _locked_call(vault_lock.vault_init, plan["vault_dir"], out,
+                     passphrase_file=passphrase_file, keyfile=keyfile)
+        # prove it restores before calling it a backup
+        header, verified = _prove_restorable(out, passphrase_file, keyfile)
     with open(out, "rb") as f:
         file_sha = hashlib.sha256(f.read()).hexdigest()
+    if chunks:
+        total = sum(e["size"] for e in header.get("files", {}).values())
+    else:
+        total = header.get("total_bytes")
     cert = {
         "cert_id": _backup_cert_id(),
         "user": user,
         "backup_file": out,
         "file_sha256": file_sha,
         "file_count": verified,
-        "total_bytes": header.get("total_bytes"),
+        "total_bytes": total,
+        "container": header.get("format"),
         "cipher": header.get("cipher"),
         "mac": header.get("mac"),
         "sealed_at": header.get("created"),
@@ -264,13 +332,22 @@ def create_backup(root, user, target_dir, passphrase_file=None, keyfile=None,
 
 def verify_backup(locked_path, passphrase_file=None, keyfile=None):
     """Prove an existing backup file restores bit-exact with this
-    secret. Nothing is extracted to disk. Returns the verification
-    report; raises BackupError on any failure."""
+    secret. Nothing is extracted to disk. The container format is
+    detected from the header (castle-vault/v1 vs castle-chunks/v1).
+    Returns the verification report; raises BackupError on any
+    failure."""
     if (passphrase_file is None) == (keyfile is None):
         raise BackupError("exactly one of passphrase-file / keyfile required")
     if not os.path.isfile(locked_path):
         raise BackupError("not a file: %s" % locked_path)
-    header, n = _prove_restorable(locked_path, passphrase_file, keyfile)
+    fmt = _chunk_call(chunkseal.peek_format, locked_path)
+    if fmt == chunkseal.FORMAT:
+        header, n = _prove_restorable_chunks(locked_path, passphrase_file,
+                                             keyfile)
+        total = sum(e["size"] for e in header.get("files", {}).values())
+    else:
+        header, n = _prove_restorable(locked_path, passphrase_file, keyfile)
+        total = header.get("total_bytes")
     with open(locked_path, "rb") as f:
         file_sha = hashlib.sha256(f.read()).hexdigest()
     return {
@@ -278,7 +355,8 @@ def verify_backup(locked_path, passphrase_file=None, keyfile=None):
         "backup_file": os.path.realpath(locked_path),
         "file_sha256": file_sha,
         "file_count": n,
-        "total_bytes": header.get("total_bytes"),
+        "total_bytes": total,
+        "container": header.get("format"),
         "cipher": header.get("cipher"),
         "mac": header.get("mac"),
         "sealed_at": header.get("created"),
@@ -302,6 +380,8 @@ if __name__ == "__main__":
     p.add_argument("--user", required=True)
     p.add_argument("--target-dir", required=True)
     p.add_argument("--yes", default=None)
+    p.add_argument("--chunks", action="store_true",
+                   help="chunked container instead of openssl format")
 
     p = _secret_args(sub.add_parser("verify"))
     p.add_argument("file")
@@ -311,7 +391,8 @@ if __name__ == "__main__":
         if a.cmd == "backup":
             r = create_backup(a.root, a.user, a.target_dir,
                               passphrase_file=a.passphrase_file,
-                              keyfile=a.keyfile, confirm=a.yes)
+                              keyfile=a.keyfile, confirm=a.yes,
+                              chunks=a.chunks)
             print(json.dumps(r, indent=2, sort_keys=True))
             raise SystemExit(2 if r["dry_run"] else 0)
         print(json.dumps(verify_backup(a.file,
