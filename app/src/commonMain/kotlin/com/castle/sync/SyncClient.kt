@@ -4,9 +4,12 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 
-class SyncClient {
+class SyncClient(
+    // Point this at the Castle box on your LAN (or the Drawbridge VPN
+    // address) instead of localhost when the server runs elsewhere.
+    private val baseUrl: String = "http://localhost:8080/sync"
+) {
     private val client = HttpClient()
-    private val baseUrl = "http://localhost:8080/sync"
 
     suspend fun getStatus(filename: String): String {
         return client.get("$baseUrl/status/$filename").bodyAsText()
