@@ -49,6 +49,31 @@ Each entry in `modules/targets.ps1` (`$ArcadeMatrix`) declares:
 | `Platform` | library subfolder for ROMs |
 | `Extract` / `ExtractFile` | optional unzip + file promotion |
 
+## Catalog — game shelf
+
+[`catalog/`](catalog/) holds a static, data-driven shelf view of the library:
+one page per game with every version listed (the two PS1 BIOS revisions live
+on one "PlayStation 1 BIOS" page), plus honest `coming-soon` slots for
+platforms planned but not yet added. No downloads here — it's a shelf, not a store.
+
+```text
+arcade/catalog/
+├── games.json   # catalog data: one entry per game, versions[] per entry
+├── build.py     # zero-dependency generator: validates schema, renders HTML
+└── site/        # generated output: index.html (grid, filter by platform/status)
+                 #   + game/<id>.html (all versions in a table)
+```
+
+Rebuild it any time the registry or catalog changes:
+
+```bash
+cd arcade/catalog
+python3 build.py          # validates, renders to site/, link-checks output
+```
+
+Coming-soon entries carry zero download metadata by schema rule — the
+generator refuses to build if one sneaks in.
+
 ## Companion: saves/
 
 Game *save data* versioning lives in [`../saves/`](../saves/) ("git for save data"): snapshot, diff, and restore emulator save files, with cloud sync designed to ride on Castle's storage story. Arcade handles the *assets*; saves/ handles your *progress*.
