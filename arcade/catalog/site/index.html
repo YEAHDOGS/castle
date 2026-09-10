@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catalog — Castle Arcade Catalog</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#0d0f14;color:#e8e6df;
+font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:#8fd0ff}.wrap{max-width:960px;margin:0 auto;padding:24px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+h1{font-size:1.6rem;margin:.5rem 0}.filters{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
+select{background:#171a22;color:#e8e6df;border:1px solid #2c3140;border-radius:6px;padding:6px 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.card{background:#151923;border:1px solid #262c3d;border-radius:10px;padding:14px;display:block;text-decoration:none;color:inherit}
+.card:hover{border-color:#8fd0ff}.card h2{font-size:1.05rem;margin:0 0 6px}
+.meta{font-size:.8rem;color:#9aa3b2}.badge{display:inline-block;font-size:.72rem;font-weight:700;
+text-transform:uppercase;letter-spacing:.05em;border-radius:999px;padding:3px 10px;margin-top:8px}
+.badge.available{background:#123f26;color:#7ce8a8}.badge.coming-soon{background:#3d2f10;color:#ffd97c}
+table{width:100%;border-collapse:collapse;margin-top:14px;font-size:.9rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #262c3d;vertical-align:top}
+th{color:#9aa3b2;font-weight:600}.mono{font-family:ui-monospace,Consolas,monospace;font-size:.82rem;word-break:break-all}
+.crumbs{font-size:.85rem;color:#9aa3b2;margin-bottom:8px}footer{margin-top:32px;font-size:.78rem;color:#6b7280}
+.note{background:#151923;border:1px solid #262c3d;border-radius:8px;padding:12px 14px;font-size:.9rem;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header><h1>Castle Arcade Catalog</h1></header>
+<div class="filters">
+<label>Platform <select id="f-platform"><option value="">All</option><option value="Game Boy Advance">Game Boy Advance</option><option value="NES">NES</option><option value="Nintendo 64">Nintendo 64</option><option value="PlayStation">PlayStation</option><option value="Sega Genesis">Sega Genesis</option><option value="Super NES">Super NES</option></select></label>
+<label>Status <select id="f-status"><option value="">All</option>
+<option value="available">Available</option>
+<option value="coming-soon">Coming soon</option></select></label>
+</div>
+<div class="grid" id="grid"><a class="card" href="game/ps1-bios.html" data-platform="PlayStation" data-status="available"><h2>PlayStation 1 BIOS</h2><div class="meta">PlayStation &middot; bios</div><div class="meta" style="margin-top:6px">Official system firmware required for PlayStation 1 emulation. Kept in the local library for the user&#x27;s own emulators; verified against pinn</div><span class="badge available">available</span></a>
+<a class="card" href="game/gba-bios.html" data-platform="Game Boy Advance" data-status="available"><h2>Game Boy Advance BIOS</h2><div class="meta">Game Boy Advance &middot; bios</div><div class="meta" style="margin-top:6px">Official system firmware required for Game Boy Advance emulation. Kept in the local library for the user&#x27;s own emulators; verified against t</div><span class="badge available">available</span></a>
+<a class="card" href="game/alter-ego.html" data-platform="NES" data-status="available"><h2>Alter Ego</h2><div class="meta">NES &middot; rom</div><div class="meta" style="margin-top:6px">A popular logic-based puzzle platformer NES homebrew game. Freely distributable homebrew kept in the local library.</div><span class="badge available">available</span></a>
+<a class="card" href="game/snes-homebrew-picks.html" data-platform="Super NES" data-status="coming-soon"><h2>SNES Homebrew Picks</h2><div class="meta">Super NES &middot; rom</div><div class="meta" style="margin-top:6px">Curated slot for Super NES homebrew additions. Nothing listed yet — planned additions will appear here once they are added to the local libr</div><span class="badge coming-soon">coming soon</span></a>
+<a class="card" href="game/genesis-homebrew-picks.html" data-platform="Sega Genesis" data-status="coming-soon"><h2>Genesis Homebrew Picks</h2><div class="meta">Sega Genesis &middot; rom</div><div class="meta" style="margin-top:6px">Curated slot for Sega Genesis homebrew additions. Nothing listed yet — planned additions will appear here once they are added to the local l</div><span class="badge coming-soon">coming soon</span></a>
+<a class="card" href="game/n64-homebrew-picks.html" data-platform="Nintendo 64" data-status="coming-soon"><h2>N64 Homebrew Picks</h2><div class="meta">Nintendo 64 &middot; rom</div><div class="meta" style="margin-top:6px">Curated slot for Nintendo 64 homebrew additions. Nothing listed yet — planned additions will appear here once they are added to the local li</div><span class="badge coming-soon">coming soon</span></a></div>
+<script>
+const gp=document.getElementById('f-platform'),gs=document.getElementById('f-status');
+function apply(){document.querySelectorAll('.card').forEach(c=>{
+c.style.display=(!gp.value||c.dataset.platform===gp.value)&&(!gs.value||c.dataset.status===gs.value)?'':'none';});}
+gp.addEventListener('change',apply);gs.addEventListener('change',apply);
+</script>
+<footer>Castle Arcade catalog — a shelf view of the local library. No downloads, no tracking, no cookies.</footer>
+</div>
+</body>
+</html>
