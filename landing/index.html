@@ -48,17 +48,57 @@
       <a href="#top" class="active"><span>Top</span></a>
       <a href="#roadmap"><span>Roadmap</span></a>
       <a href="#building"><span>What we're building</span></a>
-      <a href="#notify"><span>Join the waitlist</span></a>
+      <a href="#notify"><span>More</span></a>
       <a href="./docs.html"><span>Docs</span></a>
     </nav>
 
-    <section class="panel" id="top" aria-label="Castle">
-      <div class="wrap">
-        <p class="eyebrow">DOGS &middot; Your data, your keep</p>
-        <h1>Make data yours again.</h1>
-        <p class="lede">A way to make data yours again.</p>
-        <p class="badge"><span class="pip" aria-hidden="true"></span> Work in progress &mdash; more information estimated by 2027</p>
-        <p><a class="scroll-hint" href="#roadmap">See where we are</a></p>
+    <section class="panel hero" id="top" aria-label="Castle">
+      <div class="wrap hero-copy">
+        <p class="eyebrow">DOGS &middot; Data Sovereignty</p>
+        <h1>Castle</h1>
+        <p class="price" aria-label="Price: 299 dollars">$299</p>
+        <h2 id="waitlist-h" class="waitlist-title">Join the waitlist</h2>
+        <form data-waitlist novalidate>
+          <div class="step" data-step="email">
+            <div class="fields">
+              <div>
+                <label for="email">Email address</label>
+                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
+              </div>
+              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
+            </div>
+            <p class="field-error" id="email-error" aria-live="polite"></p>
+            <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
+          </div>
+          <div class="step" data-step="code" hidden>
+            <div class="fields">
+              <div>
+                <label for="code">Confirmation code</label>
+                <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
+              </div>
+              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
+            </div>
+            <p class="field-error" id="code-error" aria-live="polite"></p>
+            <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
+          </div>
+          <div class="step" data-step="done" hidden>
+            <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
+            <p class="note">We'll email you when Castle wakes up from its nap.</p>
+          </div>
+        </form>
+        <p class="counter-line" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
+        <p><a class="scroll-hint light" href="#roadmap">See the plan</a></p>
+      </div>
+      <div class="hero-visual spin-stage" data-spin-stage>
+        <!-- HONEST NOTE: the spin below is 2.5D tilt + parallax on a flat
+             generated image, not a true 3D model. A real 360° spin needs a
+             glTF model of the Castle device later. -->
+        <div class="spin-tilt" data-spin>
+          <picture>
+            <source media="(orientation: portrait) and (max-width: 700px)" srcset="./castle-hero-portrait.webp" type="image/webp">
+            <img src="./castle-hero-landscape.webp" alt="The Castle device — a matte-black home server with a glowing port array and DOGS badge — levitating above a grey prehistoric stone in a futuristic skyscraper office, flying cars streaking past the windows" fetchpriority="high" decoding="async">
+          </picture>
+        </div>
       </div>
     </section>
 
@@ -101,39 +141,12 @@
       </div>
     </section>
 
-    <section class="panel dark notify" id="notify" aria-labelledby="notify-h">
+    <section class="panel dark tail" id="notify" aria-labelledby="notify-h">
       <div class="wrap">
-        <p class="eyebrow">Waitlist</p>
-        <h2 id="notify-h">Join the waitlist</h2>
-        <p class="lede">Castle is still being built. Leave your email and we'll send you a confirmation code when your spot opens.</p>
-        <form data-waitlist novalidate>
-          <div class="step" data-step="email">
-            <div class="fields">
-              <div>
-                <label for="email">Email address</label>
-                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
-              </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
-            </div>
-            <p class="field-error" id="email-error" aria-live="polite"></p>
-            <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
-          </div>
-          <div class="step" data-step="code" hidden>
-            <div class="fields">
-              <div>
-                <label for="code">Confirmation code</label>
-                <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
-              </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
-            </div>
-            <p class="field-error" id="code-error" aria-live="polite"></p>
-            <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
-          </div>
-          <div class="step" data-step="done" hidden>
-            <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
-            <p class="note">We'll email you when Castle wakes up from its nap.</p>
-          </div>
-        </form>
+        <p class="eyebrow">The plan</p>
+        <h2 id="notify-h">Still curious?</h2>
+        <p class="lede">One app, versioned saves, every game ever made. Read how it all fits together.</p>
+        <p><a href="./docs.html">Read the docs</a></p>
         <div class="foot">
           <p class="madeby">
             <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="24" height="24" loading="lazy" decoding="async">
