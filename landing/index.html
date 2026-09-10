@@ -48,7 +48,7 @@
       <a href="#top" class="active"><span>Top</span></a>
       <a href="#roadmap"><span>Roadmap</span></a>
       <a href="#building"><span>What we're building</span></a>
-      <a href="#notify"><span>Get notified</span></a>
+      <a href="#notify"><span>Join the waitlist</span></a>
       <a href="./docs.html"><span>Docs</span></a>
     </nav>
 
@@ -103,18 +103,36 @@
 
     <section class="panel dark notify" id="notify" aria-labelledby="notify-h">
       <div class="wrap">
-        <p class="eyebrow">Stay in the loop</p>
-        <h2 id="notify-h">Get notified</h2>
-        <p class="lede">Want to know when Castle wakes up from its nap? Leave your email.</p>
-        <form data-notify novalidate>
-          <div class="fields">
-            <div>
-              <label for="email">Email address</label>
-              <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
+        <p class="eyebrow">Waitlist</p>
+        <h2 id="notify-h">Join the waitlist</h2>
+        <p class="lede">Castle is still being built. Leave your email and we'll send you a confirmation code when your spot opens.</p>
+        <form data-waitlist novalidate>
+          <div class="step" data-step="email">
+            <div class="fields">
+              <div>
+                <label for="email">Email address</label>
+                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
+              </div>
+              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
             </div>
-            <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Notify me</span></button>
+            <p class="field-error" id="email-error" aria-live="polite"></p>
+            <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
           </div>
-          <p class="field-error" id="email-error" aria-live="polite"></p>
+          <div class="step" data-step="code" hidden>
+            <div class="fields">
+              <div>
+                <label for="code">Confirmation code</label>
+                <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
+              </div>
+              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
+            </div>
+            <p class="field-error" id="code-error" aria-live="polite"></p>
+            <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
+          </div>
+          <div class="step" data-step="done" hidden>
+            <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
+            <p class="note">We'll email you when Castle wakes up from its nap.</p>
+          </div>
         </form>
         <div class="foot">
           <p class="madeby">
