@@ -32,7 +32,13 @@ bootloader:
 users:
   username: "castle"
   oemUser: false
-  password: "wearedogs"
+# SECURITY: Castle ships NO default install password. Set a strong, unique
+# password here before running autoinstall-cachy.sh -- the installer bakes
+# this value into the new system, and any shared default committed to the
+# repo is known to everyone with read access. The regression test
+# clonewars/scripts/cachyos/test-config.sh rejects known weak defaults
+# (wearedogs, password, 123456, ...) so a lazy value cannot slip back in.
+  password: "CHANGE-ME-before-first-boot"
   autologin: false
 
 # Automated Package Selection (Minimal KDE + UFW)
