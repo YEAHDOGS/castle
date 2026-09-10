@@ -107,6 +107,17 @@ for devices that can't run Tailscale.
    TEXT --user NAME` CLI; 23 regression tests green, temp dirs only.
    Step 3 fully done — email + POS webhook + scan/OCR all land in the
    shared receipts/ layout.)
+   Search lane (2026-09-09): `vault/receiptsearch.py` closes the vision's
+   "every receipt is searchable" — `vault.py receipts-search USER
+   [--merchant SUB] [--min-total X] [--max-total X] [--since DATE]
+   [--until DATE] [--source email|pos-webhook|scan] [--limit N]` is a
+   read-only metadata query over ONE user's own index.jsonl (never opens
+   receipt.json, .eml, raw.json, images, or attachments; writes nothing,
+   so reads don't spam the activity log). Zero implicit trust: no
+   cross-user search, unknown totals never match a total filter (unknown
+   is not zero), float money refused at the filter, legacy email index
+   rows normalize to source "email". 23 fixture-based regression tests
+   green, temp dirs only.
    API-token auth (2026-09-09): `vault/apiauth.py` wires the DOGS Token
    Authority into the ingestion trust boundary — scoped, short-lived,
    revocable bearer tokens (`iss=aud=castle-vault`, sub = the vault user,

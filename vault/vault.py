@@ -518,6 +518,26 @@ def main(argv=None):
     p.add_argument("--api-token", default=None,
                    help="scoped bearer token (required if the vault root "
                         "has api-auth on for scan)")
+    p = sub.add_parser("receipts-search",
+                       help="search ONE user's own receipt metadata "
+                            "(merchant, total, date, source) — read-only, "
+                            "never opens bodies or attachments "
+                            "(FAMILY-DATA-VAULT: \"every receipt is "
+                            "searchable\")")
+    p.add_argument("user", help="vault user to search (your own vault only)")
+    p.add_argument("--merchant", default=None,
+                   help="case-insensitive substring on merchant name")
+    p.add_argument("--min-total", default=None,
+                   help="decimal string, e.g. 10.00")
+    p.add_argument("--max-total", default=None,
+                   help="decimal string, e.g. 99.99")
+    p.add_argument("--since", default=None, help="YYYY-MM-DD (ingested date)")
+    p.add_argument("--until", default=None, help="YYYY-MM-DD (ingested date)")
+    p.add_argument("--source", default=None,
+                   choices=("email", "pos-webhook", "scan"),
+                   help="ingestion source filter")
+    p.add_argument("--limit", type=int, default=100,
+                   help="max results (default 100)")
     p = sub.add_parser("mint-api-token",
                        help="mint a scoped bearer token for one user vault "
                             "+ one ingestion purpose (vault/apiauth.py)")
@@ -821,6 +841,14 @@ def main(argv=None):
                              api_token=a.api_token)
             print("scan %s -> %s's vault (merchant=%s total=%s)" % (
                 r["id"], a.user, r["merchant"], r["total"]))
+        elif a.cmd == "receipts-search":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import receiptsearch as _rsearch  # noqa: E402
+            print(_rsearch.search_json(
+                a.dir, a.user, merchant=a.merchant,
+                min_total=a.min_total, max_total=a.max_total,
+                since=a.since, until=a.until, source=a.source,
+                limit=a.limit))
         elif a.cmd == "mint-api-token":
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import apiauth as _aa  # noqa: E402
