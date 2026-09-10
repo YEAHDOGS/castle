@@ -72,9 +72,9 @@ app as everything else.
 ## Router duties (the unglamorous checklist)
 
 DHCP, DNS, stateful firewall, VLANs + isolated guest network, QoS/traffic
-shaping (game traffic first, bulk downloads last), WireGuard server for
-remote access *and* WireGuard client for outbound VPN, per-device bandwidth
-accounting. The Kennel's isolated phone segment and the Drive Librarian's
+shaping (game traffic first, bulk downloads last), Tailscale for remote
+access (plain WireGuard peer as break-glass backup — see
+`docs/modules/app.md`), per-device bandwidth accounting. The Kennel's isolated phone segment and the Drive Librarian's
 untrusted-media stance both ride on these VLANs.
 
 ## What the dashboard shows
