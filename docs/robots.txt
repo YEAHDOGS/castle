@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /thanks.html
 
-Sitemap: https://castle.wearedogs.net/sitemap.xml
+Sitemap: https://yeahdogs.github.io/castle/sitemap.xml
