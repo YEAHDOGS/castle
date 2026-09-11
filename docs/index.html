@@ -3,286 +3,312 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Castle — Your data, your keep</title>
-  <meta name="description" content="Castle is a way to make data yours again — a personal keep for your data with a portal, a drawbridge, and distributed nodes. Work in progress — more information estimated by 2027.">
+  <title>Castle — A router replacement with your cloud built in</title>
+  <meta name="description" content="Castle is a router replacement with your cloud built in. One box behind your modem: routing, storage, VPN, ad blocking, and a retro arcade. Work in progress. More by 2027.">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#faf9f5">
+  <meta name="theme-color" content="#08090c">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="canonical" href="https://castle.wearedogs.net/">
+  <link rel="canonical" href="https://yeahdogs.github.io/castle/">
   <meta property="og:site_name" content="Castle">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Castle — Your data, your keep">
-  <meta property="og:description" content="Castle is a way to make data yours again — a personal keep for your data with a portal, a drawbridge, and distributed nodes. Work in progress — more information estimated by 2027.">
-  <meta property="og:url" content="https://castle.wearedogs.net/">
-  <meta property="og:image" content="https://castle.wearedogs.net/og.png">
+  <meta property="og:title" content="Castle — A router replacement with your cloud built in">
+  <meta property="og:description" content="One box behind your modem. It routes your home, stores your life, and answers to no one but you. Work in progress.">
+  <meta property="og:url" content="https://yeahdogs.github.io/castle/">
+  <meta property="og:image" content="https://yeahdogs.github.io/castle/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Castle — Your data, your keep — work in progress, more information by 2027">
+  <meta property="og:image:alt" content="Castle — a router replacement with your cloud built in — work in progress, more by 2027">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./landing.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Castle",
+    "description": "A router replacement with built-in local network storage: routing, firewall, VPN, ad blocking, and a retro arcade. Work in progress.",
+    "brand": { "@type": "Brand", "name": "DOGS", "url": "https://wearedogs.net" },
+    "manufacturer": { "@type": "Organization", "name": "DOGS", "url": "https://wearedogs.net" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is Castle?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Castle is a router replacement with your cloud built in. One box behind your ISP modem handles routing, storage, VPN, ad blocking, and a retro arcade for your whole home network." }
+      },
+      {
+        "@type": "Question",
+        "name": "When does Castle ship?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Castle is a work in progress. More information is estimated by 2027." }
+      },
+      {
+        "@type": "Question",
+        "name": "What will Castle cost?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The target price is $299, with no subscription for the core." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Castle replace my current router?",
+        "acceptedAnswer": { "@type": "Answer", "text": "It sits behind your modem or ONT and takes over routing, firewall, DNS, and storage for your LAN." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is there an app?",
+        "acceptedAnswer": { "@type": "Answer", "text": "One Castle app for iOS, Android, and web manages the box, your files, and the people on your network." }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <a class="skip" href="#content">Skip to content</a>
-  <header class="site">
-    <div class="nav">
-      <div class="brand">
-        <a class="wordmark" href="https://wearedogs.net">
-          <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="34" height="34" decoding="async">
-          <span>DOGS</span>
-        </a>
-        <span class="sep" aria-hidden="true">/</span>
-        <a class="project" href="./">Castle</a>
-      </div>
-      <nav aria-label="Primary">
-        <a href="./docs.html">Docs</a>
-        <a href="./privacy.html">Privacy</a>
-        <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
-      </nav>
-    </div>
-  </header>
-  <main id="content">
-    <nav class="dots" aria-label="Sections">
-      <a href="#top" class="active"><span>Top</span></a>
-      <a href="#roadmap"><span>Roadmap</span></a>
-      <a href="#building"><span>What we're building</span></a>
-      <a href="#projects"><span>Projects</span></a>
-      <a href="#notify"><span>More</span></a>
-      <a href="./docs.html"><span>Docs</span></a>
-    </nav>
+  <div class="progress" aria-hidden="true"><span data-progress></span></div>
 
-    <section class="panel hero" id="top" aria-label="Castle">
-      <div class="wrap hero-copy">
-        <p class="eyebrow">DOGS &middot; Data Sovereignty</p>
-        <h1>Castle</h1>
-        <p class="price" aria-label="Price: 299 dollars">$299</p>
-        <h2 id="waitlist-h" class="waitlist-title">Join the waitlist</h2>
-        <form data-waitlist novalidate>
+  <header class="topbar" data-topbar>
+    <a class="brand" href="./" aria-label="Castle home">
+      <img src="./dogs-logo.svg" alt="DOGS logo" width="28" height="28" decoding="async">
+      <span class="brand-word">CASTLE</span>
+    </a>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#plan">Plan</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
+    </nav>
+    <a class="cta-mini" href="#waitlist">Waitlist</a>
+  </header>
+
+  <main id="content">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="top" aria-label="Castle">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow reveal">DOGS &middot; Data sovereignty</p>
+          <h1 class="reveal">Castle</h1>
+          <p class="sub reveal">A router replacement with your cloud built in.</p>
+          <p class="lede reveal">One box behind your modem. It routes your home, stores your life, and answers to no one but you.</p>
+          <p class="price reveal">Target price <strong>$299</strong></p>
+          <p class="hero-cta reveal">
+            <a class="btn" href="#waitlist">Join the waitlist</a>
+            <a class="scroll-hint" href="#plan">See the plan</a>
+          </p>
+          <p class="status reveal"><span class="pulse" aria-hidden="true"></span> Work in progress. More by 2027.</p>
+        </div>
+        <div class="hero-visual reveal" data-spin-stage>
+          <!-- HONEST NOTE: the tilt below is 2.5D on a flat generated image,
+               not a true 3D model. A real 360° view needs a glTF model later. -->
+          <div class="hud-frame" aria-hidden="true">
+            <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+          </div>
+          <div class="spin-tilt" data-spin>
+            <picture>
+              <source media="(orientation: portrait) and (max-width: 700px)" srcset="./castle-hero-portrait.webp" type="image/webp">
+              <img src="./castle-hero-landscape.webp" alt="The Castle device, a matte-black home server with a glowing port array, rendered above a stone plinth" fetchpriority="high" decoding="async">
+            </picture>
+          </div>
+          <p class="drag-hint" aria-hidden="true">Drag to inspect</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ THE PLAN: one module per beat ============ -->
+    <section class="plan" id="plan" aria-labelledby="plan-h">
+      <div class="plan-head">
+        <p class="eyebrow reveal">The plan</p>
+        <h2 id="plan-h" class="reveal">Nine modules. One keep.</h2>
+        <div class="path reveal" aria-label="Signal path: modem to gatehouse to armoury to vault">
+          <span>Modem</span><i aria-hidden="true"></i><span>Gatehouse</span><i aria-hidden="true"></i><span>Armoury</span><i aria-hidden="true"></i><span>Vault</span>
+        </div>
+      </div>
+
+      <article class="beat reveal" aria-labelledby="b1">
+        <p class="beat-no" aria-hidden="true">01</p>
+        <div class="beat-body">
+          <p class="eyebrow">Gatehouse</p>
+          <h3 id="b1">The router, rebuilt.</h3>
+          <p>Every packet in your home passes through your keep. Edge hardware, packet management, your front door.</p>
+        </div>
+      </article>
+
+      <article class="beat flip reveal" aria-labelledby="b2">
+        <p class="beat-no" aria-hidden="true">02</p>
+        <div class="beat-body">
+          <p class="eyebrow">Data Vault</p>
+          <h3 id="b2">Your cloud, at home.</h3>
+          <p>Files, photos, and backups on your own LAN. Self-hosted sync, no monthly fee.</p>
+        </div>
+      </article>
+
+      <article class="beat reveal" aria-labelledby="b3">
+        <p class="beat-no" aria-hidden="true">03</p>
+        <div class="beat-body">
+          <p class="eyebrow">LAN cache</p>
+          <h3 id="b3">Download once.</h3>
+          <p>A game or update pulled once serves the whole house from the keep, not the internet.</p>
+        </div>
+      </article>
+
+      <article class="beat flip reveal" aria-labelledby="b4">
+        <p class="beat-no" aria-hidden="true">04</p>
+        <div class="beat-body">
+          <p class="eyebrow">Drawbridge</p>
+          <h3 id="b4">An encrypted road home.</h3>
+          <p>Reach your keep from anywhere. Tailscale first, WireGuard as the break-glass backup.</p>
+        </div>
+      </article>
+
+      <article class="beat reveal" aria-labelledby="b5">
+        <p class="beat-no" aria-hidden="true">05</p>
+        <div class="beat-body">
+          <p class="eyebrow">Pi-hole DNS</p>
+          <h3 id="b5">Ads die at the gate.</h3>
+          <p>Trackers, ad networks, and malicious domains dropped before they reach a screen.</p>
+        </div>
+      </article>
+
+      <article class="beat flip reveal" aria-labelledby="b6">
+        <p class="beat-no" aria-hidden="true">06</p>
+        <div class="beat-body">
+          <p class="eyebrow">Armoury</p>
+          <h3 id="b6">The perimeter.</h3>
+          <p>A firewall at the edge. Access signed on an immutable ledger.</p>
+        </div>
+      </article>
+
+      <article class="beat reveal" aria-labelledby="b7">
+        <p class="beat-no" aria-hidden="true">07</p>
+        <div class="beat-body">
+          <p class="eyebrow">Arcade</p>
+          <h3 id="b7">Every game you own, on a shelf.</h3>
+          <p>A retro library with a digital-bookshelf feel. Saves versioned like git.</p>
+        </div>
+      </article>
+
+      <article class="beat flip reveal" aria-labelledby="b8">
+        <p class="beat-no" aria-hidden="true">08</p>
+        <div class="beat-body">
+          <p class="eyebrow">Identity</p>
+          <h3 id="b8">Profiles with boundaries.</h3>
+          <p>Admins run the keep. Everyone else gets their own rooms, nothing more.</p>
+        </div>
+      </article>
+
+      <article class="beat reveal" aria-labelledby="b9">
+        <p class="beat-no" aria-hidden="true">09</p>
+        <div class="beat-body">
+          <p class="eyebrow">LoRa mesh</p>
+          <h3 id="b9">Reachable off the grid.</h3>
+          <p>Radio nodes keep the castle in touch when the internet is gone.</p>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============ ROADMAP ============ -->
+    <section class="road" id="roadmap" aria-labelledby="road-h">
+      <div class="wrap">
+        <p class="eyebrow reveal">Roadmap</p>
+        <h2 id="road-h" class="reveal">The road to 2027</h2>
+        <ol class="timeline reveal">
+          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Idea</strong><span class="when">2025</span></li>
+          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Repo live</strong><span class="when">2026</span></li>
+          <li class="now"><span class="dot" aria-hidden="true"></span><strong>Building</strong><span class="when">Now</span></li>
+          <li class="future"><span class="dot" aria-hidden="true"></span><strong>Launch</strong><span class="when">Est. 2027</span></li>
+        </ol>
+        <p class="road-note reveal">One Castle app for iOS, Android, and web runs the box, your files, and your people.</p>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="faq" id="faq" aria-labelledby="faq-h">
+      <div class="wrap">
+        <p class="eyebrow reveal">Questions</p>
+        <h2 id="faq-h" class="reveal">Asked, answered.</h2>
+        <div class="faq-list">
+          <details class="reveal" open>
+            <summary>What is Castle?</summary>
+            <p>A router replacement with your cloud built in. One box behind your modem handles routing, storage, VPN, ad blocking, and a retro arcade for your whole home network.</p>
+          </details>
+          <details class="reveal">
+            <summary>When does it ship?</summary>
+            <p>Castle is a work in progress. More information is estimated by 2027.</p>
+          </details>
+          <details class="reveal">
+            <summary>What will it cost?</summary>
+            <p>Target price: $299, with no subscription for the core.</p>
+          </details>
+          <details class="reveal">
+            <summary>Does it replace my current router?</summary>
+            <p>It sits behind your modem or ONT and takes over routing, firewall, DNS, and storage for your LAN.</p>
+          </details>
+          <details class="reveal">
+            <summary>Is there an app?</summary>
+            <p>One Castle app for iOS, Android, and web manages the box, your files, and the people on your network.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WAITLIST ============ -->
+    <section class="join" id="waitlist" aria-labelledby="waitlist-h">
+      <div class="wrap">
+        <p class="eyebrow reveal">Waitlist</p>
+        <h2 id="waitlist-h" class="reveal">First through the gate.</h2>
+        <p class="lede reveal">The waitlist opens soon. Leave an email and we will tell you when Castle wakes up.</p>
+        <form class="reveal" data-waitlist novalidate>
           <div class="step" data-step="email">
             <div class="fields">
-              <div>
+              <div class="field">
                 <label for="email">Email address</label>
                 <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
               </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
+              <button type="submit" class="btn"><span class="spinner" aria-hidden="true"></span><span>Notify me</span></button>
             </div>
             <p class="field-error" id="email-error" aria-live="polite"></p>
-            <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
           </div>
           <div class="step" data-step="code" hidden>
             <div class="fields">
-              <div>
+              <div class="field">
                 <label for="code">Confirmation code</label>
                 <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
               </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
+              <button type="submit" class="btn"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
             </div>
             <p class="field-error" id="code-error" aria-live="polite"></p>
             <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
           </div>
           <div class="step" data-step="done" hidden>
-            <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
-            <p class="note">We'll email you when Castle wakes up from its nap.</p>
+            <p class="confirm-line" role="status">You are on the list.</p>
+            <p class="note">We will email you when Castle wakes up.</p>
           </div>
         </form>
-        <p class="counter-line" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
-        <p><a class="scroll-hint light" href="#roadmap">See the plan</a></p>
-      </div>
-      <div class="hero-visual spin-stage" data-spin-stage>
-        <!-- HONEST NOTE: the spin below is 2.5D tilt + parallax on a flat
-             generated image, not a true 3D model. A real 360° spin needs a
-             glTF model of the Castle device later. -->
-        <div class="spin-tilt" data-spin>
-          <picture>
-            <source media="(orientation: portrait) and (max-width: 700px)" srcset="./castle-hero-portrait.webp" type="image/webp">
-            <img src="./castle-hero-landscape.webp" alt="The Castle device — a matte-black home server with a glowing port array and DOGS badge — levitating above a grey prehistoric stone in a futuristic skyscraper office, flying cars streaking past the windows" fetchpriority="high" decoding="async">
-          </picture>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel alt" id="roadmap" aria-labelledby="roadmap-h">
-      <div class="wrap">
-        <p class="eyebrow">Roadmap</p>
-        <h2 id="roadmap-h">The road to 2027</h2>
-        <p class="lede" style="margin-bottom:0">Where Castle is on its way to a proper launch.</p>
-        <ol class="timeline">
-          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Idea</strong><span class="when">2025 &mdash; done</span></li>
-          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Repo live</strong><span class="when">2026 &mdash; done</span></li>
-          <li class="now"><span class="dot" aria-hidden="true"></span><strong>Building</strong><span class="when">Now &mdash; in progress</span></li>
-          <li class="future"><span class="dot" aria-hidden="true"></span><strong>More information</strong><span class="when">Estimated 2027</span></li>
-        </ol>
-      </div>
-    </section>
-
-    <section class="panel" id="building" aria-labelledby="building-h">
-      <div class="wrap">
-        <p class="eyebrow">The plan</p>
-        <h2 id="building-h">What we're building</h2>
-        
-        <div class="grid">
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>The Portal</h3>
-            <p>A public web door to your keep — what you choose to share, served on your terms.</p>
-          </div>
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>The Drawbridge</h3>
-            <p>Encrypted WireGuard / Tailscale access for your own devices. Raised by default.</p>
-          </div>
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Off-grid nodes</h3>
-            <p>Distributed LoRa radio nodes keep the castle reachable even when the internet isn't.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel alt" id="projects" aria-labelledby="projects-h">
-      <div class="wrap">
-        <p class="eyebrow">From the Watchtower</p>
-        <h2 id="projects-h">More from DOGS</h2>
-        <p class="lede">Every project has a live hub in the Watchtower &mdash; pick a tile.</p>
-        <div class="grid">
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/40/" aria-label="40 project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>40</h3>
-            <p>A social media that deletes itself every 40 days.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/castle/" aria-label="Castle project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Castle</h3>
-            <p>A way to make your data yours.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/divorce/" aria-label="Divorce project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Divorce</h3>
-            <p>An easy way to get an uncontested divorce in Oklahoma.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/forge/" aria-label="Forge project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Forge</h3>
-            <p>A guided wizard for forming your LLC (Oklahoma first). Files nothing.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/icecream/" aria-label="Ice Cream project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Ice Cream</h3>
-            <p>Deep research on the global ice cream market.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/id/" aria-label="DOGS ID project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>DOGS ID</h3>
-            <p>The age-verification gate for the DOGS ecosystem.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/mirror/" aria-label="Mirror project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Mirror</h3>
-            <p>Smart-mirror ambient dashboard: live tickers, paper trading stats.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/news/" aria-label="News project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>News</h3>
-            <p>An independent news platform.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/paper/" aria-label="Paper project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Paper</h3>
-            <p>Paper-trading app: crypto, stocks, options, futures. Fake money, real lessons.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/phoenix/" aria-label="Phoenix project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Phoenix</h3>
-            <p>A fresh start for Windows and Android devices.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/playback/" aria-label="Playback project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Playback</h3>
-            <p>A DJ web interface with music streaming and hardware support.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/printshop/" aria-label="Print Shop project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Print Shop</h3>
-            <p>3D printable assets: STL file sales + print-on-demand.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/proof/" aria-label="Proof project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Proof</h3>
-            <p>The facts around the world's vices.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/radio/" aria-label="Radio project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Radio</h3>
-            <p>24/7 community radio stations from Spotify playlists.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/tower/" aria-label="Tower project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Tower</h3>
-            <p>DOGS mission control &mdash; live build and repo status dashboard.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/watchtower/" aria-label="Watchtower project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Watchtower</h3>
-            <p>Uptime + end-to-end monitor for all YEAHDOGS websites.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/wax/" aria-label="Wax project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Wax</h3>
-            <p>Real-time vinyl drop alerts, collection cataloguing, Discogs price tracking.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-          <a class="card" href="https://yeahdogs.github.io/tower/projects/yeahdogs.github.io/" aria-label="DOGS Home project hub in the Watchtower">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>DOGS Home</h3>
-            <p>The org root &mdash; forwards to the Watchtower dashboard.</p>
-            <span class="cardlink">Open hub <span aria-hidden="true">&rarr;</span></span>
-          </a>
-        </div>
-        <p class="muted" style="margin-top:2.5rem">All of it, live: <a href="https://yeahdogs.github.io/tower/">the Watchtower</a>.</p>
-      </div>
-    </section>
-
-    <section class="panel dark tail" id="notify" aria-labelledby="notify-h">
-      <div class="wrap">
-        <p class="eyebrow">The plan</p>
-        <h2 id="notify-h">Still curious?</h2>
-        <p class="lede">One app, versioned saves, every game ever made. Read how it all fits together.</p>
-        <p><a href="./docs.html">Read the docs</a></p>
-        <div class="foot">
-          <p class="madeby">
-            <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="24" height="24" loading="lazy" decoding="async">
-            This product was made by <a href="https://wearedogs.net">DOGS</a>
-          </p>
-          <nav aria-label="Footer">
-            <a href="./">Home</a>
-            <a href="./docs.html">Docs</a>
-            <a href="./privacy.html">Privacy</a>
-            <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
-          </nav>
-          <p>&copy; 2026 DOGS &middot; Castle is a work in progress &middot; more by 2027.</p>
-        </div>
+        <p class="counter-line reveal" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
       </div>
     </section>
   </main>
-  <script src="./app.js" defer></script>
+
+  <a class="sticky-cta" href="#waitlist" data-sticky-cta hidden>Join the waitlist</a>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p class="madeby">
+        <img src="./dogs-logo.svg" alt="DOGS logo" width="24" height="24" loading="lazy" decoding="async">
+        This product was made by <a href="https://wearedogs.net">DOGS</a>
+      </p>
+      <p class="nocookies">No cookies. No trackers.</p>
+      <nav aria-label="Footer">
+        <a href="./">Home</a>
+        <a href="./docs.html">Docs</a>
+        <a href="./privacy.html">Privacy</a>
+        <a href="./terms.html">Terms</a>
+        <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
+      </nav>
+      <p class="fine">&copy; 2026 DOGS &middot; Castle is a work in progress &middot; more by 2027.</p>
+    </div>
+  </footer>
+
+  <script src="./landing.js" defer></script>
 </body>
 </html>
