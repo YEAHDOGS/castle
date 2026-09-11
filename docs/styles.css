@@ -144,6 +144,14 @@ h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; mar
 .card p { margin: 0; font-size: 0.98rem; color: var(--ink-soft); }
 .card a.cardlink { font-family: var(--font-display); font-size: 0.9rem; margin-top: 0.85rem; }
 
+/* ---- project cards: whole-card links out to Watchtower hubs */
+a.card { text-decoration: none; }
+a.card:hover { color: inherit; border-color: var(--accent); }
+a.card .cardlink {
+  display: inline-block; margin-top: 0.85rem;
+  font-family: var(--font-display); font-size: 0.9rem; color: var(--accent);
+}
+
 /* ---- waitlist form (dark panels) */
 form[data-waitlist] { margin-top: 1.75rem; max-width: 40rem; }
 .fields { display: flex; gap: 0.75rem; align-items: flex-end; }
