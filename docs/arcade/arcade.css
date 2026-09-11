@@ -1,0 +1,191 @@
+/* Castle Arcade — library shelf + game pages.
+   Dark HUD theme inherits tokens from ../landing.css.
+   Motion: transform/opacity only, 60fps, never blocks input.
+   No external dependencies. Phone-first (390px). */
+
+.arcade-main { padding-top: var(--topbar-h); }
+
+/* ---------- shelf header ---------- */
+.shelf-head { padding: 3.5rem 0 0; }
+.shelf-head h1 { font-size: clamp(2.2rem, 9vw, 4rem); margin: 0 0 0.75rem; }
+.shelf-head .lede { max-width: 30rem; }
+
+/* ---------- coverflow shelf ---------- */
+.shelf-stage {
+  position: relative;
+  margin: 0 calc(50% - 50vw);
+  padding: 2.5rem 0 1rem;
+}
+.shelf {
+  display: flex;
+  gap: clamp(1rem, 4vw, 2.5rem);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 50vw;
+  padding: 1rem 50vw 2.5rem;
+  perspective: 1400px;
+  scrollbar-width: none;
+  cursor: grab;
+}
+.shelf::-webkit-scrollbar { display: none; }
+.shelf:active { cursor: grabbing; }
+
+.case {
+  flex: 0 0 auto;
+  width: clamp(180px, 52vw, 250px);
+  aspect-ratio: 3 / 4;
+  scroll-snap-align: center;
+  text-decoration: none;
+  outline-offset: 4px;
+  will-change: transform;
+}
+.case:focus-visible { outline: 2px solid var(--cyan); border-radius: 6px; }
+.case-inner {
+  position: relative;
+  width: 100%; height: 100%;
+  transform-style: preserve-3d;
+}
+.case-front, .case-back {
+  position: absolute; inset: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.case-back { transform: rotateY(180deg); }
+.case-front svg { width: 100%; height: 100%; display: block; }
+.case-back .back-title {
+  height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  writing-mode: vertical-rl;
+  font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.4em;
+  text-transform: uppercase; color: var(--muted);
+  background:
+    linear-gradient(180deg, rgba(255,139,61,0.08), transparent 40%),
+    var(--bg-2);
+}
+.case-tag {
+  position: absolute; top: 0.6rem; left: 0.6rem; z-index: 2;
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.18em;
+  text-transform: uppercase; padding: 0.3rem 0.55rem;
+  background: rgba(8,9,12,0.85); border: 1px solid var(--line);
+  color: var(--muted); border-radius: 3px;
+}
+.case-tag.owned { color: var(--orange); border-color: rgba(255,139,61,0.45); }
+.case-tag.soon { color: var(--cyan); border-color: rgba(63,224,208,0.45); }
+
+/* shelf floor line */
+.shelf-floor {
+  height: 2px; margin: -0.5rem auto 0; max-width: 60rem;
+  background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent);
+}
+
+/* shelf info readout */
+.shelf-info {
+  text-align: center;
+  padding: 1.25rem 1rem 0;
+  min-height: 5.5rem;
+}
+.shelf-info .t {
+  font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; margin: 0;
+}
+.shelf-info .m {
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--muted); margin: 0.4rem 0 0;
+}
+.shelf-info .open-hint {
+  display: inline-block; margin-top: 0.6rem;
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--cyan); text-decoration: none;
+}
+
+/* shelf controls */
+.shelf-nav {
+  display: flex; justify-content: center; gap: 0.75rem;
+  padding: 0.5rem 0 1rem;
+}
+.shelf-nav button {
+  font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink);
+  background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  padding: 0.6rem 1.1rem; cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.shelf-nav button:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* legend */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; justify-content: center;
+  padding: 1rem 1rem 3rem;
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.legend .dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: baseline; }
+.dot.owned { background: var(--orange); }
+.dot.missing { background: var(--faint); }
+.dot.soon { background: var(--cyan); }
+
+/* ---------- game pages ---------- */
+.game-hero { padding: 3.5rem 0 1.5rem; }
+.game-hero h1 { font-size: clamp(2rem, 8.5vw, 3.4rem); margin: 0 0 0.6rem; }
+.game-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
+.chip {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 3px; padding: 0.35rem 0.65rem;
+}
+.chip.owned { color: var(--orange); border-color: rgba(255,139,61,0.45); }
+.chip.soon { color: var(--cyan); border-color: rgba(63,224,208,0.45); }
+
+.versions { padding: 1rem 0 2rem; }
+.version {
+  display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 1rem; align-items: center;
+  padding: 1.1rem 0; border-top: 1px solid var(--line);
+}
+.version:last-child { border-bottom: 1px solid var(--line); }
+.version .vn { font-weight: 700; font-size: 1.05rem; margin: 0; }
+.version .vd {
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin: 0.25rem 0 0;
+}
+.badge {
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.18em;
+  text-transform: uppercase; padding: 0.4rem 0.7rem; border-radius: 3px;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.badge.owned { color: var(--orange); border-color: rgba(255,139,61,0.5); }
+.badge.missing { color: var(--faint); }
+.badge.soon {
+  color: #08090c; background: var(--cyan); border-color: var(--cyan); font-weight: 700;
+}
+.version .note {
+  grid-column: 1 / -1; color: var(--muted); font-size: 0.92rem; margin: 0.35rem 0 0;
+  max-width: 36rem;
+}
+
+.src-note {
+  color: var(--faint); font-size: 0.82rem; max-width: 38rem;
+  padding: 0 0 1rem;
+}
+.src-note a { color: var(--faint); }
+
+.back-row { padding: 0 0 3.5rem; }
+.back-row a {
+  font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none;
+}
+
+/* footer spacing for arcade pages */
+.arcade-foot { border-top: 1px solid var(--line); margin-top: 1rem; }
+
+@media (min-width: 720px) {
+  .shelf-info .t { font-size: 1.6rem; }
+  .version { grid-template-columns: 1fr auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case { transform: none !important; }
+}
