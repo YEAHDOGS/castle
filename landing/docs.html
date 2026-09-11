@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Castle docs — One app, every save, every version</title>
+  <meta name="description" content="How Castle works: one app on your phone and desktop, Chains versioning for your game saves, the Arcade library with every version of every game, and Castle OS as the keep that holds it all.">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#faf9f5">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://castle.wearedogs.net/docs.html">
+  <meta property="og:site_name" content="Castle">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Castle docs — One app, every save, every version">
+  <meta property="og:description" content="How Castle works: one app, Chains save versioning, the Arcade library, and Castle OS.">
+  <meta property="og:url" content="https://castle.wearedogs.net/docs.html">
+  <meta property="og:image" content="https://castle.wearedogs.net/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="site">
+    <div class="nav">
+      <div class="brand">
+        <a class="wordmark" href="https://wearedogs.net">
+          <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="34" height="34" decoding="async">
+          <span>DOGS</span>
+        </a>
+        <span class="sep" aria-hidden="true">/</span>
+        <a class="project" href="./">Castle</a>
+      </div>
+      <nav aria-label="Primary">
+        <a href="./docs.html" aria-current="page">Docs</a>
+        <a href="./privacy.html">Privacy</a>
+        <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="content">
+    <section class="panel" aria-label="Castle documentation">
+      <div class="wrap prose">
+        <p class="eyebrow">Documentation</p>
+        <h1>One app. Every save. Every version.</h1>
+        <p class="lede">Castle is a personal keep for your data that lives on your home network — and its first room is a retro game library done right.</p>
+        <p class="badge"><span class="pip" aria-hidden="true"></span> Work in progress &mdash; design published early, build in flight</p>
+
+        <h2 id="one-app">One Castle app</h2>
+        <p>Not six apps. One. The Castle app runs on your phone and your desktop, and it stays snappy by staying thin: it's a library browser and a sync client, not an emulator stuffed into a trench coat.</p>
+        <p>When you tap a game, the app hands the actual playing to software built for it. On Android it launches RetroArch with the right game and core. On desktop it fetches emulator cores on demand — only the ones for systems you actually play — and runs them in-app. Same library, same saves, whichever screen is closest.</p>
+
+        <h2 id="chains">Chains: git for your save data</h2>
+        <p>Every game stores its saves differently — different files, different slots, different folders per emulator. Chains doesn't care. Like git, it treats each save file as an opaque blob: it never tries to understand the format, it just snapshots it.</p>
+        <p>Each snapshot captures a game's <em>whole</em> save bundle at one moment — every slot, every file — plus a fingerprint (hash) of each file, a timestamp, and a pointer to the previous snapshot. Those pointers form a chain you can walk backwards: last Tuesday's save is always one tap away.</p>
+        <p>The fingerprints do one more job: corruption detection. If a live save suddenly shrinks to nothing or zeroes out — the classic signs of a corrupted file — Chains spots the mismatch against the last snapshot, quarantines the bad files, and offers a one-tap rollback to the last good one. You may never even notice it happened.</p>
+        <p>Restore an old snapshot and keep playing, and the next snapshot simply points at it — the timeline forks, and both branches survive. Nothing is ever deleted, so there is no wrong move.</p>
+
+        <h2 id="arcade">Castle Arcade: one game, every version</h2>
+        <p>The Arcade is the library view: pick a game and see <em>every</em> version of it in one place — the original release, the ports, the remasters — each marked <strong>owned</strong>, <strong>missing</strong>, or <strong>coming soon</strong>.</p>
+        <p>Take <em>The Legend of Zelda: Ocarina of Time</em>: Nintendo 64, GameCube, Nintendo 3DS&hellip; and now the full Switch&nbsp;2 remake, announced at the June 2026 Nintendo Direct and releasing November 5, 2026. On the Arcade's Zelda page it sits right there with the rest, flagged <strong>coming soon</strong>, so when you're deciding which version to play, the future is part of the picture — not a surprise.</p>
+
+        <h2 id="castle-os">Castle OS: the keep itself</h2>
+        <p>Under all of this sits Castle OS, running on a machine on your home network. It's the source of truth: the ROM library lives there, the Chains snapshots live there, and your phone and desktop are just windows into it. Reach it from anywhere over an encrypted Tailscale connection; at home it's just there, on the LAN.</p>
+        <p>Play on your phone on the couch, close it, open the desktop app — your saves followed you. That's the whole trick, and it's the whole point: your data, in your keep, under your roof.</p>
+
+        <h2 id="waitlist">When can I get in?</h2>
+        <p>Castle is still being built. <a href="./#notify">Join the waitlist</a> and we'll email you a confirmation code when your spot opens up.</p>
+
+        <p class="madeby-light">
+          <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="22" height="22" loading="lazy" decoding="async">
+          This product was made by <a href="https://wearedogs.net">DOGS</a>
+        </p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

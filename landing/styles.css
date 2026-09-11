@@ -144,19 +144,37 @@ h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; mar
 .card p { margin: 0; font-size: 0.98rem; color: var(--ink-soft); }
 .card a.cardlink { font-family: var(--font-display); font-size: 0.9rem; margin-top: 0.85rem; }
 
-/* ---- notify form (dark panel) */
-.notify form { margin-top: 2rem; max-width: 40rem; }
+/* ---- waitlist form (dark panels) */
+form[data-waitlist] { margin-top: 1.75rem; max-width: 40rem; }
 .fields { display: flex; gap: 0.75rem; align-items: flex-end; }
 .fields > div { flex: 1; }
 label { display: block; font-family: var(--font-display); font-size: 0.85rem; margin-bottom: 0.45rem; color: var(--line); }
-input[type="email"] {
+input[type="email"],
+input[type="text"] {
   font: inherit; width: 100%; padding: 0.8rem 1rem; border-radius: 10px;
   border: 1.5px solid #3a3934; background: #1f1e1c; color: var(--cream);
 }
-input[type="email"]::placeholder { color: #8a887f; }
-input[type="email"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-input[type="email"][aria-invalid="true"] { border-color: #e08d7a; }
+input[type="email"]::placeholder,
+input[type="text"]::placeholder { color: #8a887f; }
+input[type="email"]:focus,
+input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+input[type="email"][aria-invalid="true"],
+input[type="text"][aria-invalid="true"] { border-color: #e08d7a; }
 .field-error { color: #f0b4a6; font-size: 0.9rem; min-height: 1.3em; margin: 0.5rem 0 0; font-family: var(--font-display); }
+
+/* ---- waitlist two-step */
+.step[hidden] { display: none; }
+.note { color: var(--mid); font-size: 0.92rem; margin: 0.75rem 0 0; font-family: var(--font-display); }
+.note strong { color: var(--cream); font-weight: 600; }
+.linklike {
+  background: none; border: 0; padding: 0; display: inline;
+  font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
+  color: var(--accent); cursor: pointer; text-decoration: underline;
+  text-decoration-thickness: 2px; text-underline-offset: 3px;
+}
+.linklike:hover { transform: none; color: var(--cream); }
+.confirm-line { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; color: var(--cream); margin: 0 0 0.5rem; }
+.confirm-line .big-emoji { font-size: 1.6rem; margin-right: 0.4rem; vertical-align: -0.2rem; }
 button {
   font-family: var(--font-display); font-weight: 600; font-size: 1rem; cursor: pointer;
   padding: 0.8rem 1.7rem; border: 0; border-radius: 10px;
@@ -223,4 +241,69 @@ pre.dog { font-family: ui-monospace, monospace; color: var(--ink-soft); line-hei
   .timeline li.now::before { background: linear-gradient(180deg, var(--accent) 50%, var(--line) 50%); }
   .timeline .dot { top: 0.32rem; }
   .foot { flex-direction: column; align-items: flex-start; }
+}
+
+/* ---- hero (top panel): Castle / Data Sovereignty / $299 / waitlist */
+.panel.hero {
+  position: relative; overflow: hidden;
+  background: #0d0d0b; color: var(--cream);
+  padding-left: 0; padding-right: 0;
+}
+.hero-copy { position: relative; z-index: 2; }
+.hero h1 { color: var(--cream); }
+.price {
+  font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em;
+  font-size: clamp(2rem, 5vw, 3rem); color: var(--cream); margin: 0 0 1.75rem;
+}
+.waitlist-title { color: var(--cream); }
+.counter-line {
+  font-family: var(--font-display); font-size: 0.95rem; color: var(--mid);
+  margin: 1.25rem 0 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+}
+.ticker {
+  display: inline-block; background: var(--accent); color: #141413;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.85rem;
+  padding: 0.3rem 0.85rem; border-radius: 999px;
+}
+.ticker[hidden] { display: none; }
+.ticker.show { animation: ticker-pop 2.6s ease forwards; }
+@keyframes ticker-pop {
+  0% { opacity: 0; transform: translateY(8px) scale(0.92); }
+  12% { opacity: 1; transform: none; }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+.scroll-hint.light { color: var(--mid); }
+
+/* ---- spin stage: 2.5D tilt + parallax on the hero art.
+   Honest note: this is NOT a real 3D model — CSS 3D tilt with drag
+   inertia on a flat generated image. True 360° spin needs a glTF model. */
+.spin-stage { perspective: 1200px; touch-action: pan-y; cursor: grab; }
+.spin-stage.grabbing { cursor: grabbing; }
+.spin-tilt { transform-style: preserve-3d; will-change: transform; width: 100%; height: 100%; }
+.spin-tilt picture, .spin-tilt img { display: block; width: 100%; height: 100%; }
+.spin-tilt img { object-fit: cover; }
+
+/* landscape / tablet / desktop: full-bleed 4K scene, copy overlaid */
+.hero-visual { position: absolute; inset: 0; z-index: 1; }
+.hero-visual .spin-tilt img { transform: scale(1.08); } /* hide tilt edges */
+.hero-visual::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, rgba(10,10,8,0.85) 0%, rgba(10,10,8,0.5) 45%, rgba(10,10,8,0.18) 100%);
+}
+
+/* portrait / mobile: stacked — copy above, Castle visual below, light asset */
+@media (orientation: portrait) {
+  .panel.hero { flex-direction: column; justify-content: center; align-items: stretch; }
+  .hero-copy { order: 1; }
+  .hero-visual { order: 2; position: relative; height: 38svh; margin-top: 2rem; overflow: hidden; }
+  .hero-visual .spin-tilt img { transform: none; }
+  .hero-visual::after { background: linear-gradient(180deg, rgba(10,10,8,0.35) 0%, rgba(10,10,8,0) 40%); }
+}
+
+/* ---- slim tail panel (footer lives here now) */
+.panel.tail { min-height: 0; padding: 5rem 0 2.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker.show { animation: none; }
 }
