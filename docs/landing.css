@@ -317,9 +317,9 @@ h1, h2, h3 { margin: 0; line-height: 1.05; letter-spacing: -0.015em; }
 
 /* ============ footer ============ */
 .foot { border-top: 1px solid var(--line); padding: 3rem 0 4.5rem; }
-.foot .madeby { display: flex; align-items: center; gap: 0.6rem; font-weight: 650; margin: 0 0 0.5rem; }
-.foot .madeby img { border-radius: 50%; }
-.foot .madeby a { color: var(--cyan); }
+.foot .madeby { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 1.25rem; }
+.foot .madeby .badge { display: inline-block; }
+.foot .madeby .badge img { display: block; width: min(280px, 60vw); height: auto; border-radius: 8px; }
 .nocookies {
   font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--faint); margin: 0 0 1.5rem;
