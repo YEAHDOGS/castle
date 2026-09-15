@@ -1,0 +1,38 @@
+# ==============================================================================
+# Castle -- Arch + Wine web desktop (docker compose)
+# ==============================================================================
+# Bring it up with ..\..\docker.ps1 (recommended: it generates the login) or:
+#   docker compose --env-file .env up -d --build
+# Then open https://127.0.0.1:3001 (self-signed certificate: accept the warning).
+#
+# Hardening:
+#   - published on the loopback interface only, HTTPS port only (no plain 3000)
+#   - login required (CUSTOM_USER / PASSWORD from .env, never committed)
+#   - no privileged mode, no host docker socket, no-new-privileges
+#   - the Windows app folder is mounted read-only
+# It is still a container sharing the host kernel, not a VM.
+# ==============================================================================
+services:
+  arch-wine:
+    build: .
+    image: castle/arch-wine:latest
+    container_name: castle-arch-wine
+    security_opt:
+      - no-new-privileges:true
+    shm_size: "1gb"            # browsers and Wine need a larger /dev/shm than Docker's 64 MB default
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: ${TZ:-UTC}
+      TITLE: "Castle Arch + Wine"
+      CUSTOM_USER: ${WEBTOP_USER:?set WEBTOP_USER in docker/arch-wine/.env}
+      PASSWORD: ${WEBTOP_PASSWORD:?set WEBTOP_PASSWORD in docker/arch-wine/.env}
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - config:/config
+      - ../../scripts/wine-apps:/castle/wine-apps:ro
+    restart: unless-stopped
+
+volumes:
+  config:

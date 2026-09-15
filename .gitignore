@@ -136,3 +136,9 @@ dist
 .pnp.*
 
 .vscode
+
+# Windows apps dropped in for the Wine desktop profile (never commit binaries)
+clonewars/scripts/wine-apps/*
+!clonewars/scripts/wine-apps/README.md
+
+

@@ -1,0 +1,10 @@
+# ==============================================================================
+# Castle -- overlay: install Windows from a local ISO instead of downloading it
+# ==============================================================================
+# docker.ps1 adds this file automatically when the ISO exists. Microsoft's
+# download endpoints answer 403 from some networks, so a local ISO is the
+# reliable path. WINDOWS_ISO comes from docker.ps1 (default: clonewars/data/win11-pro.iso).
+services:
+  windows:
+    volumes:
+      - ${WINDOWS_ISO:?docker.ps1 sets WINDOWS_ISO}:/custom.iso:ro

@@ -44,6 +44,7 @@ function Test-CryptographicHash {
     if (-not [string]::IsNullOrEmpty($HashUrl)) {
         try {
             Write-Host "     [>] Fetching remote manifest from: $HashUrl" -ForegroundColor DarkGray
+            Write-EndpointInfo -Url $HashUrl -Indent "     "
             $FetchedData = $HttpClient.GetStringAsync($HashUrl).GetAwaiter().GetResult()
             Write-Host "     [+] Retrieved content from link (first 200 chars): $(if ($FetchedData) { $FetchedData.Substring(0, [Math]::Min(200, $FetchedData.Length)) -replace '\r?\n', ' ' } else { 'empty' })" -ForegroundColor DarkGray
 
@@ -160,6 +161,21 @@ function Test-CryptographicHash {
 }
 
 
+function Test-GpgUsable {
+    <#
+    .SYNOPSIS
+        True when a gpg on PATH actually runs. A stub that exists but produces
+        nothing (seen with a toolbox-bundled gpg.exe) must count as "no gpg",
+        not as a rejected signature.
+    #>
+    if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) { return $false }
+    try {
+        $Out = & gpg --version 2>&1
+        return ($LASTEXITCODE -eq 0 -and ($Out -join "`n") -match 'gpg \(GnuPG\)')
+    }
+    catch { return $false }
+}
+
 function Test-GpgSignature {
     param (
         [string]$TargetFile,
@@ -169,9 +185,9 @@ function Test-GpgSignature {
         [object]$HttpClient
     )
 
-    # GPG is optional -- skip gracefully if not installed
-    if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) {
-        Write-Host "  [?] GPG not found on PATH. Skipping signature verification." -ForegroundColor Yellow
+    # GPG is optional -- skip gracefully if not installed (or not working)
+    if (-not (Test-GpgUsable)) {
+        Write-Host "  [?] No working GPG on PATH. Skipping signature verification." -ForegroundColor Yellow
         Write-Host "     Tip: Git for Windows includes gpg.exe -- add Git\usr\bin to your PATH." -ForegroundColor DarkGray
         return $true
     }
@@ -187,9 +203,12 @@ function Test-GpgSignature {
     try {
         # Import the distro signing key from the configured keyserver
         Write-Host "     [>] Fetching key [$GpgKey] from $GpgServer" -ForegroundColor DarkGray
+        Write-EndpointInfo -Url $GpgServer -Indent "     "
         gpg --keyserver $GpgServer --recv-keys $GpgKey 2>$null | Out-Null
 
         # Download the detached signature file
+        Write-Host "     [>] Fetching signature from: $SigUrl" -ForegroundColor DarkGray
+        Write-EndpointInfo -Url $SigUrl -Indent "     "
         $SigBytes = $HttpClient.GetByteArrayAsync($SigUrl).GetAwaiter().GetResult()
         [System.IO.File]::WriteAllBytes($SigFile, $SigBytes)
 
@@ -428,7 +447,21 @@ function Test-IsoIntegrity {
             -GpgServer $Target.GpgServer `
             -HttpClient $HttpClient
 
-        if (-not $GpgResult) { return $false }
+        if (-not $GpgResult) {
+            # The hash layer has already passed by this point, so a GPG failure is
+            # usually a keyserver/network problem or a rotated signing key rather
+            # than a bad image. Let the operator decide: CASTLE_SKIP_GPG=1 bypasses
+            # without prompting (scripted runs); otherwise ask.
+            if ($env:CASTLE_SKIP_GPG -eq "1") {
+                Write-Host "  [?] GPG check failed -- bypassed by CASTLE_SKIP_GPG=1 (hash layer passed)." -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "  [?] GPG check failed but the checksum matched. Set CASTLE_SKIP_GPG=1 to always bypass." -ForegroundColor Yellow
+                $Choice = Read-Host "     Continue without GPG verification? [y/N]"
+                if ($Choice -notmatch '^y(es)?$') { return $false }
+                Write-Host "  [?] Continuing without GPG verification (operator override)." -ForegroundColor Yellow
+            }
+        }
     }
 
     # -- Pin Verified Hash if we successfully verified remotely --

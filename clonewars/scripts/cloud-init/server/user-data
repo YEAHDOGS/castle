@@ -1,0 +1,56 @@
+#cloud-config
+# ==============================================================================
+# Castle cloud-init profile: headless Ubuntu server
+# ==============================================================================
+# Served to the guest as the NoCloud "CIDATA" seed by modules/launch.ps1.
+# meta-data (instance-id, hostname) is generated per VM next to the disk, so
+# this file only carries what every clone shares. Login: castle / wearedogs
+# (same convention as scripts/cachyos). SSH is port-forwarded from the host;
+# the pipeline prints the port at boot.
+# ==============================================================================
+
+users:
+  - name: castle
+    gecos: Castle
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  expire: false
+  users:
+    - name: castle
+      password: wearedogs
+      type: text
+
+ssh_pwauth: true
+
+package_update: true
+package_upgrade: false
+
+# Mirrors the qemu-notes.md checklist implemented for CachyOS in
+# scripts/cachyos/main-install.sh, translated to apt package names.
+packages:
+  - openssh-server
+  - qemu-guest-agent
+  - ufw
+  - docker.io
+  - wireguard-tools
+  - samba
+  - btrfs-progs
+  - curl
+  - git
+
+runcmd:
+  - usermod -aG docker castle
+  - systemctl enable --now qemu-guest-agent
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw --force enable
+  # Tailscale needs its own repo; tolerate failure so a flaky network never
+  # blocks first boot.
+  - curl -fsSL https://tailscale.com/install.sh | sh || true
+
+final_message: "castle: cloud-init finished after $UPTIME seconds. Log in as castle."

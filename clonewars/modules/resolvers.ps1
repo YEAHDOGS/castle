@@ -14,6 +14,7 @@ function Get-HtmlDirectoryVersions {
     )
 
     try {
+        Write-EndpointInfo -Url $Url
         $Html = (Invoke-WebRequest $Url -UseBasicParsing).Content
         $Matches = [regex]::Matches($Html, $Regex)
         $Versions = $Matches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
@@ -40,8 +41,9 @@ function Get-GitHubReleaseVersions {
         $ApiUrl = "https://api.github.com/repos/$Repo/releases"
         # Basic GitHub API call without auth (rate limited to 60/hr)
         $Headers = @{ "User-Agent" = "CastleVM-Provisioner" }
+        Write-EndpointInfo -Url $ApiUrl
         $Response = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers
-        
+
         $Versions = $Response | Where-Object { $_.prerelease -eq $false -and $_.draft -eq $false } | Select-Object -ExpandProperty tag_name
         return @($Versions)
     }
@@ -70,6 +72,7 @@ function Resolve-GitHubReleaseAsset {
     try {
         $ApiUrl = "https://api.github.com/repos/$($Target.ResolverRepo)/releases/tags/$Version"
         $Headers = @{ "User-Agent" = "CastleVM-Provisioner" }
+        Write-EndpointInfo -Url $ApiUrl
         $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers
     }
     catch {
@@ -191,15 +194,195 @@ function Invoke-VersionPrompt {
     }
 }
 
+function Get-MirrorHost {
+    param ([hashtable]$Mirror)
+    try { return ([System.Uri]$Mirror.Base).Host } catch { return $Mirror.Base }
+}
+
+function Get-TargetMirrors {
+    <#
+    .SYNOPSIS
+        The mirror list for a target: scraped live from MirrorPageUrl when the
+        target defines one (MirrorRowRegex with named groups country/name/url,
+        optionally grouped by MirrorSectionRegex with a region group), falling
+        back to the static Mirrors snapshot in the manifest when the page is
+        unreachable or yields nothing. A mirror's Base is the ISO link's
+        directory: the checksum and signature live next to the ISO, so one
+        base serves every download of that target.
+    .OUTPUTS
+        Array of @{ Region; Country; Name; Base; Source = "live"|"snapshot" }.
+    #>
+    param ([hashtable]$Target)
+
+    $Live = @()
+    if ($Target.MirrorPageUrl -and $Target.MirrorRowRegex) {
+        try {
+            Write-Host "  [>] Scraping mirror list from $($Target.MirrorPageUrl)..." -ForegroundColor Cyan
+            Write-EndpointInfo -Url $Target.MirrorPageUrl
+            $Html = (Invoke-WebRequest $Target.MirrorPageUrl -UseBasicParsing -Headers @{ "User-Agent" = "CastleVM-Provisioner" }).Content
+            $Sections = if ($Target.MirrorSectionRegex) {
+                [regex]::Matches($Html, $Target.MirrorSectionRegex) | ForEach-Object { @{ Region = $_.Groups["region"].Value.Trim(); Html = $_.Value } }
+            }
+            else { @(@{ Region = ""; Html = $Html }) }
+
+            foreach ($Section in $Sections) {
+                foreach ($Row in [regex]::Matches($Section.Html, $Target.MirrorRowRegex)) {
+                    $Url = $Row.Groups["url"].Value
+                    if (-not $Url) { continue }
+                    $Region = if ($Row.Groups["region"].Success) { $Row.Groups["region"].Value.Trim() } else { $Section.Region }
+                    $Live += @{
+                        Region  = $Region
+                        Country = $Row.Groups["country"].Value.Trim()
+                        Name    = $Row.Groups["name"].Value.Trim()
+                        Base    = $Url.Substring(0, $Url.LastIndexOf('/'))
+                        Source  = "live"
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Host "  [?] Mirror page fetch failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    if ($Live.Count -gt 0) {
+        Write-Host "  [OK] $($Live.Count) mirrors scraped live." -ForegroundColor Green
+        return $Live
+    }
+
+    $Snapshot = @($Target.Mirrors | ForEach-Object { $m = $_.Clone(); $m.Source = "snapshot"; $m })
+    if ($Snapshot.Count -gt 0) {
+        Write-Host "  [?] Using the manifest's mirror snapshot ($($Snapshot.Count) mirrors)." -ForegroundColor Yellow
+    }
+    return $Snapshot
+}
+
+function Select-TargetMirror {
+    <#
+    .SYNOPSIS
+        Picks one mirror. -Mirror (or CASTLE_MIRROR) selects without a prompt:
+        a list number, or a substring of the host / name / country ("tuna",
+        "germany", "gigenet"). Otherwise the list is shown grouped by region and
+        Enter keeps the target's default mirror (MirrorDefault host, else the
+        first entry), so scripted runs behave exactly as before.
+    #>
+    param (
+        [hashtable]$Target,
+        [array]$Mirrors,
+        [string]$Mirror
+    )
+
+    if ($Mirrors.Count -eq 0) { return $null }
+
+    # Default: MirrorDefault host if present in the list, else first entry.
+    $DefaultIdx = 0
+    if ($Target.MirrorDefault) {
+        for ($i = 0; $i -lt $Mirrors.Count; $i++) {
+            if ((Get-MirrorHost $Mirrors[$i]) -eq $Target.MirrorDefault) { $DefaultIdx = $i; break }
+        }
+    }
+
+    $Choice = if ($Mirror) { $Mirror } elseif ($env:CASTLE_MIRROR) { $env:CASTLE_MIRROR } else { $null }
+
+    if (-not $Choice) {
+        Write-Host ""
+        Write-Host "  [?] Mirrors for $($Target.Name) (Enter = default, or type a number / host / country)" -ForegroundColor Cyan
+        Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
+        $LastRegion = $null
+        for ($i = 0; $i -lt $Mirrors.Count; $i++) {
+            $m = $Mirrors[$i]
+            if ($m.Region -ne $LastRegion) {
+                Write-Host "  $($m.Region)" -ForegroundColor White
+                $LastRegion = $m.Region
+            }
+            $Label = "  [{0,2}] {1,-16} {2,-18} {3}" -f ($i + 1), $m.Country, $m.Name, (Get-MirrorHost $m)
+            if ($i -eq $DefaultIdx) { Write-Host "$Label  (default)" -ForegroundColor Green } else { Write-Host $Label -ForegroundColor Gray }
+        }
+        Write-Host ""
+        $Choice = Read-Host "  Select a mirror [Default: $($DefaultIdx + 1)]"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Choice) -or $Choice -eq "default") { return $Mirrors[$DefaultIdx] }
+
+    $Idx = $Choice -as [int]
+    if ($Idx -ne $null -and $Idx -ge 1 -and $Idx -le $Mirrors.Count) { return $Mirrors[$Idx - 1] }
+
+    $Needle = $Choice.Trim().ToLower()
+    $Hit = @($Mirrors | Where-Object {
+        (Get-MirrorHost $_).ToLower().Contains($Needle) -or
+        ([string]$_.Name).ToLower().Contains($Needle) -or
+        ([string]$_.Country).ToLower().Contains($Needle)
+    }) | Select-Object -First 1
+    if ($Hit) { return $Hit }
+
+    Write-Host "  [FAIL] No mirror matches '$Choice'. Using the default." -ForegroundColor Yellow
+    return $Mirrors[$DefaultIdx]
+}
+
+function Resolve-TargetMirror {
+    <#
+    .SYNOPSIS
+        For targets with a mirror list, chooses a mirror and substitutes its
+        base for `$m` in every string value of the target (ResolverUrl, the
+        Url/HashUrl*/SigUrl templates, ...). Targets without mirrors pass
+        through untouched. Returns a clone; the manifest is never modified.
+    #>
+    param (
+        [hashtable]$Target,
+        [string]$Mirror,
+        [switch]$NoPrompt
+    )
+
+    if (-not $Target.Mirrors -and -not $Target.MirrorPageUrl) { return $Target }
+
+    $Mirrors = if ($NoPrompt -and -not $Mirror -and -not $env:CASTLE_MIRROR) {
+        @($Target.Mirrors | ForEach-Object { $m = $_.Clone(); $m.Source = "snapshot"; $m })
+    }
+    else { @(Get-TargetMirrors -Target $Target) }
+
+    $Chosen = if ($NoPrompt -and -not $Mirror -and -not $env:CASTLE_MIRROR) {
+        Select-TargetMirror -Target $Target -Mirrors $Mirrors -Mirror "default"
+    }
+    else { Select-TargetMirror -Target $Target -Mirrors $Mirrors -Mirror $Mirror }
+
+    if (-not $Chosen) {
+        Write-Host "  [FAIL] No mirrors available for $($Target.Name)." -ForegroundColor Red
+        Exit 1
+    }
+
+    $Base = ([string]$Chosen.Base).TrimEnd('/')
+    Write-Host "  [OK] Mirror: $($Chosen.Name) ($($Chosen.Country)) -> $Base" -ForegroundColor Green
+
+    $Resolved = $Target.Clone()
+    foreach ($Key in @($Resolved.Keys)) {
+        if ($Resolved[$Key] -is [string] -and $Resolved[$Key].Contains('$m')) {
+            $Resolved[$Key] = $Resolved[$Key] -replace '\$m', $Base
+        }
+    }
+    $Resolved.Mirror = $Chosen
+    return $Resolved
+}
+
 function Resolve-TargetVersion {
     <#
     .SYNOPSIS
-        Takes a Target template, dynamically discovers versions, prompts the user,
-        and returns a fully instantiated Target hashtable.
+        Takes a Target template, picks a mirror when the target has several,
+        dynamically discovers versions, prompts the user, and returns a fully
+        instantiated Target hashtable.
+    .PARAMETER Mirror
+        Mirror selection without a prompt (number, host, name or country).
+    .PARAMETER NoMirrorPrompt
+        Use the default mirror silently (cleanup paths, where the mirror only
+        matters for listing versions).
     #>
     param (
-        [hashtable]$Target
+        [hashtable]$Target,
+        [string]$Mirror,
+        [switch]$NoMirrorPrompt
     )
+
+    # Mirror first: the version listing and every download then come from it.
+    $Target = Resolve-TargetMirror -Target $Target -Mirror $Mirror -NoPrompt:$NoMirrorPrompt
 
     # If it's a static target (no ResolverType), just return it as-is
     if ([string]::IsNullOrEmpty($Target.ResolverType)) {

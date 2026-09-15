@@ -39,14 +39,56 @@ $IsoMatrix = @(
         Id                    = "endeavouros"
         Name                  = "EndeavourOS Linux"
         Description           = "Friendly, terminal-centric Arch-based distribution with a GUI installer."
-        # Dynamic Resolver Configuration
+        # -- Mirror selection --
+        # Every URL below carries $m, the base directory of the chosen mirror
+        # (no trailing slash). The mirror list is scraped live from the official
+        # download page: each row there links the ISO, its .sha512sum and its
+        # .sig on the same mirror, so one base serves all three. If the page is
+        # unreachable or its markup changes, the snapshot in `Mirrors` is used
+        # (scraped from https://endeavouros.com/download/ on 2026-09-14).
+        MirrorPageUrl         = "https://endeavouros.com/download/"
+        # Named groups the generic scraper needs: region (section), then per
+        # row country, name and url (a link to the ISO; base = url minus file).
+        MirrorSectionRegex    = '(?s)<section class="mirror-group"[^>]*>\s*<h3[^>]*id="mirrors-[a-z-]+">(?<region>[^<]+)<.*?</section>'
+        MirrorRowRegex        = '(?s)<tr>\s*<th[^>]*class="c-loc"[^>]*>.*?<span class="country">(?<country>[^<]+)</span>.*?<td class="c-name"><a href="(?<url>[^"]+\.iso)"[^>]*>(?<name>[^<]+)<'
+        MirrorDefault         = "mirrors.gigenet.com"
+        Mirrors               = @(
+            @{ Region = "Africa"; Country = "South Africa"; Name = "Urban Wave"; Base = "https://mirrors.urbanwave.co.za/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "China"; Name = "Jilin University"; Base = "https://mirrors.jlu.edu.cn/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "China"; Name = "SJTU"; Base = "https://mirror.sjtu.edu.cn/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "China"; Name = "Tuna"; Base = "https://mirrors.tuna.tsinghua.edu.cn/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "India"; Name = "Albony"; Base = "https://mirror.albony.in/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "India"; Name = "Nxtgen"; Base = "https://mirrors.nxtgen.com/endeavouros-mirror/iso" },
+            @{ Region = "Asia"; Country = "Japan"; Name = "Miraa"; Base = "https://www.miraa.jp/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "Singapore"; Name = "Freedif"; Base = "https://mirror.freedif.org/EndeavourOS/iso" },
+            @{ Region = "Asia"; Country = "Singapore"; Name = "Jingk"; Base = "https://mirror.jingk.ai/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "South Korea"; Name = "YuruMirror"; Base = "https://mirror.funami.tech/endeavouros/iso" },
+            @{ Region = "Asia"; Country = "Taiwan"; Name = "Archlinux Taiwan"; Base = "https://mirror.archlinux.tw/EndeavourOS/iso" },
+            @{ Region = "Europe"; Country = "Belgium"; Name = "Belnet"; Base = "https://ftp.belnet.be/mirror/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Denmark"; Name = "C0urier"; Base = "https://mirrors.c0urier.net/linux/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "France"; Name = "Rznet"; Base = "https://mirror.rznet.fr/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Germany"; Name = "Alpix"; Base = "https://mirror.alpix.eu/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Germany"; Name = "Diyarciftci"; Base = "https://mirror.diyarciftci.xyz/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Germany"; Name = "Moson"; Base = "https://mirror.moson.org/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Germany"; Name = "RZ TU-BS"; Base = "https://ftp.rz.tu-bs.de/pub/mirror/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Greece"; Name = "Fosszone"; Base = "https://fosszone.csd.auth.gr/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Sweden"; Name = "Retropc"; Base = "https://mirror.retropc.se/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Sweden"; Name = "Umea University"; Base = "https://mirror.accum.se/mirror/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Switzerland"; Name = "Adfinis"; Base = "https://pkg.adfinis-on-exoscale.ch/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Switzerland"; Name = "Go Foss"; Base = "https://mirror.gofoss.xyz/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "Ukraine"; Name = "Distrohub"; Base = "https://distrohub.kyiv.ua/endeavouros/iso" },
+            @{ Region = "Europe"; Country = "United Kingdom"; Name = "C48"; Base = "https://repo.c48.uk/endeavouros/iso" },
+            @{ Region = "North America"; Country = "United States"; Name = "Gigenet"; Base = "https://mirrors.gigenet.com/endeavouros/iso" }
+        )
+        # Dynamic Resolver Configuration (runs against the chosen mirror)
         ResolverType          = "HtmlDirectory"
-        ResolverUrl           = "https://mirrors.gigenet.com/endeavouros/iso/"
+        ResolverUrl           = '$m/'
         ResolverRegex         = 'href="EndeavourOS_([^"]+)\.iso"'
         # Templates
-        UrlTemplate           = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso'
-        HashUrlSha512Template = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sha512'
-        SigUrlTemplate        = 'https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_$v.iso.sig'
+        UrlTemplate           = '$m/EndeavourOS_$v.iso'
+        # The mirrors publish the checksum as <iso>.sha512sum (not .sha512).
+        HashUrlSha512Template = '$m/EndeavourOS_$v.iso.sha512sum'
+        SigUrlTemplate        = '$m/EndeavourOS_$v.iso.sig'
         IsoNameTemplate       = 'EndeavourOS_$v.iso'
         FileTemplate          = 'endeavouros-$v.iso'
         # QEMU Profile
@@ -287,6 +329,29 @@ $IsoMatrix = @(
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # DOCKER DESKTOPS (containers, not QEMU -- delegated to docker.ps1)
+    # ══════════════════════════════════════════════════════════════════════════
+    # Runtime = "docker" entries skip the ISO/QEMU pipeline entirely: start.ps1
+    # hands them to docker.ps1 -Profile <DockerProfile>. Needs Docker Desktop.
+
+    @{
+        Id            = "docker-windows"
+        Name          = "Windows 11 in Docker"
+        Description   = "Windows 11 Pro as a KVM VM inside a container (dockur/windows). Installs from data/win11-pro.iso, runs every .exe in scripts/wine-apps at the end of setup, shares that folder as Z:. Web viewer http://127.0.0.1:8006, RDP 127.0.0.1:3389."
+        Runtime       = "docker"
+        DockerProfile = "windows"
+        OsFamily      = "windows"
+    },
+    @{
+        Id            = "docker-arch-wine"
+        Name          = "Arch + Wine desktop in Docker"
+        Description   = "Arch Linux XFCE desktop with Wine served to a browser tab (linuxserver webtop). Launches every .exe in scripts/wine-apps under Wine at login. https://127.0.0.1:3001."
+        Runtime       = "docker"
+        DockerProfile = "arch-wine"
+        OsFamily      = "linux"
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # WINDOWS
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -383,6 +448,49 @@ $IsoMatrix = @(
         # QEMU Profile
         DiskSize    = "64G"
         OsFamily    = "windows"
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CLOUD IMAGES (no installer: boot the image, cloud-init does the rest)
+    # ══════════════════════════════════════════════════════════════════════════
+    # ImageKind = "cloud" tells the pipeline the download is a bootable qcow2,
+    # not an installer ISO: every VM disk is a linked clone of the verified
+    # image, no CD-ROM is attached, and scripts/cloud-init/<CloudInit>/user-data
+    # is served as the NoCloud seed with a per-VM generated meta-data.
+
+    @{
+        Id            = "ubuntu-cloud"
+        Name          = "Ubuntu 24.04 LTS (cloud image, headless)"
+        Description   = "Official Ubuntu Noble cloud image booted directly with cloud-init. Headless server with SSH, Docker, ufw -- ready in about a minute."
+        Url           = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+        IsoName       = "noble-server-cloudimg-amd64.img"
+        File          = "ubuntu-noble-cloudimg-amd64.img"
+        HashUrlSha256 = "https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
+        # QEMU Profile
+        ImageKind     = "cloud"
+        CloudInit     = "server"
+        # UEFI: under WHPX the legacy SeaBIOS/GRUB real-mode boot path hangs at
+        # "Booting from Hard Disk"; the cloud image ships an EFI system partition.
+        Firmware      = "uefi"
+        DiskSize      = "40G"
+        OsFamily      = "linux"
+    },
+    @{
+        Id            = "ubuntu-cloud-desktop"
+        Name          = "Ubuntu 24.04 LTS (cloud image, desktop)"
+        Description   = "Same cloud image, plus a minimal GNOME desktop with auto-login installed by cloud-init on first boot (long first boot)."
+        Url           = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+        IsoName       = "noble-server-cloudimg-amd64.img"
+        File          = "ubuntu-noble-cloudimg-amd64.img"
+        HashUrlSha256 = "https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
+        # QEMU Profile
+        ImageKind     = "cloud"
+        CloudInit     = "desktop"
+        # UEFI: under WHPX the legacy SeaBIOS/GRUB real-mode boot path hangs at
+        # "Booting from Hard Disk"; the cloud image ships an EFI system partition.
+        Firmware      = "uefi"
+        DiskSize      = "60G"
+        OsFamily      = "linux"
     },
 
     # ══════════════════════════════════════════════════════════════════════════

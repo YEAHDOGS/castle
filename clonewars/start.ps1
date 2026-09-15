@@ -25,6 +25,12 @@ param (
     [Parameter()]
     [String]$BaseDisk,
 
+    # Mirror to download from, for targets with a mirror list (list number, or a
+    # substring of the host / name / country). Skips the mirror prompt.
+    # CASTLE_MIRROR does the same for scripted runs.
+    [Parameter()]
+    [String]$Mirror,
+
     [Parameter()]
     [Switch]$Vnc,
 
@@ -78,7 +84,17 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         Exit 1
     }
 
-    $Resolved = Resolve-TargetVersion -Target $Matched[0]
+    # Docker targets: no ISO, no qcow2; their data is a Docker volume that docker.ps1 owns.
+    if ($Matched[0].Runtime -eq "docker") {
+        if ($DeleteIso -and -not ($DeleteDisk -or $Purge)) {
+            Write-Host "  [i] '$($Matched[0].Id)' has no cached ISO of its own; use -DeleteDisk or -Purge to remove its container data." -ForegroundColor DarkGray
+            Exit 0
+        }
+        & (Join-Path $PSScriptRoot "docker.ps1") -Profile $Matched[0].DockerProfile -Down -Purge
+        Exit $LASTEXITCODE
+    }
+
+    $Resolved = Resolve-TargetVersion -Target $Matched[0] -Mirror $Mirror -NoMirrorPrompt
     $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
     $DiskFile = if (-not [string]::IsNullOrEmpty($Instance)) {
         Join-Path (Join-Path $DataDir "instances") "$Instance.qcow2"
@@ -166,7 +182,7 @@ function Show-CastleMenu {
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
         
-        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskNamePattern = Get-TargetDiskName $Entry
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -185,13 +201,15 @@ function Show-CastleMenu {
             $SizeStr = "($SizeGB GB)"
         }
 
+        if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
+
         $IdxStr = "[{0,2}]" -f $Index
         Write-Host "   $IdxStr $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
         $Index++
     }
 
     Write-Host ""
-    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded" -ForegroundColor DarkGray
+    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)" -ForegroundColor DarkGray
     Write-Host "   Usage: Select a number, enter a Target ID, type 'help' or 'exit'." -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -205,7 +223,7 @@ function Show-TargetDetails {
     $IsoPattern = Join-Path $DataDir $FileName
     $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
     
-    $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+    $DiskNamePattern = Get-TargetDiskName $Entry
     $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
     $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -235,9 +253,15 @@ function Show-TargetDetails {
     Write-Host "   * Target ID:     $($Entry.Id)" -ForegroundColor White
     Write-Host "   * Description:   $($Entry.Description)" -ForegroundColor Yellow
     Write-Host "   * OS Family:     $($Entry.OsFamily)" -ForegroundColor White
-    Write-Host "   * Disk Size:     $TargetDiskSize" -ForegroundColor White
-    Write-Host "   * ISO Cache:     $IsoStatus" -ForegroundColor White
-    Write-Host "   * Virtual Disk:  $DiskStatus" -ForegroundColor White
+    if ($Entry.Runtime -eq "docker") {
+        Write-Host "   * Runtime:       Docker container -- docker.ps1 -Profile $($Entry.DockerProfile) (needs Docker Desktop running)" -ForegroundColor White
+        Write-Host "   * Data:          Docker volume owned by docker.ps1; 'Delete' here runs docker.ps1 -Down -Purge" -ForegroundColor White
+    }
+    else {
+        Write-Host "   * Disk Size:     $TargetDiskSize" -ForegroundColor White
+        Write-Host "   * ISO Cache:     $IsoStatus" -ForegroundColor White
+        Write-Host "   * Virtual Disk:  $DiskStatus" -ForegroundColor White
+    }
     Write-Host "   ================================================================" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -254,6 +278,8 @@ function Show-HelpDocs {
     Write-Host "     .\start.ps1 <target-id>     Directly boot/install a specific target."
     Write-Host "     .\start.ps1 list            Show static list of available targets."
     Write-Host "     .\start.ps1                 Start this interactive prompting loop."
+    Write-Host "     -Mirror <n|host|country>    Pick a download mirror without the prompt"
+    Write-Host "                                 (targets with a mirror list, e.g. endeavouros)."
     Write-Host ""
     Write-Host "   SECURITY & TRUST PINNING:" -ForegroundColor White
     Write-Host "     * Remote Verification: Checks remote SHA hashes and GPG signatures."
@@ -346,6 +372,13 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                 $SelectedTarget = $null
                 break
             }
+            elseif (($BootChoice -eq "d" -or $BootChoice -eq "delete") -and $SelectedTarget.Runtime -eq "docker") {
+                $Confirm = Read-Host "   Stop the '$($SelectedTarget.DockerProfile)' container and delete its data volume (the installed OS)? [y/N]"
+                if ($Confirm -eq "y" -or $Confirm -eq "yes") {
+                    & (Join-Path $PSScriptRoot "docker.ps1") -Profile $SelectedTarget.DockerProfile -Down -Purge
+                    Start-Sleep -Seconds 1.5
+                }
+            }
             elseif ($BootChoice -eq "d" -or $BootChoice -eq "delete") {
                 # Render deletion sub-menu
                 while ($true) {
@@ -368,11 +401,11 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                     if ($DelOption -eq "1") {
                         $Confirm = Read-Host "   Are you sure you want to delete the virtual disk .qcow2 file? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
-                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskNamePattern = Get-TargetDiskName $SelectedTarget
                             $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
                             $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
                             if ($CachedDisks.Count -gt 0) {
-                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force }
+                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force; Remove-Item ([System.IO.Path]::ChangeExtension($cd.FullName, ".vars.fd")) -Force -ErrorAction SilentlyContinue }
                                 Write-Host "   [OK] Deleted virtual disk(s)." -ForegroundColor Green
                             }
                             else {
@@ -412,11 +445,11 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
                         $Confirm = Read-Host "   Are you sure you want to perform a full purge (.qcow2, .iso, and trust hash)? [y/N]"
                         if ($Confirm -eq "y" -or $Confirm -eq "yes") {
                             # 1. Disk
-                            $DiskNamePattern = if ($SelectedTarget.File) { $SelectedTarget.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($SelectedTarget.FileTemplate) { ($SelectedTarget.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($SelectedTarget.Id).qcow2" }
+                            $DiskNamePattern = Get-TargetDiskName $SelectedTarget
                             $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
                             $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
                             if ($CachedDisks.Count -gt 0) {
-                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force }
+                                foreach ($cd in $CachedDisks) { Remove-Item $cd.FullName -Force; Remove-Item ([System.IO.Path]::ChangeExtension($cd.FullName, ".vars.fd")) -Force -ErrorAction SilentlyContinue }
                             }
                             
                             # 2. ISO
@@ -485,7 +518,7 @@ if ($Target -eq "list") {
         $IsoPattern = Join-Path $DataDir $FileName
         $CachedIsos = @(Get-Item $IsoPattern -ErrorAction SilentlyContinue)
         
-        $DiskNamePattern = if ($Entry.File) { $Entry.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } elseif ($Entry.FileTemplate) { ($Entry.FileTemplate -replace '\$v', '*') -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Entry.Id).qcow2" }
+        $DiskNamePattern = Get-TargetDiskName $Entry
         $DiskPatternPath = Join-Path $DataDir $DiskNamePattern
         $CachedDisks = @(Get-Item $DiskPatternPath -ErrorAction SilentlyContinue)
 
@@ -504,11 +537,13 @@ if ($Target -eq "list") {
             $SizeStr = "($SizeGB GB)"
         }
 
+        if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
+
         Write-Host "  $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
     }
 
     Write-Host ""
-    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded" -ForegroundColor DarkGray
+    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Usage: .\start.ps1 <target-id>" -ForegroundColor DarkGray
     Write-Host ""
@@ -545,8 +580,18 @@ if ($Matched.Count -gt 1) {
     Exit 1
 }
 
-# Apply Dynamic Version Resolution (Phase 2 feature)
-$Iso = Resolve-TargetVersion -Target $Matched[0]
+# Docker targets: hand over to docker.ps1 (no ISO pipeline, no QEMU).
+if ($Matched[0].Runtime -eq "docker") {
+    Write-Host ""
+    Write-Host "  Castle VM Pipeline -> Docker" -ForegroundColor Cyan
+    Write-Host "  Target: $($Matched[0].Name)  (docker.ps1 -Profile $($Matched[0].DockerProfile))" -ForegroundColor White
+    Write-Host "  ================================================================" -ForegroundColor DarkGray
+    & (Join-Path $PSScriptRoot "docker.ps1") -Profile $Matched[0].DockerProfile
+    Exit $LASTEXITCODE
+}
+
+# Apply mirror selection + Dynamic Version Resolution (Phase 2 feature)
+$Iso = Resolve-TargetVersion -Target $Matched[0] -Mirror $Mirror
 $IsoPath = Join-Path $DataDir $Iso.File
 
 Write-Host ""
@@ -604,15 +649,29 @@ while (-not $Verified) {
     Write-Host "  [*] Phase 2: Integrity Verification" -ForegroundColor Cyan
     Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
 
-    $Verified = Test-IsoIntegrity -Target $Iso -FilePath $IsoPath -HttpClient $HttpClient
+    # CASTLE_SKIP_VERIFY=1 skips every integrity layer (hash, GPG, trust pin):
+    # for mirrors that publish no checksums or when the operator has verified the
+    # image some other way. Nothing is pinned in that case.
+    if ($env:CASTLE_SKIP_VERIFY -eq "1") {
+        Write-Host "  [?] CASTLE_SKIP_VERIFY=1 -- integrity verification skipped, booting unverified image." -ForegroundColor Yellow
+        $Verified = $true
+    }
+    else {
+        $Verified = Test-IsoIntegrity -Target $Iso -FilePath $IsoPath -HttpClient $HttpClient
+    }
 
     if (-not $Verified) {
         Write-Host ""
         Write-Host "  [FAIL] INTEGRITY CHECK FAILED -- Refusing to boot unverified image." -ForegroundColor Red
-        $Choice = Read-Host "     Delete and re-download? [Y]es / [N]o (default: N)"
-        if ($Choice -match "^y" -or $Choice -match "^yes") {
+        Write-Host "     Set CASTLE_SKIP_VERIFY=1 to always bypass this check." -ForegroundColor DarkGray
+        $Choice = Read-Host "     [D]elete and re-download / [B]ypass and boot unverified / [N]o (default: N)"
+        if ($Choice -match "^(d|y|yes|delete)$") {
             Remove-Item $IsoPath -Force
             Write-Host "  [i] Deleted corrupted ISO. Retrying..." -ForegroundColor Yellow
+        }
+        elseif ($Choice -match "^(b|bypass)$") {
+            Write-Host "  [?] Booting UNVERIFIED image (operator override). Nothing will be pinned." -ForegroundColor Yellow
+            $Verified = $true
         }
         else {
             Write-Host "  [FAIL] Exiting without boot." -ForegroundColor Red
@@ -647,11 +706,23 @@ $DiskPath = if (-not [string]::IsNullOrEmpty($Instance)) {
     Join-Path (Join-Path $DataDir "instances") "$Instance.qcow2"
 }
 else {
-    $DiskName = if ($Iso.File) { $Iso.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Iso.Id).qcow2" }
-    Join-Path $DataDir $DiskName
+    Join-Path $DataDir (Get-TargetDiskName $Iso)
 }
 $DiskSize = if ($Iso.DiskSize) { $Iso.DiskSize } else { "40G" }
-$FirstBoot = New-VirtualDisk -DiskPath $DiskPath -DiskSize $DiskSize -BaseDisk $BaseDisk
+# Cloud images are never installed to: every VM disk is a linked clone. An
+# -Instance of a cloud target clones the target's finished "golden" disk when
+# one exists (data/<target>.qcow2, built by a plain `.\start.ps1 <target>` run),
+# so it boots straight to the configured desktop and apps in seconds instead of
+# re-running the whole first-boot package install; without a golden disk it
+# falls back to the raw verified image. Shut the golden VM down before cloning
+# it: a base that is being written to corrupts every clone.
+$GoldenDisk = Join-Path $DataDir (Get-TargetDiskName $Iso)
+$HasGolden = (Test-Path $GoldenDisk) -and ((Get-Item $GoldenDisk).Length -gt 1MB)
+$EffectiveBase = if (-not [string]::IsNullOrEmpty($BaseDisk)) { $BaseDisk }
+elseif ($Iso.ImageKind -eq "cloud" -and -not [string]::IsNullOrEmpty($Instance) -and $HasGolden) { Write-Host "  [DISK] Golden disk found -- instance will be a linked clone of it: $GoldenDisk" -ForegroundColor DarkGray; $GoldenDisk }
+elseif ($Iso.ImageKind -eq "cloud") { $IsoPath }
+else { $null }
+$FirstBoot = New-VirtualDisk -DiskPath $DiskPath -DiskSize $DiskSize -BaseDisk $EffectiveBase
 
 # ==============================================================================
 # PHASE 4 -- HARDWARE DETECTION

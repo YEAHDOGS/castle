@@ -1,0 +1,128 @@
+#cloud-config
+# ==============================================================================
+# Castle cloud-init profile: Ubuntu desktop that boots straight into Wine apps
+# ==============================================================================
+# Same base as the server profile plus a minimal GNOME desktop that auto-logs in
+# as castle and, at login, launches every Windows .exe found in
+# clonewars/scripts/wine-apps/ under Wine. That folder rides into the guest on
+# the read-only Castle USB share (FAT volume labelled CASTLE), so dropping a new
+# .exe there on the host is all it takes; no networking needed after the first
+# boot.
+#
+# First boot (the "golden" build) pulls the desktop + Wine package set (about
+# 1.5 GB) and reboots once into the graphical session. Linked clones of the
+# finished disk (-Instance) skip the package install and the reboot entirely
+# (guarded by /var/lib/castle/first-boot-done), so they land on the desktop with
+# the apps up in seconds.
+# Login: castle / wearedogs
+# ==============================================================================
+
+bootcmd:
+  - mkdir -p /var/lib/castle
+
+users:
+  - name: castle
+    gecos: Castle
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  expire: false
+  users:
+    - name: castle
+      password: wearedogs
+      type: text
+
+ssh_pwauth: true
+
+# Package work is done in runcmd (below) instead of the declarative `packages`
+# module so that a clone of a finished disk never touches apt at all.
+package_update: false
+package_upgrade: false
+
+# The Castle USB share (clonewars/scripts on the host) -- read-only FAT.
+mounts:
+  - ["LABEL=CASTLE", "/mnt/castle", "vfat", "ro,nofail,x-systemd.automount", "0", "0"]
+
+write_files:
+  # GDM auto-login so the VM lands on the desktop with no prompt.
+  - path: /etc/gdm3/custom.conf
+    permissions: "0644"
+    content: |
+      [daemon]
+      AutomaticLoginEnable=true
+      AutomaticLogin=castle
+
+  # Login-time launcher: copies the apps off the read-only share (Windows apps
+  # like to write next to their .exe) and starts each one under Wine.
+  - path: /usr/local/bin/castle-wine-launch
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Castle: launch every Windows app from the Castle USB share under Wine.
+      SRC=/mnt/castle/wine-apps
+      DST="$HOME/wine-apps"
+      export WINEDLLOVERRIDES="mscoree=d;mshtml=d"   # skip the Mono/Gecko download prompts
+      export WINEDEBUG=-all
+      mkdir -p "$DST"
+      if [ -d "$SRC" ]; then
+        cp -n "$SRC"/*.exe "$SRC"/*.EXE "$DST"/ 2>/dev/null
+      fi
+      shopt -s nullglob nocaseglob
+      for exe in "$DST"/*.exe; do
+        ( cd "$DST" && wine "$exe" ) &
+      done
+      wait
+
+  # System-wide GNOME autostart entry that runs the launcher at every login.
+  - path: /etc/xdg/autostart/castle-wine-app.desktop
+    permissions: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=Castle Wine App
+      Comment=Launch the Windows apps from the Castle USB share under Wine
+      Exec=/usr/local/bin/castle-wine-launch
+      Terminal=false
+      X-GNOME-Autostart-enabled=true
+
+  # One-shot golden build: everything a clone must never repeat lives here.
+  - path: /usr/local/sbin/castle-golden-build
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Castle: install the desktop + Wine once; clones skip this via the marker.
+      set -e
+      export DEBIAN_FRONTEND=noninteractive
+      # Wine needs 32-bit packages for 32-bit Windows apps.
+      dpkg --add-architecture i386
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        openssh-server qemu-guest-agent ufw curl git \
+        ubuntu-desktop-minimal \
+        wine wine64 wine32:i386 fonts-wine
+      # No first-login wizard or welcome tour standing between boot and the app.
+      apt-get purge -y gnome-initial-setup gnome-tour || true
+      apt-get clean
+      systemctl enable qemu-guest-agent
+      ufw default deny incoming
+      ufw default allow outgoing
+      ufw allow OpenSSH
+      ufw --force enable
+      systemctl set-default graphical.target
+      # Pre-create the Wine prefix so the first app launch is not delayed by it.
+      sudo -u castle env HOME=/home/castle WINEDLLOVERRIDES="mscoree=d;mshtml=d" WINEDEBUG=-all wineboot -i || true
+      touch /var/lib/castle/reboot-pending
+
+runcmd:
+  - test -f /var/lib/castle/first-boot-done || /usr/local/sbin/castle-golden-build
+  - touch /var/lib/castle/first-boot-done
+
+power_state:
+  mode: reboot
+  message: "castle: desktop + Wine installed, rebooting into the graphical session"
+  condition: ["sh", "-c", "test -f /var/lib/castle/reboot-pending && rm -f /var/lib/castle/reboot-pending"]
+
+final_message: "castle: cloud-init finished after $UPTIME seconds."

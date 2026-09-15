@@ -1,0 +1,57 @@
+# ==============================================================================
+# Castle -- Windows 11 in a container (dockur/windows, KVM inside Docker Desktop)
+# ==============================================================================
+# Bring it up with ..\..\docker.ps1 -Profile windows (recommended: it generates
+# the login and makes sure /dev/kvm exists in Docker Desktop's VM) or:
+#   docker compose --env-file .env up -d
+# Then open http://127.0.0.1:8006 to watch the unattended install (~20 min on
+# first run, downloads the Windows ISO into ./storage), or RDP to 127.0.0.1:3389
+# once it is up.
+#
+# Windows apps: scripts/wine-apps is mounted twice --
+#   /oem/apps   copied to C:\OEM\apps at install time; oem/install.bat runs every
+#               .exe there once, at the end of setup (silent flags where known)
+#   /shared     the live folder, as "Shared" on the desktop and drive Z:
+#
+# Hardening:
+#   - published on the loopback interface only (web viewer + RDP)
+#   - login required for RDP (USERNAME / PASSWORD from .env, never committed);
+#     the 8006 web viewer itself has no login, hence loopback only
+#   - only the two device nodes the VM needs, NET_ADMIN for its tap interface
+# The VM disk lives in the named volume "storage" (inside Docker Desktop's ext4
+# VHDX), not a bind mount: on an NTFS bind mount the sparse 48 GB image is fully
+# allocated on the host. -Purge deletes the volume.
+# ==============================================================================
+services:
+  windows:
+    image: dockurr/windows
+    container_name: castle-windows
+    environment:
+      VERSION: "11"
+      USERNAME: ${WEBTOP_USER:?set WEBTOP_USER in docker/windows/.env}
+      PASSWORD: ${WEBTOP_PASSWORD:?set WEBTOP_PASSWORD in docker/windows/.env}
+      RAM_SIZE: "8G"
+      CPU_CORES: "4"
+      DISK_SIZE: "32G"           # smallest that a Windows 11 install tolerates; sparse, so the host only pays for what Windows writes (~20 GB)
+      LANGUAGE: "English"
+      REGION: "en-US"
+      KEYBOARD: "en-US"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:8006:8006"
+      - "127.0.0.1:3389:3389/tcp"
+      - "127.0.0.1:3389:3389/udp"
+    volumes:
+      - storage:/storage
+      - ./oem:/oem:ro
+      - ../../scripts/wine-apps:/oem/apps:ro
+      - ../../scripts/wine-apps:/shared:ro
+    restart: unless-stopped
+    stop_grace_period: 2m
+
+volumes:
+  storage:

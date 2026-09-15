@@ -1,0 +1,19 @@
+#!/bin/bash
+# ==============================================================================
+# Castle: launch every Windows app from /castle/wine-apps under Wine.
+# ==============================================================================
+# Runs from the XFCE autostart entry installed by 50-castle-autostart.sh.
+# The share is mounted read-only and Windows apps like to write next to their
+# .exe, so each app is copied into the user's home first (once).
+SRC=/castle/wine-apps
+DST="$HOME/wine-apps"
+export WINEDEBUG=-all
+mkdir -p "$DST"
+if [ -d "$SRC" ]; then
+  cp -n "$SRC"/*.exe "$SRC"/*.EXE "$DST"/ 2>/dev/null
+fi
+shopt -s nullglob nocaseglob
+for exe in "$DST"/*.exe; do
+  ( cd "$DST" && wine "$exe" ) &
+done
+wait
