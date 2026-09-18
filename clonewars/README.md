@@ -64,8 +64,36 @@ Both resolve their versions from GitHub Releases and prompt you to pick one. Knu
 - The profiles live in `scripts/cloud-init/<server|desktop>/user-data`; edit them to change packages, users, or first-boot commands. A per-VM `meta-data` (instance id + hostname) is generated next to the disk under `data/seeds/`, so every `-Instance` clone gets its own hostname.
 - The seed is served to the guest as a read-only FAT volume labelled `CIDATA` straight from that folder — no ISO tooling needed on the host.
 - Both targets share one cached image (`data/ubuntu-noble-cloudimg-amd64.img`); VM disks are keyed by target id (`data/ubuntu-cloud.qcow2`).
-- Cloud targets boot UEFI (OVMF): on this host's WHPX the legacy SeaBIOS/GRUB path hangs at "Booting from Hard Disk", the EFI path does not. Linux guests also run WHPX with `kernel-irqchip=off`.
+- Cloud targets boot UEFI (OVMF): on this host's WHPX the legacy SeaBIOS/GRUB path hangs at "Booting from Hard Disk", the EFI path does not. All guests run plain WHPX with the default in-hypervisor irqchip: `kernel-irqchip=off` made the EndeavourOS live ISO take 30+ minutes on "Rebuild Dynamic Linker Cache" instead of reaching the desktop in ~2.5 minutes (`CASTLE_VM_IRQCHIP=off` re-enables it for experiments).
 
+#### Drop files in, get Wine and your programs running (EndeavourOS)
+`data/copy/` is a payload folder. Whatever is in it rides into the VM as a second read-only USB share (FAT label `CASTLECOPY`, about 480 MB max), and one flag does the rest:
+
+```powershell
+.\start.ps1 endeavouros -Copy                    # boot, copy data/copy -> ~/castle-copy, install Wine, run every .exe in it
+.\start.ps1 endeavouros -c -Program Setup.exe    # same, but run only that one (a name inside data/copy, or a path in the guest)
+.\start.ps1 endeavouros                          # interactive: asks the same question whenever data/copy is not empty
+```
+
+`scripts/setup-wine.sh` (on the `CASTLE` share) enables `[multilib]`, installs `wine wine-gecko wine-mono winetricks`, copies the share into the desktop user's home (`~/castle-copy`, writable, so installers can write next to their exe) and starts the programs inside that user's desktop session. The host never waits for a login: the EndeavourOS ISO ships `qemu-guest-agent` and the launcher already attaches its socket, so `start.ps1` waits for the agent to answer (up to 15 min), runs the script as root through it (`modules/guest.ps1`) and streams the log into your console. No guest agent (another distro, or an installed system without it)? The pipeline prints the one-liner to run inside the VM instead:
+
+```bash
+sudo mount -o ro /dev/disk/by-label/CASTLE /mnt && sudo bash /mnt/setup-wine.sh --copy --all
+```
+
+Measured on this host: QEMU start to 7-Zip opening under Wine in about 80 seconds (direct boot, agent answering ~20 s in, 1 GB Wine install from the Worldwide mirrors). Two live-ISO quirks the script handles: the ISO ships `/etc/pacman.d/mirrorlist` with every server commented out (pacman says "no servers configured for repository"), so it enables the Worldwide block when nothing is active; and the root overlay is RAM, so it grows the archiso cow space to 8G first. Install EndeavourOS to the disk and the same flag works against the installed system, where Wine and `~/castle-copy` persist.
+
+#### Jak and Daxter from scratch: OpenGOAL
+`-Setup opengoal` swaps the Wine script for `scripts/setup-opengoal.sh`. Put the game disc `.iso` (a plain ISO9660 dump; unzip it) and, optionally, the official `opengoal-linux-<ver>.tar.gz` in `data/copy`, then:
+
+```powershell
+.\start.ps1 endeavouros -c -Setup opengoal      # boot, mount the disc, extract + decompile + compile, launch the game
+```
+
+How the payload gets in: `.iso` files in `data/copy` are attached to the VM as extra CD-ROMs (`/dev/sr1..`, any size; commas in the file name are escaped for QEMU), everything else under ~480 MB is hard-linked into `data/seeds/copy-share/` and served as the `CASTLECOPY` FAT share, and bigger non-ISO files (the zip the ISO came in) are skipped with a note. In the guest the script finds the disc by its `SYSTEM.CNF`, puts a writable overlayfs on top of the read-only mount (the extractor writes a `buildinfo.json` next to the game files), unpacks the release into `~/opengoal`, runs `extractor --extract/--decompile/--compile --proj-path data --folder <disc>` as the desktop user, and starts `gk -- -boot -fakeiso` in the KDE session with `LP_NUM_THREADS` set to every core. Without a tarball in the payload it fetches the latest Linux release from GitHub. Measured: disc detected as "Jak & Daxter: The Precursor Legacy (Black Label), NTSC-U", extract 1 s, decompile + compile about 40 s on 14 cores, Daxter on the Naughty Dog splash within ~3 minutes of `start.ps1`.
+
+Sound: every VM now carries an Intel HDA codec on the first host backend the QEMU build lists (Windows: DirectSound, then SDL; `CASTLE_VM_AUDIO=none` or a backend name overrides). PipeWire in the guest picks it up as the default sink and the script sets it to 100% (the live session starts at 40%); use the host mixer as the volume knob. Graphics are Mesa llvmpipe (software OpenGL 4.6; OpenGOAL needs 4.3). `-Gl` / `CASTLE_VM_GL=1` tries virtio-vga-gl with an SDL OpenGL display, but on this host's QEMU 11 build that deadlocks QEMU before the guest boots (QMP stops answering, one core spins), so it stays opt-in. The script is uploaded through the guest agent each run, so editing `scripts/setup-*.sh` takes effect on a running VM without a reboot.
+The EndeavourOS target also boots the ISO's "All GPUs" entry directly (`DirectBoot` in `targets.ps1`): the kernel and initramfs are pulled out of the ISO once with 7-Zip into `data/kernels/<iso>/` and handed to QEMU with that entry's own command line, so the 15-second boot menu never shows, and `systemd.mask=ldconfig.service` is appended so archiso's "Rebuild Dynamic Linker Cache" step (a needless ~19 s on every live boot, 30+ min under `kernel-irqchip=off`) is skipped. `CASTLE_VM_DIRECTBOOT=0` brings the menu back; without 7-Zip on the host the menu simply shows as before.
 #### Wine apps from a folder, from scratch, fast
 Put any Windows `.exe` files in `scripts/wine-apps/` (git-ignored). That folder is on the read-only USB share every VM gets (FAT label `CASTLE`), and the desktop profile launches every `.exe` in it under Wine (64-bit and 32-bit) at login, with the Mono/Gecko download prompts suppressed. Windows apps like to write next to their exe, so the launcher copies them into `~/wine-apps` first.
 
@@ -189,7 +217,7 @@ The pipeline queries the host hardware configuration dynamically:
 
 ### Phase 5: Launching the Virtual Machine
 Based on the target's `OsFamily` (Linux, Windows, macOS) and `Firmware` metadata, the engine builds tailored QEMU launching configurations:
-- **Linux:** Uses high-performance paravirtualized `virtio` disk interfaces and VGA graphics; under WHPX the accelerator runs with `kernel-irqchip=off`.
+- **Linux:** Uses high-performance paravirtualized `virtio` disk interfaces and VGA graphics on plain WHPX (`kernel-irqchip=off` is off by default: it slowed Linux boots roughly 18x; set `CASTLE_VM_IRQCHIP=off` to try it).
 - **Windows:** Legacy `ide` disk and CD-ROM on the default machine type (Q35/AHCI was tried for speed but the installed system hangs on a black screen after the bootloader under WHPX; opt back in with `CASTLE_VM_MACHINE=q35`), `std` VGA, and boots UEFI targets (Windows 11) from the OVMF firmware bundled with QEMU. Once a UEFI Windows disk is installed the installer CD is no longer attached (the no-prompt unattended ISO would otherwise reinstall over it if the firmware ever picked it first).
 - **UEFI boot fallback:** `scripts/startup.nsh` rides on the USB share, and OVMF's shell runs it whenever no NVRAM boot entry works. It finds and launches `\EFI\Microsoft\Boot\bootmgfw.efi` (Windows never writes the generic `\EFI\BOOT\BOOTX64.EFI` the firmware looks for) or the Ubuntu/generic loaders, so Windows disks, fresh clones and lost NVRAM entries all still boot without a keypress. The firmware is loaded as `pflash` with a per-VM writable NVRAM (`data/<disk>.vars.fd`) so UEFI boot entries survive reboots; deleting a disk also deletes its NVRAM. There is no virtual TPM: the unattended `win11-*` installs apply the image from WinPE, which does not run setup's hardware checks.
 - **macOS:** Boots experimental configurations utilizing Penryn CPU profiles and special guest machine interfaces via the KVM-OpenCore shim.

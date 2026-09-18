@@ -457,8 +457,10 @@ function Get-AdhocQemuArgs {
     # Accelerator: the module emits "-accel <best> -accel tcg"; replace with the choice.
     if ($Accel -ne "auto") {
         Remove-QemuOption $A "-accel"
+        # Plain whpx for every guest: kernel-irqchip=off made Linux live ISOs
+        # crawl (see Build-QemuArgs in modules/launch.ps1). Pass
+        # -Accel "whpx,kernel-irqchip=off" explicitly to experiment with it.
         $Pair = @("-accel", $Accel)
-        if ($Accel -eq "whpx" -and $OsFamily -eq "linux") { $Pair[1] = "whpx,kernel-irqchip=off" }
         if ($Accel -ne "tcg") { $Pair += @("-accel", "tcg") }
         $A.InsertRange(0, [string[]]$Pair)
     }

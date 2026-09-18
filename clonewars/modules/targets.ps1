@@ -94,6 +94,17 @@ $IsoMatrix = @(
         # QEMU Profile
         DiskSize              = "40G"
         OsFamily              = "linux"
+        # start.ps1 -Copy: data/copy -> guest, scripts/setup-wine.sh via the
+        # guest agent (the ISO ships qemu-guest-agent and is Arch-based).
+        SupportsCopy          = $true
+        # Skip the ISO's 15-second boot menu: boot the "All GPUs" entry
+        # (syslinux label eos64) straight away with -kernel/-initrd/-append,
+        # using the exact command line from the ISO's own config so the
+        # archiso UUID stays right for whichever version was downloaded.
+        # AppendExtra: archiso re-runs ldconfig.service ("Rebuild Dynamic Linker
+        # Cache", ~19 s, and 30+ min under kernel-irqchip=off) on every live
+        # boot although the squashfs already carries a valid ld.so.cache; mask it.
+        DirectBoot            = @{ Config = "boot/syslinux/archiso_sys-linux.cfg"; Label = "eos64"; AppendExtra = "systemd.mask=ldconfig.service" }
     },
     @{
         Id            = "arch"

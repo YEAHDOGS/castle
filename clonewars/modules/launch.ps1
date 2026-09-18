@@ -236,6 +236,110 @@ function New-VirtualDisk {
 }
 
 
+function Get-QemuAudioBackend {
+    <#
+    .SYNOPSIS
+        The host audio backend to hand to -audiodev: CASTLE_VM_AUDIO when set
+        ("none" disables sound), otherwise the first usable one from the
+        build's own "-audiodev help" list, in a sensible per-platform order.
+    #>
+    if ($env:CASTLE_VM_AUDIO -eq "none") { return $null }
+    if (-not [string]::IsNullOrWhiteSpace($env:CASTLE_VM_AUDIO)) { return $env:CASTLE_VM_AUDIO }
+    if ($Script:QemuAudioBackend) { return $Script:QemuAudioBackend }
+    $Available = @()
+    try { $Available = @(& $Script:QemuSystem -audiodev help 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[a-z]+$' }) } catch { }
+    $IsLinuxOS = ($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true)
+    $Preferred = if ($IsLinuxOS) { @("pipewire", "pa", "alsa", "sdl") } elseif ($IsMacOS) { @("coreaudio", "sdl") } else { @("dsound", "sdl") }
+    $Script:QemuAudioBackend = $Preferred | Where-Object { $_ -in $Available } | Select-Object -First 1
+    return $Script:QemuAudioBackend
+}
+
+
+function Get-SevenZip {
+    # 7-Zip reads files straight out of an ISO without mounting it.
+    $Cmd = Get-Command 7z -ErrorAction SilentlyContinue
+    if ($Cmd) { return $Cmd.Source }
+    foreach ($p in @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe", "$env:LOCALAPPDATA\Programs\7-Zip\7z.exe")) {
+        if ($p -and (Test-Path $p)) { return $p }
+    }
+    return $null
+}
+
+
+function Get-DirectBootFiles {
+    <#
+    .SYNOPSIS
+        Kernel, initramfs and command line for booting a live ISO's chosen
+        menu entry directly (QEMU -kernel/-initrd/-append), skipping the ISO's
+        boot menu and its countdown. The entry is read from the ISO's own
+        syslinux config (Target.DirectBoot = @{ Config; Label }) and the two
+        boot files are extracted once into data/kernels/<iso>/.
+    .OUTPUTS
+        @{ Kernel; Initrd; Append } or $null when anything is missing (the
+        caller then boots the ISO's menu as usual).
+    #>
+    param (
+        [hashtable]$Target,
+        [string]$IsoPath
+    )
+
+    $Spec = $Target.DirectBoot
+    if (-not $Spec -or -not (Test-Path $IsoPath)) { return $null }
+    $SevenZip = Get-SevenZip
+    if (-not $SevenZip) {
+        Write-Host "  [*] Direct boot skipped: 7-Zip not found (winget install 7zip.7zip); the ISO menu will show instead." -ForegroundColor DarkGray
+        return $null
+    }
+
+    $IsoBase = [System.IO.Path]::GetFileNameWithoutExtension($IsoPath)
+    $CacheDir = Join-Path (Join-Path (Split-Path $IsoPath -Parent) "kernels") $IsoBase
+    $ConfigName = [System.IO.Path]::GetFileName($Spec.Config)
+    $ConfigPath = Join-Path $CacheDir $ConfigName
+
+    try {
+        if (-not (Test-Path $ConfigPath)) {
+            New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
+            & $SevenZip e -y "-o$CacheDir" $IsoPath $Spec.Config 2>&1 | Out-Null
+        }
+        if (-not (Test-Path $ConfigPath)) { throw "config $($Spec.Config) not in ISO" }
+
+        # syslinux: LABEL <name> ... LINUX / INITRD / APPEND until the next LABEL.
+        $Block = $null
+        foreach ($Line in Get-Content $ConfigPath) {
+            if ($Line -match '^\s*LABEL\s+(\S+)') {
+                if ($Block) { break }
+                if ($Matches[1] -eq $Spec.Label) { $Block = @{} }
+                continue
+            }
+            if (-not $Block) { continue }
+            if ($Line -match '^\s*LINUX\s+(\S+)') { $Block.Kernel = $Matches[1] }
+            elseif ($Line -match '^\s*INITRD\s+(\S+)') { $Block.Initrd = $Matches[1] }
+            elseif ($Line -match '^\s*APPEND\s+(.+?)\s*$') { $Block.Append = $Matches[1] }
+        }
+        if (-not $Block -or -not $Block.Kernel -or -not $Block.Initrd) { throw "label '$($Spec.Label)' has no LINUX/INITRD lines" }
+
+        $Files = @{}
+        foreach ($Kind in "Kernel", "Initrd") {
+            $InIso = $Block[$Kind].TrimStart('/')
+            $Local = Join-Path $CacheDir ([System.IO.Path]::GetFileName($InIso))
+            if (-not (Test-Path $Local)) {
+                Write-Host "  [*] Direct boot: extracting $InIso from the ISO..." -ForegroundColor DarkGray
+                & $SevenZip e -y "-o$CacheDir" $IsoPath $InIso 2>&1 | Out-Null
+            }
+            if (-not (Test-Path $Local)) { throw "$InIso not in ISO" }
+            $Files[$Kind] = $Local
+        }
+        $Append = $Block.Append
+        if ($Spec.AppendExtra) { $Append = "$Append $($Spec.AppendExtra)" }
+        return @{ Kernel = $Files.Kernel; Initrd = $Files.Initrd; Append = $Append }
+    }
+    catch {
+        Write-Host "  [*] Direct boot skipped ($($_.Exception.Message)); the ISO menu will show instead." -ForegroundColor DarkGray
+        return $null
+    }
+}
+
+
 function Build-QemuArgs {
     <#
     .SYNOPSIS
@@ -248,7 +352,16 @@ function Build-QemuArgs {
         [hashtable]$Hardware,
         [bool]$FirstBoot = $false,
         [bool]$Vnc = $false,
-        [int]$VncDisplay = 0
+        [int]$VncDisplay = 0,
+        # Host folder exposed to the guest as a second read-only USB share
+        # (FAT label CASTLECOPY); start.ps1 -Copy points it at data/copy.
+        [string]$CopyDir = $null,
+        # Extra ISO images attached as additional read-only CD-ROMs (payload
+        # ISOs too big for the FAT share, e.g. a game disc). /dev/sr1.. in the guest.
+        [string[]]$ExtraCdroms = @(),
+        # Host-GPU 3D for the guest: virtio-vga-gl + an OpenGL display backend
+        # (virgl). Needed for anything that wants real OpenGL (OpenGOAL: 4.3).
+        [bool]$Gl = $false
     )
 
     $OsFamily = if ($Target.OsFamily) { $Target.OsFamily } else { "linux" }
@@ -274,12 +387,15 @@ function Build-QemuArgs {
     }
 
     $IsLinuxOS = ($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true)
-    # WHPX: Linux guests get kernel-irqchip=off (the APIC is emulated in QEMU
-    # instead of the hypervisor), which is the usual WHPX advice for Linux.
-    # Windows guests keep the default: WinPE and the installed system boot fine
-    # with it, and Windows stalled on a black screen after the bootloader with
-    # the APIC routed through QEMU.
-    $Accel = if ($IsLinuxOS) { "kvm" } elseif ($OsFamily -eq "linux") { "whpx,kernel-irqchip=off" } else { "whpx" }
+    # WHPX keeps the default in-hypervisor irqchip for every guest. Linux guests
+    # briefly ran with kernel-irqchip=off (the old WHPX advice for Linux), but
+    # with the APIC emulated in QEMU every interrupt takes a round trip through
+    # userspace: the EndeavourOS live ISO needed ~18x longer to reach systemd
+    # (guest clock 158s vs 9s at the same point) and then sat on "Rebuild
+    # Dynamic Linker Cache" for 30+ minutes, while plain whpx lands on the KDE
+    # desktop in about 2.5 minutes. Measured on QEMU 11.0 / Windows 11.
+    # CASTLE_VM_IRQCHIP=off opts back in for experiments.
+    $Accel = if ($IsLinuxOS) { "kvm" } elseif ($env:CASTLE_VM_IRQCHIP -eq "off") { "whpx,kernel-irqchip=off" } else { "whpx" }
 
     # -- Base arguments (universal) --
     # Windows guests get the Q35 chipset so their "ide" drives land on its AHCI
@@ -323,6 +439,19 @@ function Build-QemuArgs {
     }
     elseif ($FirstBoot -or -not ($OsFamily -eq "windows" -and $Target.Firmware -eq "uefi")) {
         $Args += @("-drive", "file=$IsoPath,media=cdrom,readonly=on")
+
+        # Live ISOs with a DirectBoot entry skip their boot menu: QEMU loads the
+        # kernel + initramfs itself with that entry's command line, and the
+        # initramfs still finds the ISO on the CD-ROM by its archiso UUID.
+        # Only while the CD is what we boot (first boot); an installed disk
+        # boots its own bootloader. CASTLE_VM_DIRECTBOOT=0 shows the menu.
+        if ($FirstBoot -and $Target.DirectBoot -and $env:CASTLE_VM_DIRECTBOOT -ne "0") {
+            $Direct = Get-DirectBootFiles -Target $Target -IsoPath $IsoPath
+            if ($Direct) {
+                $Args += @("-kernel", $Direct.Kernel, "-initrd", $Direct.Initrd, "-append", $Direct.Append)
+                Write-Host "  [*] Direct boot: '$($Target.DirectBoot.Label)' entry, ISO menu skipped." -ForegroundColor White
+            }
+        }
     }
     else {
         # An installed UEFI Windows disk never gets the installer CD back: the
@@ -332,12 +461,38 @@ function Build-QemuArgs {
         Write-Host "  [*] Installer CD detached (disk already installed)." -ForegroundColor DarkGray
     }
 
+    foreach ($Cd in $ExtraCdroms) {
+        if ([string]::IsNullOrWhiteSpace($Cd) -or -not (Test-Path $Cd)) { continue }
+        # QEMU option syntax: a comma inside a value is written as ",," (game
+        # dumps are often named "(En,Fr,De,Es,It)").
+        $Args += @("-drive", "file=$($Cd -replace ',', ',,'),media=cdrom,readonly=on")
+        Write-Host "  [*] Extra CD-ROM: $Cd" -ForegroundColor White
+    }
+
+    # virtio-vga-gl replaces the plain VGA when GL is on; the display backend
+    # below gets gl=on to match. Both GTK and SDL GL backends *start* on this
+    # host's QEMU build (GTK reports no DMABUF support), but with a real guest
+    # booting, sdl,gl=on deadlocked QEMU's main loop (QMP dead, a core
+    # spinning, guest never reached the agent). Opt-in only; see start.ps1 -Gl.
+    $Args += @("-boot", "order=$BootOrder")
+    if ($Gl) { $Args += @("-device", "virtio-vga-gl") } else { $Args += @("-vga", $VgaType) }
     $Args += @(
-        "-boot", "order=$BootOrder"
-        "-vga", $VgaType
         "-usb"
         "-device", "usb-tablet"
     )
+
+    # Sound: an Intel HDA codec wired to the first host backend this QEMU build
+    # offers (Windows: dsound, then sdl; Linux: pipewire/pa/alsa). Every guest
+    # gets it -- games are silent otherwise. CASTLE_VM_AUDIO=none turns it off,
+    # or names a backend to force one.
+    $AudioBackend = Get-QemuAudioBackend
+    if ($AudioBackend) {
+        $Args += @(
+            "-audiodev", "$AudioBackend,id=castleaudio"
+            "-device", "intel-hda"
+            "-device", "hda-duplex,audiodev=castleaudio"
+        )
+    }
 
     # Attach the /scripts folder as a Virtual FAT drive (skip for android target).
     # It rides on USB rather than the default IDE bus: ide-hd refuses a read-only
@@ -352,10 +507,22 @@ function Build-QemuArgs {
         )
     }
 
+    # The copy payload (data/copy) is a second share of the same kind. vvfat
+    # simulates a fixed 504 MB FAT16 disk whatever fat-type is asked for, so
+    # start.ps1 refuses bigger payloads up front instead of QEMU failing late.
+    if (-not [string]::IsNullOrEmpty($CopyDir) -and (Test-Path $CopyDir)) {
+        $Args += @(
+            "-blockdev", "driver=vvfat,node-name=castlecopy,dir=$CopyDir,label=CASTLECOPY,rw=off,read-only=on"
+            "-device", "usb-storage,drive=castlecopy"
+        )
+        Write-Host "  [*] Copy share: $CopyDir  (in the guest: /dev/disk/by-label/CASTLECOPY)" -ForegroundColor White
+    }
+
     # QMP control socket (loopback only) so the pipeline and tooling can ask the
     # guest to power off cleanly, query state, or take a screendump without
     # touching the window. The port is printed at boot.
     $QmpPort = Get-FreeTcpPort -Start 4444
+    $Script:LastQmpPort = $QmpPort
     $Args += @("-qmp", "tcp:127.0.0.1:$QmpPort,server=on,wait=off")
     Write-Host "  [*] QMP:        127.0.0.1:$QmpPort" -ForegroundColor White
 
@@ -364,6 +531,7 @@ function Build-QemuArgs {
     # which is how tooling can read logs or run commands inside a VM without a
     # login. Harmless for guests without the agent.
     $QgaPort = Get-FreeTcpPort -Start ($QmpPort + 100)
+    $Script:LastQgaPort = $QgaPort
     $Args += @(
         "-chardev", "socket,id=qga0,host=127.0.0.1,port=$QgaPort,server=on,wait=off"
         "-device", "virtio-serial"
@@ -374,6 +542,9 @@ function Build-QemuArgs {
     if ($Vnc) {
         $VncBind = if (Test-RunningInDocker) { "0.0.0.0" } else { "127.0.0.1" }
         $Args += @("-vnc", "$($VncBind):$($VncDisplay)")
+    }
+    elseif ($Gl) {
+        $Args += @("-display", "sdl,gl=on")
     }
     else {
         $Args += @("-display", "gtk")
@@ -455,12 +626,23 @@ function Start-CastleVm {
         [hashtable]$Hardware,
         [bool]$FirstBoot = $false,
         [switch]$Background = $false,
-        [switch]$Vnc = $false
+        [switch]$Vnc = $false,
+        # Copy payload: folder shared into the guest as CASTLECOPY. When set, the
+        # guest agent runs scripts/setup-wine.sh once the VM answers, copying the
+        # share, installing Wine and starting $Programs (or every .exe, -RunAll).
+        [string]$CopyDir = $null,
+        [string[]]$Programs = @(),
+        [switch]$RunAll = $false,
+        # Which scripts/setup-*.sh the guest agent runs (wine, opengoal, ...).
+        [string]$SetupScript = "setup-wine.sh",
+        [string[]]$ExtraCdroms = @(),
+        [switch]$Gl = $false
     )
 
     $OsFamily = if ($Target.OsFamily) { $Target.OsFamily } else { "linux" }
     $BootMode = if ($Target.ImageKind -eq "cloud") { if ($FirstBoot) { "Disk (cloud image, first boot: cloud-init)" } else { "Disk (cloud image)" } } elseif ($FirstBoot) { "CD-ROM (install)" } else { "Disk (existing)" }
     $DiskIf = if ($OsFamily -eq "windows" -or $OsFamily -eq "macos") { "ide" } else { "virtio" }
+    $Provision = -not [string]::IsNullOrEmpty($CopyDir)
 
     $VncDisplay = 0
     $VncBind = "127.0.0.1"
@@ -482,6 +664,11 @@ function Start-CastleVm {
         $VncPort = 5900 + $VncDisplay
         Write-Host "  * VNC:       Listening on $($VncBind):$($VncPort) (Display :$VncDisplay)" -ForegroundColor Green
     }
+    if ($Provision) {
+        $What = if ($RunAll) { "everything it finds" } elseif ($Programs.Count -gt 0) { $Programs -join ", " } else { "nothing (install only)" }
+        Write-Host "  * Copy:      $CopyDir -> ~/castle-copy, then $SetupScript runs $What" -ForegroundColor White
+    }
+    if ($Gl) { Write-Host "  * Graphics:  virtio-vga-gl (host OpenGL via virgl), SDL display" -ForegroundColor White }
 
     $QemuArgs = Build-QemuArgs `
         -Target $Target `
@@ -490,17 +677,32 @@ function Start-CastleVm {
         -Hardware $Hardware `
         -FirstBoot $FirstBoot `
         -Vnc $Vnc `
-        -VncDisplay $VncDisplay
+        -VncDisplay $VncDisplay `
+        -CopyDir $CopyDir `
+        -ExtraCdroms $ExtraCdroms `
+        -Gl $Gl
 
-    if ($Background) {
-        Write-Host "  [BOOT] Launching VM in the background (asynchronous)..." -ForegroundColor Green
+    if ($Background -or $Provision) {
+        if ($Background) { Write-Host "  [BOOT] Launching VM in the background (asynchronous)..." -ForegroundColor Green }
         # Start-Process joins -ArgumentList with spaces and does not quote, so any
         # argument containing whitespace (e.g. a firmware path under Program Files)
         # must be wrapped here. The foreground call operator below quotes on its own.
         $QuotedArgs = $QemuArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }
-        $QemuExe = if ($Script:QemuSystemWindowed -and (Test-Path $Script:QemuSystemWindowed)) { $Script:QemuSystemWindowed } else { $Script:QemuSystem }
+        # Background VMs use the windowed binary (no console of their own); a
+        # foreground VM that is being provisioned keeps the console binary so
+        # QEMU's own messages still land next to the guest log below.
+        $QemuExe = if ($Background -and $Script:QemuSystemWindowed -and (Test-Path $Script:QemuSystemWindowed)) { $Script:QemuSystemWindowed } else { $Script:QemuSystem }
         $Process = Start-Process -FilePath $QemuExe -ArgumentList $QuotedArgs -NoNewWindow -PassThru
-        Write-Host "  [BOOT] Background VM Process started (PID: $($Process.Id))." -ForegroundColor Green
+        Write-Host "  [BOOT] VM process started (PID: $($Process.Id))." -ForegroundColor Green
+
+        if ($Provision) {
+            Invoke-CastleGuestSetup -QgaPort $Script:LastQgaPort -Script $SetupScript -Programs $Programs -RunAll:$RunAll -QemuProcess $Process | Out-Null
+        }
+        if (-not $Background -and -not $Process.HasExited) {
+            Write-Host ""
+            Write-Host "  Close the QEMU window to shut down." -ForegroundColor DarkGray
+            Wait-Process -Id $Process.Id -ErrorAction SilentlyContinue
+        }
     }
     else {
         Write-Host ""

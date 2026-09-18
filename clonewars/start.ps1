@@ -34,6 +34,33 @@ param (
     [Parameter()]
     [Switch]$Vnc,
 
+    # Copy data/copy into the guest (read-only USB share CASTLECOPY), install
+    # Wine there with scripts/setup-wine.sh and run the Windows programs it
+    # finds -- all driven from the host through the QEMU guest agent. Targets
+    # that support it carry SupportsCopy in targets.ps1 (EndeavourOS first).
+    [Parameter()]
+    [Alias("c")]
+    [Switch]$Copy,
+
+    # Program(s) to run after the Wine install: a file name inside data/copy or
+    # a path inside the guest. Implies -Copy. Without it, -Copy runs every .exe.
+    [Parameter()]
+    [Alias("p")]
+    [String[]]$Program,
+
+    # Which guest setup runs with -Copy: scripts/setup-<name>.sh.
+    #   wine     (default) install Wine, run the payload's .exe files
+    #   opengoal install OpenGOAL, build Jak and Daxter from the disc ISO in
+    #            data/copy, launch it (software OpenGL via llvmpipe)
+    [Parameter()]
+    [String]$Setup = "wine",
+
+    # EXPERIMENTAL host-GPU 3D for the guest (virtio-vga-gl + SDL OpenGL
+    # display). Hangs QEMU on this host (see the note near the end of the copy
+    # payload block); left in for other hosts / newer QEMU builds. CASTLE_VM_GL=1/0.
+    [Parameter()]
+    [Switch]$Gl,
+
     [Parameter()]
     [Switch]$DeleteDisk,
 
@@ -54,8 +81,16 @@ $ModuleRoot = Join-Path $PSScriptRoot "modules"
 . (Join-Path $ModuleRoot "hardware.ps1")
 . (Join-Path $ModuleRoot "launch.ps1")
 . (Join-Path $ModuleRoot "resolvers.ps1")
+. (Join-Path $ModuleRoot "guest.ps1")
 
 $DataDir = Join-Path $PSScriptRoot "data"
+$CopyDir = Join-Path $DataDir "copy"
+
+function Get-CopyPayloadFiles {
+    # Everything under data/copy except the folder's own README.
+    if (-not (Test-Path $CopyDir)) { return @() }
+    return @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { -not ($_.Name -ieq "README.md" -and $_.DirectoryName -eq (Get-Item $CopyDir).FullName) })
+}
 
 # ==============================================================================
 # DIRECT COMMAND LINE CLEANUP / REMOVAL
@@ -262,6 +297,17 @@ function Show-TargetDetails {
         Write-Host "   * ISO Cache:     $IsoStatus" -ForegroundColor White
         Write-Host "   * Virtual Disk:  $DiskStatus" -ForegroundColor White
     }
+    if ($Entry.SupportsCopy) {
+        $PayloadFiles = @(Get-CopyPayloadFiles)
+        $PayloadStatus = if ($PayloadFiles.Count -gt 0) {
+            $PayloadMB = "{0:N0}" -f (($PayloadFiles | Measure-Object -Property Length -Sum).Sum / 1MB)
+            "$($PayloadFiles.Count) file(s), $PayloadMB MB in data/copy -- boot asks whether to copy + install Wine"
+        }
+        else {
+            "data/copy is empty (drop .exe files there; -Copy installs Wine and runs them)"
+        }
+        Write-Host "   * Copy Payload:  $PayloadStatus" -ForegroundColor White
+    }
     Write-Host "   ================================================================" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -280,6 +326,11 @@ function Show-HelpDocs {
     Write-Host "     .\start.ps1                 Start this interactive prompting loop."
     Write-Host "     -Mirror <n|host|country>    Pick a download mirror without the prompt"
     Write-Host "                                 (targets with a mirror list, e.g. endeavouros)."
+    Write-Host "     -Copy | -c                  Copy data/copy into the VM, install Wine and run"
+    Write-Host "                                 every .exe in it (EndeavourOS; via the guest agent)."
+    Write-Host "     -Program <name> | -p        Run only that program after the install (implies -Copy)."
+    Write-Host "     -Setup wine|opengoal        Guest setup script for -Copy (scripts/setup-<name>.sh)."
+    Write-Host "     -Gl                         Host-GPU OpenGL for the guest (virtio-vga-gl; -Setup opengoal implies it)."
     Write-Host ""
     Write-Host "   SECURITY & TRUST PINNING:" -ForegroundColor White
     Write-Host "     * Remote Verification: Checks remote SHA hashes and GPG signatures."
@@ -599,6 +650,121 @@ Write-Host "  Castle VM Pipeline" -ForegroundColor Cyan
 Write-Host "  Target: $($Iso.Name)" -ForegroundColor White
 Write-Host "  ================================================================" -ForegroundColor DarkGray
 
+# ==============================================================================
+# COPY PAYLOAD -- data/copy -> guest, Wine install, program launch
+# ==============================================================================
+$RunAll = $false
+$Programs = @()
+if ($Program) { $Programs = @($Program | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
+if ($Programs.Count -gt 0) { $Copy = $true }
+
+if ($Iso.SupportsCopy) {
+    $CopyFiles = @(Get-CopyPayloadFiles)
+    $CopyExes = @($CopyFiles | Where-Object { $_.Extension -ieq ".exe" } | Sort-Object FullName)
+    $CopyRoot = if (Test-Path $CopyDir) { (Get-Item $CopyDir).FullName } else { $CopyDir }
+
+    if (-not $Copy -and $CopyFiles.Count -gt 0 -and -not $Background) {
+        # Interactive: the folder has something in it, ask before booting.
+        Write-Host ""
+        Write-Host "  [COPY] data/copy holds $($CopyFiles.Count) file(s):" -ForegroundColor Cyan
+        foreach ($f in ($CopyFiles | Select-Object -First 12)) {
+            $Rel = $f.FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
+            Write-Host ("     * {0}  ({1:N1} MB)" -f $Rel, ($f.Length / 1MB)) -ForegroundColor White
+        }
+        if ($CopyFiles.Count -gt 12) { Write-Host "     * ... and $($CopyFiles.Count - 12) more" -ForegroundColor DarkGray }
+        $Answer = Read-Host "  Copy them into the VM, install Wine and run the Windows programs? [Y/n]"
+        if ($Answer -notmatch '^(n|no)$') {
+            $Copy = $true
+            if ($CopyExes.Count -gt 1) {
+                Write-Host ""
+                for ($i = 0; $i -lt $CopyExes.Count; $i++) {
+                    $Rel = $CopyExes[$i].FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
+                    Write-Host ("     [{0,2}] {1}" -f ($i + 1), $Rel) -ForegroundColor White
+                }
+                $Pick = Read-Host "  Run [A]ll .exe files, or pick one [1-$($CopyExes.Count)] (default: A)"
+                $PickIndex = 0
+                if ([int]::TryParse($Pick.Trim(), [ref]$PickIndex) -and $PickIndex -ge 1 -and $PickIndex -le $CopyExes.Count) {
+                    $Programs = @($CopyExes[$PickIndex - 1].FullName.Substring($CopyRoot.Length).TrimStart('\', '/') -replace '\\', '/')
+                }
+                else {
+                    $RunAll = $true
+                }
+            }
+            else {
+                $RunAll = $true
+            }
+        }
+    }
+    elseif ($Copy -and $Programs.Count -eq 0) {
+        $RunAll = $true
+    }
+
+    if ($Copy) {
+        # The share is QEMU's virtual FAT: a fixed 504 MB FAT16 disk. So the
+        # payload is split three ways: *.iso files are attached as extra
+        # CD-ROMs (any size), other files over the cap are left out with a
+        # warning, and everything else is hard-linked into a staging folder
+        # that becomes the CASTLECOPY share (links are instant, no copying).
+        $ShareCap = 480MB
+        $ExtraCdroms = @()
+        $ShareFiles = @()
+        foreach ($f in $CopyFiles) {
+            if ($f.Extension -ieq ".iso") { $ExtraCdroms += $f.FullName; continue }
+            if ($f.Length -gt $ShareCap) {
+                $Hint = if ($f.Extension -ieq ".zip") { " (a zip holding an ISO? extract it here; the .iso is attached as a CD-ROM)" } else { "" }
+                Write-Host "  [COPY] Skipping $($f.Name): $("{0:N0}" -f ($f.Length / 1MB)) MB is over the $("{0:N0}" -f ($ShareCap / 1MB)) MB share cap$Hint" -ForegroundColor Yellow
+                continue
+            }
+            $ShareFiles += $f
+        }
+        $ShareBytes = ($ShareFiles | Measure-Object -Property Length -Sum).Sum
+        if ($null -eq $ShareBytes) { $ShareBytes = 0 }
+        if ($ShareBytes -gt $ShareCap) {
+            Write-Host "  [FAIL] The small files in data/copy add up to $("{0:N0}" -f ($ShareBytes / 1MB)) MB; the virtual FAT share holds about $("{0:N0}" -f ($ShareCap / 1MB)) MB." -ForegroundColor Red
+            Write-Host "         Trim the folder (or split the payload across runs) and try again." -ForegroundColor DarkGray
+            Exit 1
+        }
+
+        $StageDir = Join-Path (Join-Path $DataDir "seeds") "copy-share"
+        if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
+        foreach ($f in $ShareFiles) {
+            $Rel = $f.FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
+            $Dest = Join-Path $StageDir $Rel
+            $DestDir = Split-Path $Dest -Parent
+            if (-not (Test-Path $DestDir)) { New-Item -ItemType Directory -Path $DestDir -Force | Out-Null }
+            try { New-Item -ItemType HardLink -Path $Dest -Target $f.FullName -ErrorAction Stop | Out-Null }
+            catch { Copy-Item $f.FullName $Dest -Force }
+        }
+
+        if ($CopyFiles.Count -eq 0) {
+            Write-Host "  [COPY] data/copy is empty -- $Setup setup will still run in the VM." -ForegroundColor Yellow
+        }
+        else {
+            $What = if ($RunAll) { "run everything it finds" } elseif ($Programs.Count -gt 0) { "run $($Programs -join ', ')" } else { "install only" }
+            Write-Host "  [COPY] $($ShareFiles.Count) file(s), $("{0:N0}" -f ($ShareBytes / 1MB)) MB -> CASTLECOPY share; $($ExtraCdroms.Count) ISO(s) as CD-ROM; setup-$Setup.sh, then $What" -ForegroundColor Cyan
+        }
+    }
+}
+elseif ($Copy) {
+    Write-Host "  [FAIL] '$($Iso.Id)' does not support -Copy yet. Targets with SupportsCopy in targets.ps1: $(($IsoMatrix | Where-Object { $_.SupportsCopy } | ForEach-Object { $_.Id }) -join ', ')" -ForegroundColor Red
+    Exit 1
+}
+$EffectiveCopyDir = if ($Copy) { $StageDir } else { $null }
+if (-not $Copy) { $ExtraCdroms = @() }
+
+$SetupScript = "setup-$($Setup.ToLower()).sh"
+if ($Copy -and -not (Test-Path (Join-Path (Join-Path $PSScriptRoot "scripts") $SetupScript))) {
+    Write-Host "  [FAIL] Unknown setup '$Setup': scripts/$SetupScript does not exist." -ForegroundColor Red
+    Exit 1
+}
+# -Gl stays strictly opt-in: on this host's QEMU (11.0, Windows) virtio-vga-gl
+# with "-display sdl,gl=on" deadlocks QEMU's main loop before the guest even
+# boots (QMP stops answering, one core spins). OpenGOAL runs on Mesa's
+# llvmpipe inside the guest instead (OpenGL 4.5 in software; it needs 4.3).
+if ($env:CASTLE_VM_GL -eq "1") { $Gl = $true }
+if ($env:CASTLE_VM_GL -eq "0") { $Gl = $false }
+
 Add-Type -AssemblyName System.Net.Http
 $HttpClient = [System.Net.Http.HttpClient]::new()
 
@@ -746,4 +912,10 @@ Start-CastleVm `
     -Hardware $Hardware `
     -FirstBoot $FirstBoot `
     -Background:$Background `
-    -Vnc:$Vnc
+    -Vnc:$Vnc `
+    -CopyDir $EffectiveCopyDir `
+    -Programs $Programs `
+    -RunAll:$RunAll `
+    -SetupScript $SetupScript `
+    -ExtraCdroms $ExtraCdroms `
+    -Gl:$Gl
