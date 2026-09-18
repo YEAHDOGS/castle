@@ -49,11 +49,13 @@ param (
     [String[]]$Program,
 
     # Which guest setup runs with -Copy: scripts/setup-<name>.sh.
-    #   wine     (default) install Wine, run the payload's .exe files
+    #   auto     (default) whatever the payload calls for: Wine + every .exe/.msi
+    #            when there are any, OpenGOAL when a PS2 disc ISO is present
+    #   wine     install Wine, run the payload's .exe/.msi files
     #   opengoal install OpenGOAL, build Jak and Daxter from the disc ISO in
     #            data/copy, launch it (software OpenGL via llvmpipe)
     [Parameter()]
-    [String]$Setup = "wine",
+    [String]$Setup = "auto",
 
     # EXPERIMENTAL host-GPU 3D for the guest (virtio-vga-gl + SDL OpenGL
     # display). Hangs QEMU on this host (see the note near the end of the copy
@@ -146,6 +148,13 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         }
         else {
             Write-Host "  [CLEANUP] Virtual disk does not exist: $DiskFile" -ForegroundColor DarkGray
+        }
+        # The -Copy scratch disk (payload copy, Wine prefix, game builds) goes with it.
+        $ScratchName = if (-not [string]::IsNullOrEmpty($Instance)) { "$Instance-scratch.qcow2" } else { "$($Resolved.Id)-scratch.qcow2" }
+        $ScratchFile = Join-Path (Join-Path $DataDir "scratch") $ScratchName
+        if (Test-Path $ScratchFile) {
+            Write-Host "  [CLEANUP] Deleting scratch disk: $ScratchFile" -ForegroundColor Yellow
+            Remove-Item $ScratchFile -Force
         }
     }
 
@@ -329,7 +338,7 @@ function Show-HelpDocs {
     Write-Host "     -Copy | -c                  Copy data/copy into the VM, install Wine and run"
     Write-Host "                                 every .exe in it (EndeavourOS; via the guest agent)."
     Write-Host "     -Program <name> | -p        Run only that program after the install (implies -Copy)."
-    Write-Host "     -Setup wine|opengoal        Guest setup script for -Copy (scripts/setup-<name>.sh)."
+    Write-Host "     -Setup auto|wine|opengoal   Guest setup script for -Copy (scripts/setup-<name>.sh; auto = by payload)."
     Write-Host "     -Gl                         Host-GPU OpenGL for the guest (virtio-vga-gl; -Setup opengoal implies it)."
     Write-Host ""
     Write-Host "   SECURITY & TRUST PINNING:" -ForegroundColor White
@@ -700,41 +709,61 @@ if ($Iso.SupportsCopy) {
     }
 
     if ($Copy) {
-        # The share is QEMU's virtual FAT: a fixed 504 MB FAT16 disk. So the
-        # payload is split three ways: *.iso files are attached as extra
-        # CD-ROMs (any size), other files over the cap are left out with a
-        # warning, and everything else is hard-linked into a staging folder
-        # that becomes the CASTLECOPY share (links are instant, no copying).
+        # *.iso files are attached to the VM as extra CD-ROMs (a game disc,
+        # any size). Everything else becomes the CASTLECOPY share: on Windows
+        # an ISO image built with the built-in IMAPI2 (any size, disk-speed
+        # reads), attached as a CD-ROM too; elsewhere QEMU's virtual FAT of a
+        # hard-linked staging folder (fixed 504 MB, so over-cap files are
+        # left out with a warning).
         $ShareCap = 480MB
         $ExtraCdroms = @()
         $ShareFiles = @()
         foreach ($f in $CopyFiles) {
             if ($f.Extension -ieq ".iso") { $ExtraCdroms += $f.FullName; continue }
-            if ($f.Length -gt $ShareCap) {
-                $Hint = if ($f.Extension -ieq ".zip") { " (a zip holding an ISO? extract it here; the .iso is attached as a CD-ROM)" } else { "" }
-                Write-Host "  [COPY] Skipping $($f.Name): $("{0:N0}" -f ($f.Length / 1MB)) MB is over the $("{0:N0}" -f ($ShareCap / 1MB)) MB share cap$Hint" -ForegroundColor Yellow
-                continue
+            # A zip that only wraps an .iso already extracted next to it is
+            # dead weight (the guest copies the share into RAM on a live ISO).
+            if ($f.Extension -ieq ".zip") {
+                $SevenZip = Get-SevenZip
+                if ($SevenZip) {
+                    $Entries = @(& $SevenZip l -ba -slt $f.FullName 2>$null | Where-Object { $_ -match '^Path = ' } | ForEach-Object { $_.Substring(7) })
+                    if ($Entries.Count -eq 1 -and $Entries[0] -match '\.iso$' -and (Test-Path (Join-Path $f.DirectoryName ([System.IO.Path]::GetFileName($Entries[0]))))) {
+                        Write-Host "  [COPY] Skipping $($f.Name): its ISO is already extracted next to it" -ForegroundColor DarkGray
+                        continue
+                    }
+                }
             }
             $ShareFiles += $f
         }
         $ShareBytes = ($ShareFiles | Measure-Object -Property Length -Sum).Sum
         if ($null -eq $ShareBytes) { $ShareBytes = 0 }
-        if ($ShareBytes -gt $ShareCap) {
-            Write-Host "  [FAIL] The small files in data/copy add up to $("{0:N0}" -f ($ShareBytes / 1MB)) MB; the virtual FAT share holds about $("{0:N0}" -f ($ShareCap / 1MB)) MB." -ForegroundColor Red
-            Write-Host "         Trim the folder (or split the payload across runs) and try again." -ForegroundColor DarkGray
-            Exit 1
-        }
 
-        $StageDir = Join-Path (Join-Path $DataDir "seeds") "copy-share"
-        if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
-        New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
-        foreach ($f in $ShareFiles) {
-            $Rel = $f.FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
-            $Dest = Join-Path $StageDir $Rel
-            $DestDir = Split-Path $Dest -Parent
-            if (-not (Test-Path $DestDir)) { New-Item -ItemType Directory -Path $DestDir -Force | Out-Null }
-            try { New-Item -ItemType HardLink -Path $Dest -Target $f.FullName -ErrorAction Stop | Out-Null }
-            catch { Copy-Item $f.FullName $Dest -Force }
+        $SeedsDir = Join-Path $DataDir "seeds"
+        $CopyIsoPath = Join-Path $SeedsDir "copy-share.iso"
+        $EffectiveCopyIso = $null
+        $EffectiveCopyDir = $null
+        if ($ShareFiles.Count -gt 0) {
+            Write-Host "  [COPY] Building the payload image ($("{0:N0}" -f ($ShareBytes / 1MB)) MB)..." -ForegroundColor DarkGray
+            $EffectiveCopyIso = New-CastlePayloadIso -SourceDir $CopyDir -OutputPath $CopyIsoPath -Label "CASTLECOPY" -IncludeFiles $ShareFiles
+        }
+        if (-not $EffectiveCopyIso) {
+            $StageDir = Join-Path $SeedsDir "copy-share"
+            if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
+            $Kept = 0; $KeptBytes = 0
+            foreach ($f in $ShareFiles) {
+                if ($f.Length -gt $ShareCap -or ($KeptBytes + $f.Length) -gt $ShareCap) {
+                    Write-Host "  [COPY] Skipping $($f.Name): $("{0:N0}" -f ($f.Length / 1MB)) MB does not fit the $("{0:N0}" -f ($ShareCap / 1MB)) MB virtual FAT share" -ForegroundColor Yellow
+                    continue
+                }
+                $Rel = $f.FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
+                $Dest = Join-Path $StageDir $Rel
+                $DestDir = Split-Path $Dest -Parent
+                if (-not (Test-Path $DestDir)) { New-Item -ItemType Directory -Path $DestDir -Force | Out-Null }
+                try { New-Item -ItemType HardLink -Path $Dest -Target $f.FullName -ErrorAction Stop | Out-Null }
+                catch { Copy-Item $f.FullName $Dest -Force }
+                $Kept++; $KeptBytes += $f.Length
+            }
+            $EffectiveCopyDir = $StageDir
         }
 
         if ($CopyFiles.Count -eq 0) {
@@ -742,7 +771,8 @@ if ($Iso.SupportsCopy) {
         }
         else {
             $What = if ($RunAll) { "run everything it finds" } elseif ($Programs.Count -gt 0) { "run $($Programs -join ', ')" } else { "install only" }
-            Write-Host "  [COPY] $($ShareFiles.Count) file(s), $("{0:N0}" -f ($ShareBytes / 1MB)) MB -> CASTLECOPY share; $($ExtraCdroms.Count) ISO(s) as CD-ROM; setup-$Setup.sh, then $What" -ForegroundColor Cyan
+            $ShareKind = if ($EffectiveCopyIso) { "CASTLECOPY ISO" } else { "CASTLECOPY FAT share" }
+            Write-Host "  [COPY] $($ShareFiles.Count) file(s), $("{0:N0}" -f ($ShareBytes / 1MB)) MB -> $ShareKind; $($ExtraCdroms.Count) disc ISO(s) as CD-ROM; setup-$Setup.sh, then $What" -ForegroundColor Cyan
         }
     }
 }
@@ -750,8 +780,17 @@ elseif ($Copy) {
     Write-Host "  [FAIL] '$($Iso.Id)' does not support -Copy yet. Targets with SupportsCopy in targets.ps1: $(($IsoMatrix | Where-Object { $_.SupportsCopy } | ForEach-Object { $_.Id }) -join ', ')" -ForegroundColor Red
     Exit 1
 }
-$EffectiveCopyDir = if ($Copy) { $StageDir } else { $null }
-if (-not $Copy) { $ExtraCdroms = @() }
+if (-not $Copy) { $ExtraCdroms = @(); $EffectiveCopyIso = $null; $EffectiveCopyDir = $null }
+
+# Scratch disk for -Copy runs: a sparse qcow2 next to the target's disk
+# (data/scratch/<target>-scratch.qcow2). The guest keeps the payload copy, the
+# Wine prefix and game builds on it instead of in RAM, and it persists, so a
+# second run skips the rebuilds. CASTLE_VM_SCRATCH=0 keeps everything in RAM.
+$ScratchDisk = $null
+if ($Copy -and $env:CASTLE_VM_SCRATCH -ne "0") {
+    $ScratchName = if (-not [string]::IsNullOrEmpty($Instance)) { "$Instance-scratch.qcow2" } else { "$($Iso.Id)-scratch.qcow2" }
+    $ScratchDisk = Join-Path (Join-Path $DataDir "scratch") $ScratchName
+}
 
 $SetupScript = "setup-$($Setup.ToLower()).sh"
 if ($Copy -and -not (Test-Path (Join-Path (Join-Path $PSScriptRoot "scripts") $SetupScript))) {
@@ -913,7 +952,9 @@ Start-CastleVm `
     -FirstBoot $FirstBoot `
     -Background:$Background `
     -Vnc:$Vnc `
+    -CopyIso $EffectiveCopyIso `
     -CopyDir $EffectiveCopyDir `
+    -ScratchDisk $ScratchDisk `
     -Programs $Programs `
     -RunAll:$RunAll `
     -SetupScript $SetupScript `

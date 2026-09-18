@@ -168,9 +168,13 @@ function Invoke-CastleGuestSetup {
 
     $Handle = $null
     try {
-        $LocalScript = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "scripts") $Script
-        if (-not (Test-Path $LocalScript)) { throw "scripts/$Script not found on the host" }
-        Send-CastleGuestFile -Session $Qga -LocalPath $LocalScript -RemotePath $RemoteScript
+        # Upload every top-level .sh (setup-auto.sh dispatches to its siblings,
+        # all of them source castle-lib.sh).
+        $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
+        if (-not (Test-Path (Join-Path $ScriptsDir $Script))) { throw "scripts/$Script not found on the host" }
+        foreach ($s in Get-ChildItem $ScriptsDir -Filter "*.sh" -File) {
+            Send-CastleGuestFile -Session $Qga -LocalPath $s.FullName -RemotePath "/tmp/castle-$($s.Name)"
+        }
         Write-Host "  [GUEST] Agent up. Running $Script $ScriptArgs" -ForegroundColor Green
         Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
         $Exec = Invoke-QgaCommand -Session $Qga -Execute "guest-exec" -Arguments @{
@@ -181,24 +185,43 @@ function Invoke-CastleGuestSetup {
         $GuestPid = $Exec.pid
         $Offset = 0
         $Status = $null
+        $Stalls = 0
 
         while ($true) {
-            if (-not $Handle) {
-                try { $Handle = Invoke-QgaCommand -Session $Qga -Execute "guest-file-open" -Arguments @{ path = $Log; mode = "r" } } catch { }
-            }
-            if ($Handle) {
-                # Re-seek every read: glibc's EOF is sticky, a plain re-read after
-                # the file grew would return nothing.
-                Invoke-QgaCommand -Session $Qga -Execute "guest-file-seek" -Arguments @{ handle = $Handle; offset = $Offset; whence = "set" } | Out-Null
-                $Chunk = Invoke-QgaCommand -Session $Qga -Execute "guest-file-read" -Arguments @{ handle = $Handle; count = 65536 }
-                if ($Chunk.count -gt 0) {
-                    $Offset += [int]$Chunk.count
-                    $Text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Chunk.'buf-b64'))
-                    Write-Host ($Text -replace '(?m)^', '  ') -NoNewline
-                    if (-not $Text.EndsWith("`n")) { Write-Host "" }
+            # A guest under heavy load (compiles, installers) can miss the
+            # agent's deadline. Reconnect and carry on from the same log
+            # offset rather than declaring the run lost; give up after 10 min
+            # of continuous silence.
+            try {
+                if (-not $Handle) {
+                    try { $Handle = Invoke-QgaCommand -Session $Qga -Execute "guest-file-open" -Arguments @{ path = $Log; mode = "r" } -TimeoutMs 30000 } catch { }
                 }
+                if ($Handle) {
+                    # Re-seek every read: glibc's EOF is sticky, a plain re-read after
+                    # the file grew would return nothing.
+                    Invoke-QgaCommand -Session $Qga -Execute "guest-file-seek" -Arguments @{ handle = $Handle; offset = $Offset; whence = "set" } -TimeoutMs 30000 | Out-Null
+                    $Chunk = Invoke-QgaCommand -Session $Qga -Execute "guest-file-read" -Arguments @{ handle = $Handle; count = 65536 } -TimeoutMs 30000
+                    if ($Chunk.count -gt 0) {
+                        $Offset += [int]$Chunk.count
+                        $Text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Chunk.'buf-b64'))
+                        Write-Host ($Text -replace '(?m)^', '  ') -NoNewline
+                        if (-not $Text.EndsWith("`n")) { Write-Host "" }
+                    }
+                }
+                $Status = Invoke-QgaCommand -Session $Qga -Execute "guest-exec-status" -Arguments @{ pid = $GuestPid } -TimeoutMs 30000
+                $Stalls = 0
             }
-            $Status = Invoke-QgaCommand -Session $Qga -Execute "guest-exec-status" -Arguments @{ pid = $GuestPid }
+            catch {
+                if ($QemuProcess -and $QemuProcess.HasExited) { throw "VM exited" }
+                $Stalls++
+                if ($Stalls -gt 20) { throw "guest agent silent for 10 minutes ($($_.Exception.Message))" }
+                Write-Host "  [GUEST] Agent busy ($($_.Exception.Message.Split('.')[0])); reconnecting..." -ForegroundColor DarkGray
+                try { $Qga.Client.Dispose() } catch { }
+                $Handle = $null
+                $Again = Connect-CastleGuestAgent -Port $QgaPort -TimeoutSec 30 -QemuProcess $QemuProcess
+                if ($Again) { $Qga = $Again }
+                continue
+            }
             if ($Status.exited) {
                 if ($Status.'err-data') {
                     $Err = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Status.'err-data'))

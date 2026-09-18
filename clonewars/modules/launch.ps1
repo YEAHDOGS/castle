@@ -236,6 +236,88 @@ function New-VirtualDisk {
 }
 
 
+function New-CastlePayloadIso {
+    <#
+    .SYNOPSIS
+        Builds an ISO9660+Joliet+UDF image of a folder with Windows' built-in
+        IMAPI2 (no external tools), for attaching a payload to a VM as a
+        CD-ROM. Unlike QEMU's virtual FAT share (fixed 504 MB, slow reads)
+        this takes any size and reads at disk speed.
+    .OUTPUTS
+        The image path, or $null when IMAPI2 is unavailable (non-Windows) or fails.
+    #>
+    param (
+        [string]$SourceDir,
+        [string]$OutputPath,
+        [string]$Label = "CASTLECOPY",
+        [string[]]$ExcludeExtensions = @(),
+        # When given, exactly these files (FileInfo objects under SourceDir) go in.
+        [System.IO.FileInfo[]]$IncludeFiles = $null
+    )
+
+    $IsWindowsOS = -not (($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true) -or ($IsMacOS -eq $true))
+    if (-not $IsWindowsOS) { return $null }
+
+    try {
+        if (-not ("CastleIsoWriter" -as [type])) {
+            Add-Type -TypeDefinition @'
+using System; using System.IO; using System.Runtime.InteropServices; using System.Runtime.InteropServices.ComTypes;
+public static class CastleIsoWriter {
+  public static long Write(string path, object stream, int blockSize, int totalBlocks) {
+    var s = (IStream)stream; var buf = new byte[blockSize]; long written = 0;
+    IntPtr pRead = Marshal.AllocHGlobal(sizeof(int));
+    try { using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write)) {
+      for (int i = 0; i < totalBlocks; i++) { s.Read(buf, blockSize, pRead); int n = Marshal.ReadInt32(pRead); if (n <= 0) break; fs.Write(buf, 0, n); written += n; } } }
+    finally { Marshal.FreeHGlobal(pRead); }
+    return written;
+  }
+}
+'@
+        }
+
+        # IMAPI copies a whole tree, so excluded files are left out through a
+        # staging folder of hard links (same volume: instant, no data copied).
+        $TreeDir = $SourceDir
+        $Staged = $null
+        if ($ExcludeExtensions.Count -gt 0 -or $null -ne $IncludeFiles) {
+            $Staged = "$OutputPath.tree"
+            if (Test-Path $Staged) { Remove-Item $Staged -Recurse -Force }
+            New-Item -ItemType Directory -Path $Staged -Force | Out-Null
+            $Root = (Get-Item $SourceDir).FullName
+            $Candidates = if ($null -ne $IncludeFiles) { $IncludeFiles } else { Get-ChildItem $SourceDir -Recurse -File }
+            foreach ($f in $Candidates) {
+                if ($f.Extension.ToLower() -in $ExcludeExtensions) { continue }
+                $Dest = Join-Path $Staged $f.FullName.Substring($Root.Length).TrimStart('\', '/')
+                $DestDir = Split-Path $Dest -Parent
+                if (-not (Test-Path $DestDir)) { New-Item -ItemType Directory -Path $DestDir -Force | Out-Null }
+                try { New-Item -ItemType HardLink -Path $Dest -Target $f.FullName -ErrorAction Stop | Out-Null }
+                catch { Copy-Item $f.FullName $Dest -Force }
+            }
+            $TreeDir = $Staged
+        }
+
+        $Image = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
+        # IMAPI_MEDIA_TYPE_DISK (12): a plain disk image, no CD/DVD size ceiling.
+        $Image.ChooseImageDefaultsForMediaType(12)
+        $Image.VolumeName = $Label
+        $Image.FileSystemsToCreate = 7   # ISO9660 + Joliet + UDF: long names everywhere
+        $Image.Root.AddTree($TreeDir, $false)
+        $Result = $Image.CreateResultImage()
+        $OutDir = Split-Path $OutputPath -Parent
+        if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
+        [CastleIsoWriter]::Write($OutputPath, $Result.ImageStream, $Result.BlockSize, $Result.TotalBlocks) | Out-Null
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($Result) | Out-Null
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($Image) | Out-Null
+        if ($Staged) { Remove-Item $Staged -Recurse -Force -ErrorAction SilentlyContinue }
+        return $OutputPath
+    }
+    catch {
+        Write-Host "  [COPY] Could not build the payload ISO ($($_.Exception.Message)); falling back to the FAT share." -ForegroundColor Yellow
+        return $null
+    }
+}
+
+
 function Get-QemuAudioBackend {
     <#
     .SYNOPSIS
@@ -353,9 +435,16 @@ function Build-QemuArgs {
         [bool]$FirstBoot = $false,
         [bool]$Vnc = $false,
         [int]$VncDisplay = 0,
-        # Host folder exposed to the guest as a second read-only USB share
-        # (FAT label CASTLECOPY); start.ps1 -Copy points it at data/copy.
+        # Payload, one of two forms. CopyIso: an ISO image of data/copy (built
+        # with IMAPI2, any size) attached as a CD-ROM labelled CASTLECOPY.
+        # CopyDir: the folder itself as a read-only virtual-FAT USB share
+        # (fallback; 504 MB cap). Same label, so guests mount either the same way.
+        [string]$CopyIso = $null,
         [string]$CopyDir = $null,
+        # Sparse qcow2 attached as a second virtio disk with serial
+        # "castlescratch"; guest scripts format it once and keep the payload
+        # copy, Wine prefix and game builds there instead of in RAM.
+        [string]$ScratchDisk = $null,
         # Extra ISO images attached as additional read-only CD-ROMs (payload
         # ISOs too big for the FAT share, e.g. a game disc). /dev/sr1.. in the guest.
         [string[]]$ExtraCdroms = @(),
@@ -461,6 +550,21 @@ function Build-QemuArgs {
         Write-Host "  [*] Installer CD detached (disk already installed)." -ForegroundColor DarkGray
     }
 
+    if (-not [string]::IsNullOrEmpty($ScratchDisk)) {
+        if (-not (Test-Path $ScratchDisk)) {
+            $ScratchDir = Split-Path $ScratchDisk -Parent
+            if (-not (Test-Path $ScratchDir)) { New-Item -ItemType Directory -Path $ScratchDir -Force | Out-Null }
+            # Sparse: takes only what the guest writes.
+            & $Script:QemuImg create -q -f qcow2 $ScratchDisk 64G | Out-Null
+        }
+        # The serial lives on the device, not the drive (qcow2 rejects serial=).
+        $Args += @(
+            "-drive", "file=$($ScratchDisk -replace ',', ',,'),if=none,id=castlescratch,format=qcow2,cache=writeback,discard=unmap"
+            "-device", "virtio-blk-pci,drive=castlescratch,serial=castlescratch"
+        )
+        Write-Host "  [*] Scratch disk: $ScratchDisk ($("{0:N0}" -f ((Get-Item $ScratchDisk).Length / 1MB)) MB used; guest: /dev/disk/by-id/virtio-castlescratch)" -ForegroundColor White
+    }
+
     foreach ($Cd in $ExtraCdroms) {
         if ([string]::IsNullOrWhiteSpace($Cd) -or -not (Test-Path $Cd)) { continue }
         # QEMU option syntax: a comma inside a value is written as ",," (game
@@ -510,12 +614,16 @@ function Build-QemuArgs {
     # The copy payload (data/copy) is a second share of the same kind. vvfat
     # simulates a fixed 504 MB FAT16 disk whatever fat-type is asked for, so
     # start.ps1 refuses bigger payloads up front instead of QEMU failing late.
-    if (-not [string]::IsNullOrEmpty($CopyDir) -and (Test-Path $CopyDir)) {
+    if (-not [string]::IsNullOrEmpty($CopyIso) -and (Test-Path $CopyIso)) {
+        $Args += @("-drive", "file=$($CopyIso -replace ',', ',,'),media=cdrom,readonly=on")
+        Write-Host "  [*] Copy share: $CopyIso  (CD-ROM, in the guest: /dev/disk/by-label/CASTLECOPY)" -ForegroundColor White
+    }
+    elseif (-not [string]::IsNullOrEmpty($CopyDir) -and (Test-Path $CopyDir)) {
         $Args += @(
             "-blockdev", "driver=vvfat,node-name=castlecopy,dir=$CopyDir,label=CASTLECOPY,rw=off,read-only=on"
             "-device", "usb-storage,drive=castlecopy"
         )
-        Write-Host "  [*] Copy share: $CopyDir  (in the guest: /dev/disk/by-label/CASTLECOPY)" -ForegroundColor White
+        Write-Host "  [*] Copy share: $CopyDir  (virtual FAT, in the guest: /dev/disk/by-label/CASTLECOPY)" -ForegroundColor White
     }
 
     # QMP control socket (loopback only) so the pipeline and tooling can ask the
@@ -630,11 +738,13 @@ function Start-CastleVm {
         # Copy payload: folder shared into the guest as CASTLECOPY. When set, the
         # guest agent runs scripts/setup-wine.sh once the VM answers, copying the
         # share, installing Wine and starting $Programs (or every .exe, -RunAll).
+        [string]$CopyIso = $null,
         [string]$CopyDir = $null,
+        [string]$ScratchDisk = $null,
         [string[]]$Programs = @(),
         [switch]$RunAll = $false,
-        # Which scripts/setup-*.sh the guest agent runs (wine, opengoal, ...).
-        [string]$SetupScript = "setup-wine.sh",
+        # Which scripts/setup-*.sh the guest agent runs (auto, wine, opengoal, ...).
+        [string]$SetupScript = "setup-auto.sh",
         [string[]]$ExtraCdroms = @(),
         [switch]$Gl = $false
     )
@@ -642,7 +752,7 @@ function Start-CastleVm {
     $OsFamily = if ($Target.OsFamily) { $Target.OsFamily } else { "linux" }
     $BootMode = if ($Target.ImageKind -eq "cloud") { if ($FirstBoot) { "Disk (cloud image, first boot: cloud-init)" } else { "Disk (cloud image)" } } elseif ($FirstBoot) { "CD-ROM (install)" } else { "Disk (existing)" }
     $DiskIf = if ($OsFamily -eq "windows" -or $OsFamily -eq "macos") { "ide" } else { "virtio" }
-    $Provision = -not [string]::IsNullOrEmpty($CopyDir)
+    $Provision = -not ([string]::IsNullOrEmpty($CopyDir) -and [string]::IsNullOrEmpty($CopyIso))
 
     $VncDisplay = 0
     $VncBind = "127.0.0.1"
@@ -666,7 +776,7 @@ function Start-CastleVm {
     }
     if ($Provision) {
         $What = if ($RunAll) { "everything it finds" } elseif ($Programs.Count -gt 0) { $Programs -join ", " } else { "nothing (install only)" }
-        Write-Host "  * Copy:      $CopyDir -> ~/castle-copy, then $SetupScript runs $What" -ForegroundColor White
+        Write-Host "  * Copy:      $(if ($CopyIso) { $CopyIso } else { $CopyDir }) -> ~/castle-copy, then $SetupScript runs $What" -ForegroundColor White
     }
     if ($Gl) { Write-Host "  * Graphics:  virtio-vga-gl (host OpenGL via virgl), SDL display" -ForegroundColor White }
 
@@ -678,7 +788,9 @@ function Start-CastleVm {
         -FirstBoot $FirstBoot `
         -Vnc $Vnc `
         -VncDisplay $VncDisplay `
+        -CopyIso $CopyIso `
         -CopyDir $CopyDir `
+        -ScratchDisk $ScratchDisk `
         -ExtraCdroms $ExtraCdroms `
         -Gl $Gl
 

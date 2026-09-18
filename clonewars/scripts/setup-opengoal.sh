@@ -53,6 +53,12 @@ COPY_DST="$USER_HOME/castle-copy"
 OG_DIR="$USER_HOME/opengoal"
 echo "[+] Desktop user: $ACTUAL_USER ($USER_HOME)"
 
+# Shared helpers (next to this script, uploaded by the host or on the CASTLE share).
+for lib in "$(dirname "$0")/castle-castle-lib.sh" "$(dirname "$0")/castle-lib.sh" /mnt/castle/castle-lib.sh; do
+  [ -f "$lib" ] && { . "$lib"; break; }
+done
+type castle_scratch_setup >/dev/null 2>&1 && castle_scratch_setup "$ACTUAL_USER" "$USER_HOME"
+
 # Live ISO: the root overlay is RAM. The extracted disc (~1.4 GB), decompiler
 # output and compiled game (~1.5 GB) all land there, so give it room.
 if mountpoint -q /run/archiso/cowspace 2>/dev/null; then
@@ -72,8 +78,8 @@ if [ "$COPY" = 1 ]; then
   echo "[+] Step 0: Copying the Castle copy share into $COPY_DST..."
   if mount_label CASTLECOPY /mnt/castle-copy; then
     mkdir -p "$COPY_DST"
-    cp -rv /mnt/castle-copy/. "$COPY_DST"/ | sed 's/^/    /'
-    chown -R "$ACTUAL_USER:" "$COPY_DST"; chmod -R u+rw "$COPY_DST"
+    cp -rvn /mnt/castle-copy/. "$COPY_DST"/ | sed 's/^/    /'   # -n: keep files an earlier script already copied
+    chown -R "$ACTUAL_USER:" "$(readlink -f "$COPY_DST")"; chmod -R u+rw "$(readlink -f "$COPY_DST")"   # real folder: it may be a symlink onto the scratch disk
   else
     echo "[-] No CASTLECOPY share attached. Continuing without it."
   fi
@@ -130,7 +136,7 @@ if [ ! -x "$OG_DIR/gk" ]; then
   tar -xzf "$TARBALL" -C "$OG_DIR"
   chmod +x "$OG_DIR"/gk "$OG_DIR"/goalc "$OG_DIR"/extractor
 fi
-chown -R "$ACTUAL_USER:" "$OG_DIR"
+chown -R "$ACTUAL_USER:" "$(readlink -f "$OG_DIR")"   # real folder (symlink onto the scratch disk)
 echo "[+] OpenGOAL: $(basename "$TARBALL") -> $OG_DIR"
 
 # The release binaries only need zlib beyond glibc; make sure it is there.

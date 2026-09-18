@@ -52,6 +52,12 @@ USER_UID=$(id -u "$ACTUAL_USER")
 COPY_DST="$USER_HOME/castle-copy"
 echo "[+] Desktop user: $ACTUAL_USER ($USER_HOME)"
 
+# Shared helpers (next to this script, uploaded by the host or on the CASTLE share).
+for lib in "$(dirname "$0")/castle-castle-lib.sh" "$(dirname "$0")/castle-lib.sh" /mnt/castle/castle-lib.sh; do
+  [ -f "$lib" ] && { . "$lib"; break; }
+done
+type castle_scratch_setup >/dev/null 2>&1 && castle_scratch_setup "$ACTUAL_USER" "$USER_HOME"
+
 # --- Live ISO: the root overlay lives in RAM and archiso caps it at 256M by
 # default, which is far too small for Wine and its 32-bit half. Grow it; RAM is
 # only used as files are written.
@@ -76,10 +82,13 @@ if [ "$COPY" = 1 ]; then
   echo "[+] Step 0: Copying the Castle copy share into $COPY_DST..."
   if mount_label CASTLECOPY /mnt/castle-copy; then
     mkdir -p "$COPY_DST"
-    cp -rv /mnt/castle-copy/. "$COPY_DST"/
-    chown -R "$ACTUAL_USER:" "$COPY_DST"
-    chmod -R u+rw "$COPY_DST"
-    echo "[+] Copied $(find "$COPY_DST" -type f | wc -l) file(s)."
+    # -n: files already copied by an earlier script in the same session stay put.
+    cp -rvn /mnt/castle-copy/. "$COPY_DST"/ | sed 's/^/    /'
+    # ~/castle-copy may be a symlink onto the scratch disk: chown/find must
+    # work on the real folder (neither follows a symlink given as argument).
+    chown -R "$ACTUAL_USER:" "$(readlink -f "$COPY_DST")"
+    chmod -R u+rw "$(readlink -f "$COPY_DST")"
+    echo "[+] $(find "$COPY_DST/" -type f | wc -l) file(s) in $COPY_DST."
   else
     echo "[-] No CASTLECOPY share attached (the host adds it with start.ps1 -Copy). Nothing copied."
   fi
@@ -115,14 +124,16 @@ echo "[+] Wine installed successfully: $(wine --version)"
 
 # --- Step 4: which programs -------------------------------------------------
 if [ "$RUN_ALL" = 1 ] && [ -d "$COPY_DST" ]; then
-  while IFS= read -r f; do PROGRAMS+=("$f"); done < <(find "$COPY_DST" -maxdepth 3 -type f -iname '*.exe' | sort)
+  # Every .exe and .msi that came in (installers included: they run and the
+  # user clicks through them like on Windows). Uninstallers are skipped.
+  while IFS= read -r f; do PROGRAMS+=("$f"); done < <(find "$COPY_DST/" -maxdepth 3 -type f \( -iname '*.exe' -o -iname '*.msi' \) ! -iname 'unins*' | sort)
 fi
 
 resolve_program() { # name-or-path -> absolute path, or empty
   local p="$1" hit
   if [ -f "$p" ]; then readlink -f "$p"; return; fi
   if [ -f "$COPY_DST/$p" ]; then readlink -f "$COPY_DST/$p"; return; fi
-  hit=$(find "$COPY_DST" -maxdepth 3 -type f -iname "$p" 2>/dev/null | head -n 1 || true)
+  hit=$(find "$COPY_DST/" -maxdepth 3 -type f -iname "$p" 2>/dev/null | head -n 1 || true)
   [ -n "$hit" ] && readlink -f "$hit"
   return 0
 }
@@ -147,22 +158,81 @@ wait_for_session() {
   return 1
 }
 
-launch_as_user() { # <absolute exe path>
-  local exe="$1" dir unit
-  dir=$(dirname "$exe")
+# run_in_session [--wait] <workdir> <cmd...>
+#   Runs a command inside the desktop user's own systemd session (which
+#   carries DISPLAY / WAYLAND_DISPLAY / DBUS from the login). With --wait it
+#   blocks until the command exits and returns its status. Falls back to
+#   sudo + the first X display when the user manager is unreachable.
+run_in_session() {
+  local wait_flag="" dir unit
+  if [ "$1" = "--wait" ]; then wait_flag="--wait"; shift; fi
+  dir="$1"; shift
   unit="castle-wine-$(date +%s%N)"
-  echo "[+] Launching $exe as $ACTUAL_USER..."
-  # Preferred: run it inside the user's own systemd session, which carries the
-  # DISPLAY / WAYLAND_DISPLAY / DBUS variables of the desktop login.
-  if systemd-run --machine="$ACTUAL_USER@" --user --quiet --collect \
-       --unit="$unit" --working-directory="$dir" --setenv=WINEDEBUG=-all \
-       wine "$exe" 2>/dev/null; then
+  if systemd-run --machine="$ACTUAL_USER@" --user --quiet --collect $wait_flag \
+       --unit="$unit" --working-directory="$dir" --setenv=WINEDEBUG=-all "$@" 2>/dev/null; then
     return 0
   fi
-  # Fallback: drop privileges and assume the first X display.
-  echo "[i] systemd-run --user unavailable, falling back to sudo -u $ACTUAL_USER"
-  sudo -u "$ACTUAL_USER" env DISPLAY="${DISPLAY:-:0}" XDG_RUNTIME_DIR="/run/user/$USER_UID" WINEDEBUG=-all \
-    bash -c "cd \"$dir\" && nohup wine \"$exe\" >/dev/null 2>&1 &"
+  local rc=$?
+  # systemd-run --wait reports the command's own failure with the same code path;
+  # only fall back when the user manager itself is unreachable.
+  if [ -z "$wait_flag" ] || ! systemctl --user -M "$ACTUAL_USER@" is-system-running >/dev/null 2>&1; then
+    echo "[i] systemd-run --user unavailable, falling back to sudo -u $ACTUAL_USER"
+    if [ -n "$wait_flag" ]; then
+      sudo -u "$ACTUAL_USER" env DISPLAY="${DISPLAY:-:0}" XDG_RUNTIME_DIR="/run/user/$USER_UID" WINEDEBUG=-all \
+        bash -c "cd ${dir@Q} && ${*@Q}"
+    else
+      sudo -u "$ACTUAL_USER" env DISPLAY="${DISPLAY:-:0}" XDG_RUNTIME_DIR="/run/user/$USER_UID" WINEDEBUG=-all \
+        bash -c "cd ${dir@Q} && nohup ${*@Q} >/dev/null 2>&1 &"
+    fi
+    return $?
+  fi
+  return $rc
+}
+
+# installer_kind <file> -> inno | nsis | installshield | msi | app
+#   The big installer families each embed their name in the binary.
+installer_kind() {
+  case "${1,,}" in *.msi) echo msi; return ;; esac
+  if grep -qa "Inno Setup" "$1"; then echo inno
+  elif grep -qa "Nullsoft" "$1"; then echo nsis
+  elif grep -qa "InstallShield" "$1"; then echo installshield
+  else echo app; fi
+}
+
+# install_and_launch <file>
+#   Plain programs just start. Installers run silently (their own quiet
+#   switches), and once they finish the Start Menu shortcut they created is
+#   launched, so an installer in the payload ends with the installed app on
+#   screen. If the silent run fails, the installer's wizard is shown instead.
+install_and_launch() {
+  local exe="$1" dir kind marker lnk
+  dir=$(dirname "$exe")
+  kind=$(installer_kind "$exe")
+  local -a cmd
+  case "$kind" in
+    app)           echo "[+] Launching $exe as $ACTUAL_USER..."; run_in_session "$dir" wine "$exe"; return ;;
+    inno)          cmd=(wine "$exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL) ;;
+    nsis)          cmd=(wine "$exe" /S) ;;
+    installshield) cmd=(wine "$exe" /s '/v"/qn"') ;;
+    msi)           cmd=(wine msiexec /i "$exe" /qn) ;;
+  esac
+  marker=$(mktemp /tmp/castle-install.XXXXXX)
+  echo "[+] Installing $(basename "$exe") silently ($kind installer)..."
+  if run_in_session --wait "$dir" "${cmd[@]}"; then
+    # Wine mirrors Windows shortcuts under drive_c; take the newest non-uninstall one.
+    lnk=$(find "$USER_HOME/.wine/drive_c/" -newer "$marker" -iname '*.lnk' -ipath '*start menu*' \
+            ! -iname '*uninstall*' ! -iname '*remove*' ! -iname '*readme*' ! -iname '*website*' ! -iname '*help*' 2>/dev/null | head -n 1)
+    if [ -n "$lnk" ]; then
+      echo "[+] Installed. Launching its shortcut: $(basename "$lnk" .lnk)"
+      run_in_session "$USER_HOME" wine start /unix "$lnk"
+    else
+      echo "[i] Installed, but it left no Start Menu shortcut; find it under ~/.wine/drive_c."
+    fi
+  else
+    echo "[i] Silent install did not work; running the installer with its wizard."
+    run_in_session "$dir" wine "$exe"
+  fi
+  rm -f "$marker"
 }
 
 if ! wait_for_session; then
@@ -179,7 +249,7 @@ for p in "${PROGRAMS[@]}"; do
     FAILED=1
     continue
   fi
-  launch_as_user "$target"
+  install_and_launch "$target"
 done
 echo "[+] Done. Wine prefix: $USER_HOME/.wine  |  copied files: $COPY_DST"
 exit $FAILED
