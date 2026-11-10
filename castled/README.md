@@ -31,6 +31,11 @@ app's Connect screen (the server icon in the top bar).
 - **Token on every call.** Everything except `GET /api/v1/hello` needs
   `Authorization: Bearer <token>`. The token is created on first start and kept in
   `<vault>/.castle/token`.
+- **Answers only to this computer's names.** While it listens on `127.0.0.1`, a request
+  whose `Host` is anything but `127.0.0.1`, `localhost` or `[::1]` is refused, so a web page
+  elsewhere cannot aim a name of its own at the box (DNS rebinding).
+- **A strict content policy on everything it serves.** Code loads only from the box, Castle
+  cannot be shown inside another site's frame, and no address is sent as a referrer.
 - **Nothing leaves the vault.** Names are validated, `..` and hidden names are refused, and
   symlinks are never followed.
 - **No overwrites.** An upload, new folder or restore whose name is taken becomes

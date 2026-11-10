@@ -1074,6 +1074,33 @@ async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Re
     response
 }
 
+/// What the browser is told about every page and answer the box serves: load code only
+/// from the box itself, never show Castle inside another site's frame, and send no
+/// address of this page to anyone.
+const CONTENT_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';     img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self';     object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+/// Runs on every request, before anything else.
+///
+/// A box that listens only on this computer answers only to this computer's names. Without
+/// that, a web page elsewhere could point a name of its own at 127.0.0.1 and have the
+/// browser talk to the box as if it were that page's own server (DNS rebinding).
+async fn harden(State(st): State<Shared>, req: Request, next: Next) -> Response {
+    if st.loopback {
+        let host = req.headers().get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
+        let name = host.rsplit_once(':').map_or(host, |(name, _port)| name);
+        if !matches!(name, "127.0.0.1" | "localhost" | "[::1]") {
+            return ApiError(StatusCode::FORBIDDEN, "this box answers only to this computer".into()).into_response();
+        }
+    }
+    let mut res = next.run(req).await;
+    let headers = res.headers_mut();
+    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CONTENT_POLICY));
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    res
+}
+
 fn write_token(root: &Path, token: &str) -> std::io::Result<()> {
     let path = root.join(META_DIR).join("token");
     let tmp = root.join(META_DIR).join("tmp").join(format!("token-{}", random_hex(8)));
@@ -1204,7 +1231,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         }
         None => app,
     };
-    app.layer(cors).with_state(state)
+    app.layer(middleware::from_fn_with_state(state.clone(), harden)).layer(cors).with_state(state)
 }
 
 #[tokio::main]
