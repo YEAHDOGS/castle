@@ -109,6 +109,35 @@ listed directly and open in PCSX2 and PPSSPP. Nothing is written to the folder.
 | `GET /arcade/art?system=&game=&kind=` | A game's `boxart` or `snap` PNG. |
 | `POST /arcade/play` `{system, game}` | Opens the game in its emulator on this machine. Loopback only. |
 
+## Network
+
+What the box can see of its own connection. It is not the router yet, so this is the
+traffic of the machine it runs on, not of every device in the house.
+
+| Call | Does |
+|---|---|
+| `GET /network` | Byte counters for each network adapter, plus this machine's address, gateway and DNS servers. The app turns two readings into a rate. |
+| `POST /network/speedtest` | Times a 50 MB download and a 10 MB upload against Cloudflare's speed-test service, and a response time. Takes 10 to 30 seconds. |
+| `GET /network/provider` | Asks ipinfo.io who the internet provider is. That service sees the public address. |
+
+The speed test and the provider lookup are the only calls that reach the internet, and
+they run only when asked for.
+
+## Settings and box facts
+
+| Call | Does |
+|---|---|
+| `GET /settings` | The settings the app has saved on the box. |
+| `PUT /settings` `{name: value, ...}` | Merges settings in. Names are dotted (`storage.trashDays`); values are a switch, a number or short text. |
+| `GET /box` | Version, listen address, whether Clones and Arcade are on, and whether Tailscale or WireGuard is installed (with Tailscale's state). |
+
+The box stores settings; it does not act on them yet. The games folder and the
+Clonewars folder are deliberately not settings: they are chosen when the box starts, so a
+web page cannot point the box at a new folder of programs to run.
+
+Reading Tailscale's state uses `tailscale status --json`, whose layout Tailscale does not
+document as stable. It has not been tried against an installed Tailscale.
+
 ## Tests
 
 ```powershell

@@ -14,6 +14,7 @@
 
 mod arcade;
 mod clones;
+mod network;
 
 use std::{
     collections::BTreeSet,
@@ -71,6 +72,12 @@ struct AppState {
     clones: Option<clones::Clones>,
     /// Present only when the daemon was started with --arcade.
     arcade: Option<arcade::Arcade>,
+    network: network::Network,
+    /// What the daemon was started with, for the app's Settings screen.
+    listen: String,
+    loopback: bool,
+    /// Serialises writes to settings.json.
+    settings: Mutex<()>,
 }
 
 type Shared = Arc<AppState>;
@@ -750,6 +757,107 @@ async fn arcade_play(State(st): State<Shared>, Json(b): Json<PlayBody>) -> ApiRe
 }
 
 // ---------------------------------------------------------------------------------------
+// Network: the box's own connection (see network.rs)
+// ---------------------------------------------------------------------------------------
+
+/// Runs one network action off the async threads: these wait on the operating system and,
+/// for the speed test and provider lookup, on the internet.
+async fn network_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
+where
+    T: Send + 'static,
+    F: FnOnce(&network::Network) -> network::NetworkResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || action(&st.network).map(Json).map_err(|msg| ApiError(StatusCode::BAD_GATEWAY, msg)))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn network_reading(State(st): State<Shared>) -> ApiResult<Json<network::Reading>> {
+    network_call(st, |n| Ok(n.reading())).await
+}
+
+async fn network_speedtest(State(st): State<Shared>) -> ApiResult<Json<network::SpeedResult>> {
+    network_call(st, |n| n.speed_test()).await
+}
+
+async fn network_provider(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    network_call(st, |n| n.provider()).await
+}
+
+// ---------------------------------------------------------------------------------------
+// Settings: what the app saves on the box, and what the box was started with
+// ---------------------------------------------------------------------------------------
+
+const MAX_SETTINGS: usize = 200;
+const MAX_SETTING_KEY: usize = 64;
+const MAX_SETTING_TEXT: usize = 500;
+
+fn settings_file(root: &Path) -> PathBuf {
+    root.join(META_DIR).join("settings.json")
+}
+
+fn read_settings(root: &Path) -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read(settings_file(root))
+        .ok()
+        .and_then(|raw| serde_json::from_slice(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// A setting is a dotted lower-case name ("storage.trashDays") holding a switch, a number
+/// or a short piece of text. The box stores them; it does not interpret them yet.
+fn valid_setting(key: &str, value: &serde_json::Value) -> bool {
+    let key_ok = !key.is_empty()
+        && key.len() <= MAX_SETTING_KEY
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '.');
+    let value_ok = match value {
+        serde_json::Value::Bool(_) | serde_json::Value::Number(_) => true,
+        serde_json::Value::String(text) => text.len() <= MAX_SETTING_TEXT && !text.chars().any(|c| c.is_control()),
+        _ => false,
+    };
+    key_ok && value_ok
+}
+
+async fn settings_get(State(st): State<Shared>) -> Json<serde_json::Map<String, serde_json::Value>> {
+    Json(read_settings(&st.root))
+}
+
+/// Merges the given settings into the saved ones and returns the result.
+async fn settings_put(
+    State(st): State<Shared>,
+    Json(changes): Json<serde_json::Map<String, serde_json::Value>>,
+) -> ApiResult<Json<serde_json::Map<String, serde_json::Value>>> {
+    if !changes.iter().all(|(k, v)| valid_setting(k, v)) {
+        return Err(ApiError::bad("that setting cannot be saved"));
+    }
+    let _writing = st.settings.lock().unwrap();
+    let mut saved = read_settings(&st.root);
+    saved.extend(changes);
+    if saved.len() > MAX_SETTINGS {
+        return Err(ApiError::bad("too many settings"));
+    }
+    let tmp = settings_file(&st.root).with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&saved).unwrap_or_default())?;
+    std::fs::rename(tmp, settings_file(&st.root))?;
+    Ok(Json(saved))
+}
+
+/// What this box is and how it was started: read-only facts for the Settings screen.
+async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    let state = st.clone();
+    let links = tokio::task::spawn_blocking(move || state.network.links())
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?;
+    Ok(Json(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "listen": st.listen,
+        "loopback": st.loopback,
+        "clones": st.clones.is_some(),
+        "arcade": st.arcade.is_some(),
+        "links": links,
+    })))
+}
+
+// ---------------------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------------------
 
@@ -857,6 +965,11 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/arcade/games", get(arcade_games))
         .route("/arcade/art", get(arcade_art))
         .route("/arcade/play", post(arcade_play))
+        .route("/network", get(network_reading))
+        .route("/network/speedtest", post(network_speedtest))
+        .route("/network/provider", get(network_provider))
+        .route("/settings", get(settings_get).put(settings_put))
+        .route("/box", get(box_info))
         // Uploads are streamed straight to disk, so the usual in-memory body cap is lifted
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
@@ -913,7 +1026,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => None,
     };
-    let state = Arc::new(AppState { root: root.clone(), token: token.clone(), stars: Mutex::new(stars), clones, arcade });
+    let state = Arc::new(AppState { root: root.clone(), token: token.clone(), stars: Mutex::new(stars),
+        clones,
+        arcade,
+        network: network::Network::new(),
+        listen: addr.to_string(),
+        loopback: addr.ip().is_loopback(),
+        settings: Mutex::new(()),
+    });
 
     // Windows canonical paths carry a verbatim prefix that only clutters the banner.
     let shown = root.display().to_string();
@@ -961,6 +1081,18 @@ mod tests {
     #[test]
     fn trash_keys_are_only_our_own_hex() {
         assert!(trash_key("trash:0123456789abcdef0123456789abcdef").is_ok());
+    }
+
+    #[test]
+    fn settings_are_named_plainly_and_hold_only_simple_values() {
+        use serde_json::json;
+        assert!(valid_setting("storage.trashDays", &json!(30)));
+        assert!(valid_setting("box.name", &json!("Home box")));
+        assert!(valid_setting("remote.enabled", &json!(true)));
+        for (key, value) in [("", json!(1)), ("../x", json!(1)), ("a b", json!(1)), ("ok", json!({"a": 1})), ("ok", json!([1])), ("ok", json!(null)), ("ok", json!("line
+break"))] {
+            assert!(!valid_setting(key, &value), "{key:?} = {value} should be refused");
+        }
         for bad in ["trash:", "trash:../x", "trash:0123", "0123456789abcdef0123456789abcdef", "trash:0123456789abcdef0123456789abcdeg"] {
             assert!(trash_key(bad).is_err(), "{bad:?} should be refused");
         }
