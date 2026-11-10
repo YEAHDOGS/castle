@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #===============================================================================
 # start.sh -- starts Castle on this computer: the box with its web app, then the
-# desktop app. Works on Linux and on Windows (run it from Git Bash).
+# desktop app. Works on Linux and on Windows.
+#
+#   Linux, Git Bash or WSL:           ./start.sh
+#   PowerShell or Command Prompt:     .\start.cmd   (finds Git Bash and runs this file)
 #
 #   1. Builds the box daemon (castled) and the web app if they are not built yet.
 #   2. Starts the box in the background, serving the web app at
@@ -22,6 +25,7 @@
 #   ./start.sh --no-app     web service only
 #   ./start.sh --stop       stop the box this script started
 #   ./start.sh --data DIR --port N    override box.json for this run
+#   ./start.sh --linux      inside WSL: run a Linux box there instead of handing over to Windows
 #===============================================================================
 set -euo pipefail
 
@@ -31,6 +35,16 @@ PROBE_SECONDS=0.25
 APP_ID="net.wearedogs.castle"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# WSL is Linux inside Windows: it has neither the Windows Rust toolchain nor the Windows
+# desktop app. From there, hand the whole run to Windows. --linux keeps it in WSL.
+if [[ "${1:-}" == --linux ]]; then
+    shift
+elif grep -qi microsoft /proc/version 2>/dev/null && command -v cmd.exe >/dev/null 2>&1; then
+    cd /mnt/c 2>/dev/null || true # cmd.exe cannot start in a Linux-only folder
+    exec cmd.exe /c "$(wslpath -w "$ROOT/start.cmd")" "$@"
+fi
+
 DAEMON_DIR="$ROOT/castled"
 CLIENT_DIR="$ROOT/client"
 WEB_DIR="$CLIENT_DIR/dist"
@@ -143,7 +157,7 @@ while (( $# > 0 )); do
         --stop)    STOP=1; shift ;;
         --data)    DATA="${2:?--data needs a folder}"; shift 2 ;;
         --port)    PORT="${2:?--port needs a number}"; shift 2 ;;
-        -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
         *) die "Unknown option '$1' (see --help)" ;;
     esac
 done
