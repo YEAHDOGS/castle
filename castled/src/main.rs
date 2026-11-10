@@ -12,6 +12,9 @@
 //!   * Uploads stream to a temp file and are renamed into place, so a dropped connection
 //!     never leaves half a file where a whole one is expected.
 
+mod arcade;
+mod clones;
+
 use std::{
     collections::BTreeSet,
     net::SocketAddr,
@@ -64,6 +67,10 @@ struct AppState {
     root: PathBuf,
     token: String,
     stars: Mutex<BTreeSet<String>>,
+    /// Present only when the daemon was started with --clonewars.
+    clones: Option<clones::Clones>,
+    /// Present only when the daemon was started with --arcade.
+    arcade: Option<arcade::Arcade>,
 }
 
 type Shared = Arc<AppState>;
@@ -640,6 +647,109 @@ async fn stats(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
 }
 
 // ---------------------------------------------------------------------------------------
+// Clones: fixed automations in Clonewars VMs (see clones.rs)
+// ---------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct LoginBody {
+    id: String,
+    username: String,
+    #[serde(default)]
+    password: String,
+}
+
+/// Runs one clones action off the async threads: these read files, scan processes and
+/// can wait on git.
+async fn clones_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
+where
+    T: Send + 'static,
+    F: FnOnce(&clones::Clones) -> clones::ClonesResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || match &st.clones {
+        Some(clones) => action(clones).map(Json).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --clonewars".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn clones_list(State(st): State<Shared>) -> ApiResult<Json<Vec<clones::AutomationStatus>>> {
+    clones_call(st, |c| Ok(c.list())).await
+}
+
+async fn clones_login(State(st): State<Shared>, Json(b): Json<LoginBody>) -> ApiResult<Json<clones::AutomationStatus>> {
+    clones_call(st, move |c| c.save_login(&b.id, &b.username, &b.password)).await
+}
+
+async fn clones_start(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<clones::AutomationStatus>> {
+    clones_call(st, move |c| c.start(&b.id)).await
+}
+
+async fn clones_stop(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<clones::AutomationStatus>> {
+    clones_call(st, move |c| c.stop(&b.id)).await
+}
+
+// ---------------------------------------------------------------------------------------
+// Arcade: read-only game library from a games folder (see arcade.rs)
+// ---------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct SystemQuery {
+    system: String,
+}
+
+#[derive(Deserialize)]
+struct ArtQuery {
+    system: String,
+    game: usize,
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct PlayBody {
+    system: String,
+    game: usize,
+}
+
+/// Runs one arcade action off the async threads: these read the drive.
+async fn arcade_call<T, F>(st: Shared, action: F) -> ApiResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&arcade::Arcade) -> arcade::ArcadeResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || match &st.arcade {
+        Some(arcade) => action(arcade).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --arcade".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn arcade_systems(State(st): State<Shared>) -> ApiResult<Json<Vec<arcade::SystemSummary>>> {
+    arcade_call(st, |a| Ok(a.systems())).await.map(Json)
+}
+
+async fn arcade_games(State(st): State<Shared>, Query(q): Query<SystemQuery>) -> ApiResult<Json<Vec<arcade::Game>>> {
+    arcade_call(st, move |a| a.games(&q.system)).await.map(Json)
+}
+
+async fn arcade_art(State(st): State<Shared>, Query(q): Query<ArtQuery>) -> ApiResult<Response> {
+    let path = arcade_call(st, move |a| a.art(&q.system, q.game, &q.kind))
+        .await
+        .map_err(|_| ApiError::not_found())?;
+    let bytes = tokio::fs::read(path).await?;
+    let mut res = Response::new(Body::from(bytes));
+    res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    res.headers_mut().insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    Ok(res)
+}
+
+async fn arcade_play(State(st): State<Shared>, Json(b): Json<PlayBody>) -> ApiResult<Json<serde_json::Value>> {
+    let title = arcade_call(st, move |a| a.play(&b.system, b.game)).await?;
+    Ok(Json(serde_json::json!({ "started": title })))
+}
+
+// ---------------------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------------------
 
@@ -685,15 +795,19 @@ struct Config {
     data: PathBuf,
     bind: String,
     web: Option<PathBuf>,
+    clonewars: Option<PathBuf>,
+    arcade: Option<PathBuf>,
 }
 
 fn usage() -> ! {
     eprintln!(
         "castled -- the Castle box daemon\n\n\
-         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR]\n\n\
+         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR]\n\n\
          --data  the vault directory            (default {DEFAULT_DATA_DIR}, or CASTLE_DATA_DIR)\n\
          --bind  address to listen on           (default {DEFAULT_BIND}, or CASTLE_BIND)\n\
-         --web   built Castle app to serve at / (optional, or CASTLE_WEB_DIR)"
+         --web   built Castle app to serve at / (optional, or CASTLE_WEB_DIR)
+         --clonewars  Castle's clonewars folder, to run automations (optional, or CASTLE_CLONEWARS_DIR)
+         --arcade     a games folder (Consoles/ + Roms/) to show in Arcade (optional, or CASTLE_ARCADE_DIR)"
     );
     std::process::exit(2)
 }
@@ -703,6 +817,8 @@ fn config() -> Config {
         data: std::env::var("CASTLE_DATA_DIR").unwrap_or_else(|_| DEFAULT_DATA_DIR.into()).into(),
         bind: std::env::var("CASTLE_BIND").unwrap_or_else(|_| DEFAULT_BIND.into()),
         web: std::env::var("CASTLE_WEB_DIR").ok().map(PathBuf::from),
+        clonewars: std::env::var("CASTLE_CLONEWARS_DIR").ok().map(PathBuf::from),
+        arcade: std::env::var("CASTLE_ARCADE_DIR").ok().map(PathBuf::from),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -711,6 +827,8 @@ fn config() -> Config {
             "--data" => cfg.data = value.into(),
             "--bind" => cfg.bind = value,
             "--web" => cfg.web = Some(value.into()),
+            "--clonewars" => cfg.clonewars = Some(value.into()),
+            "--arcade" => cfg.arcade = Some(value.into()),
             _ => usage(),
         }
     }
@@ -731,6 +849,14 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/trash", post(trash))
         .route("/restore", post(restore))
         .route("/delete", post(delete))
+        .route("/clones", get(clones_list))
+        .route("/clones/login", post(clones_login))
+        .route("/clones/start", post(clones_start))
+        .route("/clones/stop", post(clones_stop))
+        .route("/arcade", get(arcade_systems))
+        .route("/arcade/games", get(arcade_games))
+        .route("/arcade/art", get(arcade_art))
+        .route("/arcade/play", post(arcade_play))
         // Uploads are streamed straight to disk, so the usual in-memory body cap is lifted
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
@@ -767,7 +893,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr: SocketAddr = cfg.bind.parse().map_err(|_| format!("bad --bind address: {}", cfg.bind))?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    let state = Arc::new(AppState { root: root.clone(), token: token.clone(), stars: Mutex::new(stars) });
+    let clones = match &cfg.clonewars {
+        Some(dir) => {
+            let dir = dir.canonicalize().map_err(|_| format!("--clonewars folder not found: {}", dir.display()))?;
+            if !clones::looks_like_clonewars(&dir) {
+                return Err(format!("--clonewars is not a clonewars folder: {}", dir.display()).into());
+            }
+            Some(clones::Clones::new(dir, root.join(META_DIR).join("clones"), addr.ip().is_loopback()))
+        }
+        None => None,
+    };
+    let arcade = match &cfg.arcade {
+        Some(dir) => {
+            let dir = dir.canonicalize().map_err(|_| format!("--arcade folder not found: {}", dir.display()))?;
+            if !arcade::looks_like_arcade(&dir) {
+                return Err(format!("--arcade needs a folder with Consoles/ and Roms/ in it: {}", dir.display()).into());
+            }
+            Some(arcade::Arcade::new(dir, addr.ip().is_loopback()))
+        }
+        None => None,
+    };
+    let state = Arc::new(AppState { root: root.clone(), token: token.clone(), stars: Mutex::new(stars), clones, arcade });
 
     // Windows canonical paths carry a verbatim prefix that only clutters the banner.
     let shown = root.display().to_string();

@@ -21,6 +21,8 @@ app's Connect screen (the server icon in the top bar).
 | `--data` vault directory | `./castle-data` | `CASTLE_DATA_DIR` |
 | `--bind` address and port | `127.0.0.1:8787` | `CASTLE_BIND` |
 | `--web` built Castle app to serve at `/` | none | `CASTLE_WEB_DIR` |
+| `--clonewars` Castle's `clonewars` folder, to run automations | none | `CASTLE_CLONEWARS_DIR` |
+| `--arcade` a games folder (`Consoles/` + `Roms/`) to show in Arcade | none | `CASTLE_ARCADE_DIR` |
 
 ## What it guarantees
 
@@ -67,6 +69,45 @@ All under `/api/v1`. Ids are vault paths with `/` separators; the top folder is 
 | `POST /trash` `{id}` | Move to trash. |
 | `POST /restore` `{id}` | Restore a `trash:<key>` item. |
 | `POST /delete` `{id}` | Delete for good (a live item or a trash item). |
+
+## Clones (needs `--clonewars`)
+
+One-click automations that run in Clonewars VMs. The daemon runs only
+`start.ps1 -Profile <name>` for automations compiled into it (today: `penguin`), so this
+is not a way to run arbitrary commands. It works only while the daemon listens on this
+machine alone.
+
+| Call | Does |
+|---|---|
+| `GET /clones` | Each automation: state (`stopped`, `launching`, `running`, `failed`), saved account name, whether a password is saved, and the tail of the launch log. The password is never sent back. |
+| `POST /clones/login` `{id, username, password}` | Saves the login to the project's `.env`. An empty password keeps the saved one. |
+| `POST /clones/start` `{id}` | Launches the VM. If the project is not checked out next to Castle, it is cloned first from the address in `CASTLE_PENGUIN_REPO`. Refused while one is running. |
+| `POST /clones/stop` `{id}` | Sends the VM a power-button shutdown over its QMP port. |
+
+"Running" means a QEMU process is using that automation's disk in this clonewars folder,
+whoever started it.
+
+## Arcade (needs `--arcade`)
+
+A read-only view of a games folder laid out like this:
+
+```text
+<arcade>/Consoles/RetroArch-Win64/   retroarch.exe, cores/, playlists/*.lpl, thumbnails/
+<arcade>/Consoles/PCSX2/             pcsx2-qt.exe
+<arcade>/Consoles/PPSSPP/            PPSSPPWindows64.exe
+<arcade>/Roms/<maker>/<system>/      the games
+```
+
+RetroArch's playlists are the library and its thumbnails folder is the box art, read
+where they are. PlayStation 2 and PSP have no playlist, so their `Roms` folders are
+listed directly and open in PCSX2 and PPSSPP. Nothing is written to the folder.
+
+| Call | Does |
+|---|---|
+| `GET /arcade` | Systems found, with game counts, art counts and sizes. |
+| `GET /arcade/games?system=` | The games of one system. |
+| `GET /arcade/art?system=&game=&kind=` | A game's `boxart` or `snap` PNG. |
+| `POST /arcade/play` `{system, game}` | Opens the game in its emulator on this machine. Loopback only. |
 
 ## Tests
 
