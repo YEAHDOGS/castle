@@ -13,8 +13,10 @@
 # ==============================================================================
 param([Parameter(ValueFromRemainingArguments = $true)][object[]]$PassThru)
 
-# TODO: switch to 'master' once the phoenix branch below is merged
-$Ref = if ($env:PHOENIX_REF) { $env:PHOENIX_REF } else { 'claude/r36s-tools' }
+# Pinned to a reviewed commit (tip of phoenix branch claude/r36s-tools on 2026-09-09): the importer below is
+# downloaded and executed, so a branch name here would run whatever that branch holds on the day.
+# TODO: re-pin to a phoenix master commit once that branch is merged.
+$Ref = if ($env:PHOENIX_REF) { $env:PHOENIX_REF } else { '6aad6cbf2acac3cd373ea82722e674b72b2092cc' }
 $bootstrap = "https://raw.githubusercontent.com/YEAHDOGS/phoenix/$Ref/scripts/tools/phoenix-import.ps1"
 
 if (-not (Get-Command Sync-PhoenixRepo -ErrorAction SilentlyContinue)) {

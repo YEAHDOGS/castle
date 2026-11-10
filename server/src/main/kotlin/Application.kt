@@ -26,8 +26,22 @@ fun sanitizeFileName(raw: String?): String? {
     return raw
 }
 
+/**
+ * True only for a regular file that really lives inside the vault root: a
+ * symlink (or junction) planted in the vault must not serve files outside it.
+ */
+fun isInsideVault(file: File): Boolean {
+    if (java.nio.file.Files.isSymbolicLink(file.toPath())) return false
+    val root = dataDir.canonicalFile.toPath()
+    return file.isFile && file.canonicalFile.toPath().startsWith(root)
+}
+
+// No auth exists yet, so the server answers on this machine only unless
+// CASTLE_BIND says otherwise. Do not set it to 0.0.0.0 on a shared network.
+val bindHost: String = System.getenv("CASTLE_BIND") ?: "127.0.0.1"
+
 fun main() {
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module)
+    embeddedServer(Netty, port = 8080, host = bindHost, module = Application::module)
         .start(wait = true)
 }
 
@@ -64,7 +78,7 @@ fun Application.module() {
                     return@get
                 }
                 val file = File(dataDir, filename)
-                if (!file.isFile) {
+                if (!isInsideVault(file)) {
                     call.respondText("Not found", status = HttpStatusCode.NotFound)
                     return@get
                 }
@@ -81,7 +95,8 @@ fun Application.module() {
                 }
                 // TODO: stream the request body to dataDir/filename (write to
                 // a temp file + atomic rename), then update the index.
-                call.respondText("Uploaded $filename")
+                // Not built yet: say so instead of reporting a write that never happened.
+                call.respondText("Upload is not implemented yet", status = HttpStatusCode.NotImplemented)
             }
         }
     }

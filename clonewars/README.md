@@ -371,7 +371,7 @@ docker build -t castle-vm .
 ### 3. Run the Container (Interactive Menu)
 Launch the container interactively. We mount a host directory to `/app/data` to ensure downloaded ISOs, virtual disks, and the trust store persist between container runs:
 ```bash
-docker run -it --device /dev/kvm -p 8006:8006 -v "$(pwd)/data:/app/data" castle-vm
+docker run -it --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/data" castle-vm
 ```
 - Open `http://localhost:8006/vnc.html` in your web browser.
 - Select your target (e.g. CachyOS) and confirm boot.
@@ -380,7 +380,7 @@ docker run -it --device /dev/kvm -p 8006:8006 -v "$(pwd)/data:/app/data" castle-
 ### 4. Run a Direct Background Instance
 You can bypass the menu and spin up an isolated background VM node directly:
 ```bash
-docker run -d --device /dev/kvm -p 8006:8006 -v "$(pwd)/data:/app/data" castle-vm cachyos -Instance docker-node-01 -Vnc
+docker run -d --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/data" castle-vm cachyos -Instance docker-node-01 -Vnc
 ```
 
 > [!TIP]

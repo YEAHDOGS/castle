@@ -176,6 +176,25 @@ function Test-GpgUsable {
     catch { return $false }
 }
 
+function Test-GpgStatusSigner {
+    # True when gpg's --status-fd output holds a VALIDSIG made by $GpgKey (a full fingerprint or a
+    # long key id, matched against the signing key and its primary key).
+    param (
+        [object[]]$StatusLines,
+        [string]$GpgKey
+    )
+    $Want = ($GpgKey -replace '^0x' -replace '\s').ToUpper()
+    if ($Want.Length -lt 16) { return $false }
+    foreach ($Line in $StatusLines) {
+        $Fields = "$Line" -split '\s+'
+        if ($Fields.Count -lt 3 -or $Fields[0] -ne '[GNUPG:]' -or $Fields[1] -ne 'VALIDSIG') { continue }
+        foreach ($Fpr in @($Fields[2], $Fields[-1])) {
+            if ($Fpr.ToUpper().EndsWith($Want)) { return $true }
+        }
+    }
+    return $false
+}
+
 function Test-GpgSignature {
     param (
         [string]$TargetFile,
@@ -212,13 +231,15 @@ function Test-GpgSignature {
         $SigBytes = $HttpClient.GetByteArrayAsync($SigUrl).GetAwaiter().GetResult()
         [System.IO.File]::WriteAllBytes($SigFile, $SigBytes)
 
-        # Verify the ISO against the signature
-        $GpgOutput = gpg --verify $SigFile $TargetFile 2>&1
+        # Verify the ISO against the signature. The machine-readable status lines name the key that
+        # signed it, so a good signature from some other key in the keyring does not pass.
+        $GpgOutput = gpg --status-fd 1 --verify $SigFile $TargetFile 2>&1
+        $GpgExit = $LASTEXITCODE
 
         # Clean up the temporary .sig file
         Remove-Item $SigFile -Force -ErrorAction SilentlyContinue
 
-        if ($GpgOutput -match "Good signature") {
+        if ($GpgExit -eq 0 -and (Test-GpgStatusSigner -StatusLines $GpgOutput -GpgKey $GpgKey)) {
             Write-Host "  [OK] GPG signature verified -- authentic." -ForegroundColor Green
             return $true
         }
