@@ -1,0 +1,3 @@
+# Guest scripts run on Linux: a CRLF checkout breaks bash and cloud-init.
+*.sh text eol=lf
+scripts/cloud-init/** text eol=lf
