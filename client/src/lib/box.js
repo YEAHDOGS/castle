@@ -306,6 +306,11 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/box')).json();
   }
 
+  /** Processor, memory, disk and uptime of the machine the box runs on. */
+  async system() {
+    return (await this.call('/system')).json();
+  }
+
   // ---- Security: checks, the activity record, the token, audits ----
 
   async security() {

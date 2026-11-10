@@ -16,6 +16,7 @@ mod arcade;
 mod clones;
 mod network;
 mod security;
+mod system;
 
 use std::{
     collections::BTreeSet,
@@ -76,6 +77,7 @@ struct AppState {
     /// Set when the daemon was started with --arcade, or when Arcade was turned on later.
     arcade: RwLock<Option<Arc<arcade::Arcade>>>,
     network: network::Network,
+    system: system::System,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -924,6 +926,15 @@ async fn settings_put(
     Ok(Json(saved))
 }
 
+/// Processor, memory, disk and uptime of the machine the box runs on.
+async fn system_vitals(State(st): State<Shared>) -> ApiResult<Json<system::Vitals>> {
+    tokio::task::spawn_blocking(move || st.system.vitals(&st.root))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .map(Json)
+        .map_err(|msg| ApiError(StatusCode::CONFLICT, msg))
+}
+
 /// What this box is and how it was started: read-only facts for the Settings screen.
 async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
     let state = st.clone();
@@ -1205,6 +1216,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/network/provider", get(network_provider))
         .route("/settings", get(settings_get).put(settings_put))
         .route("/box", get(box_info))
+        .route("/system", get(system_vitals))
         .route("/security", get(security_overview))
         .route("/security/log", get(security_log))
         .route("/security/verify", post(security_verify))
@@ -1277,6 +1289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         clones: RwLock::new(clones.map(Arc::new)),
         arcade: RwLock::new(arcade.map(Arc::new)),
         network: network::Network::new(),
+        system: system::System::new(),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),

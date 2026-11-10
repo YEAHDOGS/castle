@@ -136,6 +136,7 @@ they run only when asked for.
 |---|---|
 | `GET /settings` | The settings the app has saved on the box. |
 | `PUT /settings` `{name: value, ...}` | Merges settings in. Names are dotted (`storage.trashDays`); values are a switch, a number or short text. |
+| `GET /system` | Vital signs of the machine the box runs on: processor use since the last call, memory, the vault disk's free and total space, uptime, host name and OS. |
 | `GET /box` | Version, listen address, whether Clones and Arcade are on, and whether Tailscale or WireGuard is installed (with Tailscale's state). |
 
 The box stores settings; it does not act on them yet. The games folder and the

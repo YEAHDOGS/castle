@@ -285,8 +285,28 @@ export const DEMO_DNS = { queriesToday: 48213, blockedToday: 9127, topBlocked: [
 // ---------------------------------------------------------------------------------------
 
 /** Box settings held in memory, and the facts a box reports about itself. */
+const DEMO_BOX_STARTED = Date.now() - 12 * DAY - 7 * HOUR;
+const DEMO_CPU_WAVE_MS = 9000;
+
 export class DemoBox {
   isDemo = true;
+
+  /** Vital signs that drift gently, so the gauges move like a real box's. */
+  async system() {
+    const wave = Math.sin((Date.now() / DEMO_CPU_WAVE_MS) * 2 * Math.PI);
+    return {
+      at: Date.now(),
+      host: 'castle',
+      os: 'Debian GNU/Linux 13',
+      uptimeSeconds: Math.round((Date.now() - DEMO_BOX_STARTED) / 1000),
+      cores: 4,
+      cpuPercent: 22 + 14 * wave,
+      memoryUsed: (2.6 + 0.3 * wave) * GB,
+      memoryTotal: 8 * GB,
+      diskFree: 1479 * GB,
+      diskTotal: 2000 * GB,
+    };
+  }
 
   constructor() {
     this.saved = {};
