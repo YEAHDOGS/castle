@@ -247,6 +247,11 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/clones')).json();
   }
 
+  /** Turns Clones on in a running box. The box finds its own clonewars folder. */
+  async clonesEnable() {
+    return (await this.call('/clones/enable', { method: 'POST' })).json();
+  }
+
   async cloneLogin(id, username, password) {
     return (await this.post('/clones/login', { id, username, password })).json();
   }
@@ -322,6 +327,11 @@ export class HttpAdapter extends StorageAdapter {
 
   async arcadeSystems() {
     return (await this.call('/arcade')).json();
+  }
+
+  /** Turns Arcade on in a running box. The box looks for a Games folder on its drives. */
+  async arcadeEnable() {
+    return (await this.call('/arcade/enable', { method: 'POST' })).json();
   }
 
   async arcadeGames(system) {

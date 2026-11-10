@@ -71,10 +71,10 @@ struct AppState {
     token: RwLock<String>,
     security: security::Security,
     stars: Mutex<BTreeSet<String>>,
-    /// Present only when the daemon was started with --clonewars.
-    clones: Option<clones::Clones>,
-    /// Present only when the daemon was started with --arcade.
-    arcade: Option<arcade::Arcade>,
+    /// Set when the daemon was started with --clonewars, or when Clones was turned on later.
+    clones: RwLock<Option<Arc<clones::Clones>>>,
+    /// Set when the daemon was started with --arcade, or when Arcade was turned on later.
+    arcade: RwLock<Option<Arc<arcade::Arcade>>>,
     network: network::Network,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
@@ -675,9 +675,89 @@ where
     T: Send + 'static,
     F: FnOnce(&clones::Clones) -> clones::ClonesResult<T> + Send + 'static,
 {
-    tokio::task::spawn_blocking(move || match &st.clones {
-        Some(clones) => action(clones).map(Json).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+    tokio::task::spawn_blocking(move || match st.clones.read().ok().and_then(|slot| slot.clone()) {
+        Some(clones) => action(&clones).map(Json).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
         None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --clonewars".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+// ---------------------------------------------------------------------------------------
+// Turning Clones and Arcade on while the box runs
+// ---------------------------------------------------------------------------------------
+//
+// Both sections run programs, so the caller never names the folder: a web page must not be
+// able to point the box at a folder of programs of its choosing. The box looks in a fixed
+// set of places itself, and only when it is reachable from this computer alone.
+
+/// The folders to look in for Castle's clonewars folder: CASTLE_CLONEWARS_DIR, then a
+/// `clonewars` folder beside or above the daemon's own program and its working folder
+/// (which is where it sits in a checkout of Castle).
+fn clonewars_candidates() -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = std::env::var("CASTLE_CLONEWARS_DIR").ok().map(PathBuf::from).into_iter().collect();
+    let starts = [std::env::current_exe().ok(), std::env::current_dir().ok()];
+    for start in starts.into_iter().flatten() {
+        found.extend(start.ancestors().map(|dir| dir.join("clonewars")));
+    }
+    found
+}
+
+/// The folders to look in for a games folder: CASTLE_ARCADE_DIR, then `Games` at the top of
+/// every drive (Windows) or of every mounted disk (Linux).
+fn arcade_candidates() -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = std::env::var("CASTLE_ARCADE_DIR").ok().map(PathBuf::from).into_iter().collect();
+    if cfg!(windows) {
+        found.extend(('C'..='Z').map(|letter| PathBuf::from(format!(r"{letter}:\Games"))));
+    } else {
+        // Removable disks mount one or two folders deep under these.
+        for base in ["/media", "/run/media", "/mnt"] {
+            let Ok(first) = std::fs::read_dir(base) else { continue };
+            for mount in first.flatten().map(|entry| entry.path()) {
+                found.push(mount.join("Games"));
+                if let Ok(second) = std::fs::read_dir(&mount) {
+                    found.extend(second.flatten().map(|entry| entry.path().join("Games")));
+                }
+            }
+        }
+    }
+    found
+}
+
+fn local_only(st: &AppState) -> ApiResult<()> {
+    if st.loopback {
+        Ok(())
+    } else {
+        Err(ApiError(StatusCode::FORBIDDEN, "this can only be turned on from the computer the box runs on".into()))
+    }
+}
+
+async fn clones_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    tokio::task::spawn_blocking(move || {
+        let dir = clonewars_candidates()
+            .into_iter()
+            .filter_map(|dir| dir.canonicalize().ok())
+            .find(|dir| clones::looks_like_clonewars(dir))
+            .ok_or_else(|| ApiError(StatusCode::CONFLICT, "No clonewars folder was found near the box. Start the box with --clonewars and its path.".into()))?;
+        let clones = clones::Clones::new(dir, st.root.join(META_DIR).join("clones"), st.loopback);
+        *st.clones.write().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))? = Some(Arc::new(clones));
+        Ok(Json(serde_json::json!({ "on": true })))
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn arcade_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    tokio::task::spawn_blocking(move || {
+        let dir = arcade_candidates()
+            .into_iter()
+            .filter_map(|dir| dir.canonicalize().ok())
+            .find(|dir| arcade::looks_like_arcade(dir))
+            .ok_or_else(|| ApiError(StatusCode::CONFLICT, "No games folder was found. Plug in the drive that has Games (with Consoles and Roms inside) and try again.".into()))?;
+        *st.arcade.write().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))? = Some(Arc::new(arcade::Arcade::new(dir, st.loopback)));
+        Ok(Json(serde_json::json!({ "on": true })))
     })
     .await
     .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
@@ -727,8 +807,8 @@ where
     T: Send + 'static,
     F: FnOnce(&arcade::Arcade) -> arcade::ArcadeResult<T> + Send + 'static,
 {
-    tokio::task::spawn_blocking(move || match &st.arcade {
-        Some(arcade) => action(arcade).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+    tokio::task::spawn_blocking(move || match st.arcade.read().ok().and_then(|slot| slot.clone()) {
+        Some(arcade) => action(&arcade).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
         None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --arcade".into())),
     })
     .await
@@ -854,8 +934,8 @@ async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>
         "version": env!("CARGO_PKG_VERSION"),
         "listen": st.listen,
         "loopback": st.loopback,
-        "clones": st.clones.is_some(),
-        "arcade": st.arcade.is_some(),
+        "clones": st.clones.read().is_ok_and(|slot| slot.is_some()),
+        "arcade": st.arcade.read().is_ok_and(|slot| slot.is_some()),
         "links": links,
     })))
 }
@@ -1084,6 +1164,8 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/restore", post(restore))
         .route("/delete", post(delete))
         .route("/clones", get(clones_list))
+        .route("/clones/enable", post(clones_enable))
+        .route("/arcade/enable", post(arcade_enable))
         .route("/clones/login", post(clones_login))
         .route("/clones/start", post(clones_start))
         .route("/clones/stop", post(clones_stop))
@@ -1165,8 +1247,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         token: RwLock::new(token.clone()),
         security,
         stars: Mutex::new(stars),
-        clones,
-        arcade,
+        clones: RwLock::new(clones.map(Arc::new)),
+        arcade: RwLock::new(arcade.map(Arc::new)),
         network: network::Network::new(),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),

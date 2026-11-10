@@ -88,6 +88,21 @@ is_stale() {
     [[ -n "$(find "$@" -type f -newer "$built" -print -quit 2>/dev/null)" ]]
 }
 
+# The first Games folder with Consoles and Roms inside, on any drive or mounted disk.
+find_games_folder() {
+    local dir
+    if (( ON_WINDOWS )); then
+        for dir in /{c..z}/Games; do
+            if [[ -d "$dir/Consoles" && -d "$dir/Roms" ]]; then printf '%s' "$dir"; return 0; fi
+        done
+    else
+        for dir in /media/*/Games /media/*/*/Games /run/media/*/*/Games /mnt/*/Games; do
+            if [[ -d "$dir/Consoles" && -d "$dir/Roms" ]]; then printf '%s' "$dir"; return 0; fi
+        done
+    fi
+    return 0
+}
+
 # True in a terminal that was opened "as administrator" (Windows) or as root (Linux).
 is_admin() {
     if (( ON_WINDOWS )); then net session >/dev/null 2>&1; else [[ "$(id -u)" == 0 ]]; fi
@@ -204,8 +219,12 @@ fi
 [[ "$PORT" =~ ^[0-9]+$ ]] || die "The port must be a number, not '$PORT'."
 [[ -n "$DATA" ]] || DATA="$(config_value data)"
 [[ -n "$DATA" ]] || DATA="$HOME/Castle"
-ARCADE="$(config_value arcade)"
+# Everything is on unless there is nothing to turn on: Clones uses the clonewars folder in
+# this checkout, and Arcade uses the first Games folder (Consoles + Roms) found on a drive.
 CLONEWARS="$(config_value clonewars)"
+[[ -n "$CLONEWARS" ]] || CLONEWARS="$ROOT/clonewars"
+ARCADE="$(config_value arcade)"
+[[ -n "$ARCADE" ]] || ARCADE="$(find_games_folder)"
 URL="http://127.0.0.1:$PORT"
 
 # ---- build what is missing or out of date ----
@@ -263,8 +282,12 @@ else
     mkdir -p "$DATA"
     box_args=(--data "$(native "$DATA")" --bind "127.0.0.1:$PORT" --web "$(native "$WEB_DIR")")
     # A folder that is not there right now (an unplugged drive) is left out, so the box still starts.
-    [[ -n "$ARCADE" && -d "$ARCADE" ]] && box_args+=(--arcade "$ARCADE")
-    [[ -n "$CLONEWARS" && -d "$CLONEWARS" ]] && box_args+=(--clonewars "$CLONEWARS")
+    if [[ -n "$CLONEWARS" && -d "$CLONEWARS" ]]; then box_args+=(--clonewars "$(native "$CLONEWARS")"); else say 'Clones: off (no clonewars folder).'; fi
+    if [[ -n "$ARCADE" && -d "$ARCADE" ]]; then
+        box_args+=(--arcade "$(native "$ARCADE")")
+    else
+        say 'Arcade: off (no Games folder found on any drive; plug it in and press Find my games in the app).'
+    fi
     box_pid="$(launch_box "${box_args[@]}")"
     [[ "$box_pid" =~ ^[0-9]+$ ]] || die "$NOT_STARTED"
     waited=0

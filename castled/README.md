@@ -80,6 +80,7 @@ machine alone.
 | Call | Does |
 |---|---|
 | `GET /clones` | Each automation: state (`stopped`, `launching`, `running`, `failed`), saved account name, whether a password is saved, and the tail of the launch log. The password is never sent back. |
+| `POST /clones/enable` | Turns Clones on in a running box. Takes no folder: the box looks for `clonewars` in `CASTLE_CLONEWARS_DIR`, then beside or above its own program and working folder. Loopback only. |
 | `POST /clones/login` `{id, username, password}` | Saves the login to the project's `.env`. An empty password keeps the saved one. |
 | `POST /clones/start` `{id}` | Launches the VM. If the project is not checked out next to Castle, it is cloned first from the address in `CASTLE_PENGUIN_REPO`. Refused while one is running. |
 | `POST /clones/stop` `{id}` | Sends the VM a power-button shutdown over its QMP port. |
@@ -107,6 +108,7 @@ listed directly and open in PCSX2 and PPSSPP. Nothing is written to the folder.
 | `GET /arcade` | Systems found, with game counts, art counts and sizes. |
 | `GET /arcade/games?system=` | The games of one system. |
 | `GET /arcade/art?system=&game=&kind=` | A game's `boxart` or `snap` PNG. |
+| `POST /arcade/enable` | Turns Arcade on in a running box. Takes no folder: the box looks in `CASTLE_ARCADE_DIR`, then for `Games` at the top of each drive or mounted disk. Loopback only. |
 | `POST /arcade/play` `{system, game}` | Opens the game in its emulator on this machine. Loopback only. |
 
 ## Network
@@ -132,7 +134,7 @@ they run only when asked for.
 | `GET /box` | Version, listen address, whether Clones and Arcade are on, and whether Tailscale or WireGuard is installed (with Tailscale's state). |
 
 The box stores settings; it does not act on them yet. The games folder and the
-Clonewars folder are deliberately not settings: they are chosen when the box starts, so a
+Clonewars folder are deliberately not settings: they are chosen when the box starts, or found by the box itself when a section is turned on later, so a
 web page cannot point the box at a new folder of programs to run.
 
 Reading Tailscale's state uses `tailscale status --json`, whose layout Tailscale does not

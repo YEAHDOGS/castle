@@ -2,7 +2,7 @@
      open a game's card and play it. On a box, this reads the games folder as it is:
      RetroArch's playlists are the library and its thumbnails are the art. -->
 <script>
-  import { Gamepad2, Search, Play, X, HardDrive } from '@lucide/svelte';
+  import { Gamepad2, Search, Play, X, HardDrive, Power } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
   import { SvelteMap } from 'svelte/reactivity';
@@ -49,6 +49,22 @@
     if (cut === -1) return { name: title, tags: '' };
     const tags = [...title.slice(cut).matchAll(/\(([^)]*)\)/g)].map((m) => m[1]).join(' · ');
     return { name: title.slice(0, cut), tags };
+  }
+
+  let turningOn = $state(false);
+
+  /** Arcade is off on this box: ask the box to look for a games folder and turn it on. */
+  async function turnOn() {
+    turningOn = true;
+    try {
+      await source.arcadeEnable();
+      await loadSystems(source);
+      store.toast('Arcade is on');
+    } catch (err) {
+      store.toast(err?.message || 'Arcade could not be turned on');
+    } finally {
+      turningOn = false;
+    }
   }
 
   async function loadSystems(from) {
@@ -155,8 +171,15 @@
     <p class="micro text-text-faint">READING THE LIBRARY</p>
   {:else if problem.includes(NO_ARCADE)}
     <Notice icon={HardDrive} title="NO GAMES FOLDER ON THIS BOX">
-      Start the box with <span class="text-white">--arcade</span> and the path to a games folder (one with
-      <span class="text-white">Consoles</span> and <span class="text-white">Roms</span> inside) and it appears here.
+      This box has no games folder yet. Plug in the drive that has <span class="text-white">Games</span> (with
+      <span class="text-white">Consoles</span> and <span class="text-white">Roms</span> inside), then turn Arcade on here. No restart needed.
+      <button
+        disabled={turningOn}
+        onclick={turnOn}
+        class="expo t-hover hud-corners micro mx-auto mt-4 flex h-11 items-center gap-2 bg-chiral px-5 font-bold text-black transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+      >
+        <Power class="h-4 w-4" strokeWidth={2} /> {turningOn ? 'TURNING ON' : 'FIND MY GAMES'}
+      </button>
     </Notice>
   {:else if problem}
     <Notice icon={Gamepad2} title="LIBRARY UNAVAILABLE">{problem}</Notice>

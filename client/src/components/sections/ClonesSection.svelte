@@ -3,7 +3,7 @@
      the project and sets it running. -->
 <script>
   import { untrack } from 'svelte';
-  import { Boxes, Bot, Monitor, Play, Square, Save, Coins, Swords, Clock, Cpu, Check } from '@lucide/svelte';
+  import { Boxes, Bot, Monitor, Play, Square, Save, Coins, Swords, Clock, Cpu, Check, Power } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -42,6 +42,22 @@
       const form = forms[a.id];
       if (!form) forms[a.id] = { username: a.username, password: '', dirty: false };
       else if (!form.dirty) form.username = a.username;
+    }
+  }
+
+  let turningOn = $state(false);
+
+  /** Clones is off on this box: ask the box to find its clonewars folder and turn it on. */
+  async function turnOn() {
+    turningOn = true;
+    try {
+      await source.clonesEnable();
+      await refresh();
+      store.toast('Clones is on');
+    } catch (err) {
+      store.toast(err?.message || 'Clones could not be turned on');
+    } finally {
+      turningOn = false;
     }
   }
 
@@ -136,8 +152,15 @@
     <p class="micro text-text-faint">CHECKING THE BOX</p>
   {:else if problem.includes(NO_CLONES)}
     <Notice icon={Boxes} title="CLONES ARE OFF ON THIS BOX">
-      Start the box with <span class="text-white">--clonewars</span> and the path to Castle's
-      <span class="text-white">clonewars</span> folder to run automations from here.
+      This box was started without its <span class="text-white">clonewars</span> folder, so it cannot run automations yet. Turn it
+      on here and the box finds the folder itself. No restart needed.
+      <button
+        disabled={turningOn}
+        onclick={turnOn}
+        class="expo t-hover hud-corners micro mx-auto mt-4 flex h-11 items-center gap-2 bg-chiral px-5 font-bold text-black transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+      >
+        <Power class="h-4 w-4" strokeWidth={2} /> {turningOn ? 'TURNING ON' : 'TURN ON CLONES'}
+      </button>
     </Notice>
   {:else if problem}
     <Notice icon={Boxes} title="CLONES UNAVAILABLE">{problem}</Notice>
