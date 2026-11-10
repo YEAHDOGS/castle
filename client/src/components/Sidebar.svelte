@@ -2,6 +2,7 @@
      people menu. Middle: the current section's own navigation. Bottom: an optional slot
      (Storage puts its meter there) and the DOGS badge. -->
 <script>
+  import dogsLogo from '../assets/dogs-logo.svg';
   import { fly } from 'svelte/transition';
   import { shell } from '../lib/shell.svelte.js';
   import { sectionById } from '../lib/sections.js';
@@ -71,8 +72,10 @@
     href="https://wearedogs.net"
     target="_blank"
     rel="noreferrer"
-    class="expo t-hover micro hidden border-t border-hairline-faint px-6 py-3 text-text-faint transition-colors hover:text-chiral lg:block"
+    class="expo t-hover block border-t border-hairline-faint px-6 py-3 opacity-70 transition-opacity hover:opacity-100"
+    aria-label="DOGS"
+    title="DOGS"
   >
-    MADE BY DOGS
+    <img src={dogsLogo} alt="DOGS" class="h-10 w-10" />
   </a>
 </aside>

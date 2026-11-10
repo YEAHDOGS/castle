@@ -9,6 +9,7 @@
   import { prefs } from '../../lib/prefs.svelte.js';
   import { SETTING_GROUPS, SETTINGS, defaultsFor } from '../../lib/settings.js';
   import SectionFrame from '../SectionFrame.svelte';
+  import madeByDogs from '../../assets/made-by-dogs-sticker.webp';
 
   const BOX_PORT_FALLBACK = '8787';
   const TAILSCALE_RUNNING = 'Running';
@@ -273,5 +274,9 @@
         Settings marked ON THE BOX need a box. Connect to one from Storage, or try them in the <a class="text-bridge underline" href="/demo">demo</a>.
       </p>
     {/if}
+
+    <a class="expo t-hover mx-auto mt-12 block w-fit opacity-90 transition-opacity hover:opacity-100" href="https://wearedogs.net" target="_blank" rel="noreferrer">
+      <img src={madeByDogs} alt="This product was made by DOGS" width="360" height="119" class="h-auto w-[240px]" />
+    </a>
   </div>
 </SectionFrame>
