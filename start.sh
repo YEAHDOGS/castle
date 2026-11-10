@@ -6,10 +6,13 @@
 #   Linux, Git Bash or WSL:           ./start.sh
 #   PowerShell or Command Prompt:     .\start.cmd   (finds Git Bash and runs this file)
 #
-#   1. Builds the box daemon (castled) and the web app if they are not built yet.
+#   1. Builds the box daemon (castled), the web app and the desktop app. Each is built
+#      when it is missing or older than its source, so a second run starts at once.
 #   2. Starts the box in the background, serving the web app at
 #      http://127.0.0.1:<port>.
 #   3. Opens the desktop app, which connects to that same box.
+#
+# Needs Rust (cargo) and Node.js (npm). Nothing here needs administrator rights.
 #
 # The box keeps running after the desktop app is closed, so the web app stays up.
 #
@@ -20,7 +23,7 @@
 #
 # Usage:
 #   ./start.sh              start everything
-#   ./start.sh --build      rebuild the daemon and the web app first
+#   ./start.sh --build      rebuild everything first, even if it looks current
 #   ./start.sh --browser    also open the web app in the default browser
 #   ./start.sh --no-app     web service only
 #   ./start.sh --stop       stop the box this script started
@@ -57,19 +60,12 @@ esac
 if (( ON_WINDOWS )); then
     EXE=".exe"
     CONFIG_DIR="$(cygpath -u "$APPDATA")/$APP_ID"
-    APP_CANDIDATES=(
-        "$CLIENT_DIR/src-tauri/target/release/castle.exe"
-        "$(cygpath -u "$LOCALAPPDATA")/Castle/castle.exe"
-    )
 else
     EXE=""
     CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_ID"
-    APP_CANDIDATES=(
-        "$CLIENT_DIR/src-tauri/target/release/castle"
-        "/usr/bin/castle"
-    )
 fi
 DAEMON_EXE="$DAEMON_DIR/target/release/castled$EXE"
+APP_EXE="$CLIENT_DIR/src-tauri/target/release/castle$EXE"
 CONFIG_FILE="$CONFIG_DIR/box.json"
 PID_FILE="$CONFIG_DIR/start.pid"
 LOG_FILE="$CONFIG_DIR/start-box.log"
@@ -84,6 +80,26 @@ die() { printf '[castle] %s\n' "$*" >&2; exit 1; }
 
 # A path the box (a native program) understands: Windows form on Windows.
 native() { if (( ON_WINDOWS )); then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+
+# True when the built file is missing or any of the given sources is newer than it.
+is_stale() {
+    local built="$1"; shift
+    [[ -f "$built" ]] || return 0
+    [[ -n "$(find "$@" -type f -newer "$built" -print -quit 2>/dev/null)" ]]
+}
+
+# True in a terminal that was opened "as administrator" (Windows) or as root (Linux).
+is_admin() {
+    if (( ON_WINDOWS )); then net session >/dev/null 2>&1; else [[ "$(id -u)" == 0 ]]; fi
+}
+
+app_is_open() {
+    if (( ON_WINDOWS )); then
+        tasklist //FI "IMAGENAME eq castle.exe" //NH 2>/dev/null | grep -qi '^castle\.exe'
+    else
+        pgrep -x castle >/dev/null 2>&1
+    fi
+}
 
 is_listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
@@ -108,8 +124,17 @@ is_castled() {
     fi
 }
 
+# Stops a box. If Windows refuses, the box was started from an administrator terminal
+# and only one of those can stop it: say so instead of failing without a reason.
 stop_pid() {
-    if (( ON_WINDOWS )); then taskkill //PID "$1" //F >/dev/null; else kill "$1"; fi
+    if (( ON_WINDOWS )); then
+        taskkill //PID "$1" //F >/dev/null 2>&1 && return 0
+        if is_admin; then die "Could not stop the box (process $1)."; fi
+        die "Windows refused to stop the box (process $1). It was started from an administrator terminal, so stop it from one: right-click your terminal, Run as administrator, then run this again."
+    else
+        kill "$1" 2>/dev/null && return 0
+        die "Could not stop the box (process $1). It belongs to another account; try again with sudo."
+    fi
 }
 
 # Sets STARTED_PID and STARTED_PORT when the box this script started is still running.
@@ -157,7 +182,7 @@ while (( $# > 0 )); do
         --stop)    STOP=1; shift ;;
         --data)    DATA="${2:?--data needs a folder}"; shift 2 ;;
         --port)    PORT="${2:?--port needs a number}"; shift 2 ;;
-        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
         *) die "Unknown option '$1' (see --help)" ;;
     esac
 done
@@ -183,24 +208,53 @@ ARCADE="$(config_value arcade)"
 CLONEWARS="$(config_value clonewars)"
 URL="http://127.0.0.1:$PORT"
 
-# ---- build what is missing ----
-if (( BUILD )) || [[ ! -f "$DAEMON_EXE" ]]; then
-    command -v cargo >/dev/null 2>&1 || die 'Building the box needs Rust (cargo). Install it from https://rustup.rs'
-    say 'Building the box daemon (the first build takes a few minutes).'
-    (cd "$DAEMON_DIR" && cargo build --release)
+# ---- build what is missing or out of date ----
+need_cargo() { command -v cargo >/dev/null 2>&1 || die 'Building Castle needs Rust (cargo). Install it from https://rustup.rs'; }
+need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.js (npm). Install it from https://nodejs.org'; }
+install_packages() { [[ -d "$CLIENT_DIR/node_modules" ]] || (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund); }
+
+if is_admin; then
+    say 'Note: this terminal has administrator rights. Castle does not need them, and a box started here can only be stopped from an administrator terminal.'
 fi
-if (( BUILD )) || [[ ! -f "$WEB_DIR/index.html" ]]; then
-    command -v npm >/dev/null 2>&1 || die 'Building the web app needs Node.js (npm).'
+
+read_started
+DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$ROOT/security/audits")
+WEB_SOURCES=("$CLIENT_DIR/src" "$CLIENT_DIR/index.html" "$CLIENT_DIR/package.json" "$CLIENT_DIR/public")
+APP_SOURCES=("${WEB_SOURCES[@]}" "$CLIENT_DIR/src-tauri/src" "$CLIENT_DIR/src-tauri/Cargo.toml" "$CLIENT_DIR/src-tauri/tauri.conf.json")
+
+if (( BUILD )) || is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}"; then
+    need_cargo
+    # Windows will not overwrite a program that is running, so the old box stops first.
+    if [[ -n "$STARTED_PID" ]]; then
+        say 'Stopping the running box so it can be rebuilt.'
+        stop_pid "$STARTED_PID"; rm -f "$PID_FILE"; STARTED_PID=""
+        sleep 0.5
+    fi
+    say 'Building the box daemon (the first build takes a few minutes).'
+    (cd "$DAEMON_DIR" && cargo build --release) || die 'The box daemon did not build.'
+    touch "$DAEMON_EXE" # cargo leaves the file alone when nothing changed; mark it checked
+fi
+if (( BUILD )) || is_stale "$WEB_DIR/index.html" "${WEB_SOURCES[@]}"; then
+    need_npm
     say 'Building the web app.'
-    (cd "$CLIENT_DIR" && { [[ -d node_modules ]] || npm ci --no-audit --no-fund; } && npm run build)
+    install_packages
+    (cd "$CLIENT_DIR" && npm run build) || die 'The web app did not build.'
+fi
+if (( ! NO_APP )) && { (( BUILD )) || is_stale "$APP_EXE" "${APP_SOURCES[@]}"; }; then
+    if app_is_open; then
+        say 'The desktop app is open, so it was not rebuilt. Close it and run this again to get the newest one.'
+    else
+        need_cargo; need_npm
+        say 'Building the desktop app (the first build takes several minutes).'
+        install_packages
+        # The app bundles the daemon; daemon.js puts the one just built where the build looks for it.
+        (cd "$CLIENT_DIR" && node scripts/daemon.js && npx tauri build --no-bundle) || die 'The desktop app did not build.'
+        [[ -f "$APP_EXE" ]] || die "The desktop app built, but $APP_EXE is missing."
+        touch "$APP_EXE"
+    fi
 fi
 
 # ---- the box ----
-read_started
-if [[ -n "$STARTED_PID" ]] && (( BUILD )); then
-    stop_pid "$STARTED_PID"; rm -f "$PID_FILE"; STARTED_PID=""
-    sleep 0.5
-fi
 if [[ -n "$STARTED_PID" && "$STARTED_PORT" == "$PORT" ]]; then
     say "The box is already running (process $STARTED_PID)."
 elif is_listening "$PORT"; then
@@ -222,7 +276,7 @@ else
         waited=$(( waited + 1 ))
     done
     printf '%s %s\n' "$box_pid" "$PORT" > "$PID_FILE"
-    say "Box started (process $box_pid). Vault: $DATA"
+    say "Box started (process $box_pid). Vault: $(native "$DATA")"
 fi
 
 TOKEN="$(tr -d '[:space:]' < "$DATA/.castle/token")"
@@ -233,23 +287,15 @@ if (( BROWSER )); then open_url "$LINK"; fi
 
 # ---- the desktop app ----
 if (( ! NO_APP )); then
-    app=""
-    for candidate in "${APP_CANDIDATES[@]}"; do
-        if [[ -x "$candidate" || -f "$candidate" ]]; then app="$candidate"; break; fi
-    done
-    if [[ -z "$app" ]]; then
-        say 'No desktop app found. Build one with:  cd client && npm run desktop'
-    elif (( ON_WINDOWS )) && tasklist //FI "IMAGENAME eq castle.exe" //NH 2>/dev/null | grep -qi '^castle\.exe'; then
-        say 'The desktop app is already open.'
-    elif (( ! ON_WINDOWS )) && pgrep -x castle >/dev/null 2>&1; then
+    if app_is_open; then
         say 'The desktop app is already open.'
     else
         if (( ON_WINDOWS )); then
-            cmd //c start "" "$(native "$app")"
+            cmd //c start "" "$(native "$APP_EXE")"
         else
-            setsid nohup "$app" >/dev/null 2>&1 < /dev/null &
+            setsid nohup "$APP_EXE" >/dev/null 2>&1 < /dev/null &
         fi
-        say "Desktop app opened ($app)."
+        say 'Desktop app opened.'
     fi
 fi
 say 'The box keeps running in the background. Stop it with:  ./start.sh --stop'
