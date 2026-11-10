@@ -89,7 +89,8 @@ function Send-CastleGuestFile {
     <#
     .SYNOPSIS
         Copies one host file into the guest through the agent (guest-file-write,
-        base64 in 32 KB pieces). Used to hand the setup script over directly:
+        base64 in 256 KB pieces without loading the whole file into memory).
+        Used to hand the setup script over directly:
         the FAT share snapshot QEMU took at boot would serve a stale copy of a
         script edited while the VM runs.
     #>
@@ -99,17 +100,40 @@ function Send-CastleGuestFile {
         [string]$RemotePath,
         [string]$Mode = "w"
     )
-    $Bytes = [System.IO.File]::ReadAllBytes($LocalPath)
-    $Handle = Invoke-QgaCommand -Session $Session -Execute "guest-file-open" -Arguments @{ path = $RemotePath; mode = $Mode }
+    $ErrorActionPreference = "Stop"
+    if (-not $Session -or -not $Session.Stream -or
+        -not $Session.Stream.CanRead -or -not $Session.Stream.CanWrite) {
+        throw "Guest connection is closed or missing. Run Connect-CastleGuestAgent again before copying."
+    }
+
+    # Open the source before touching the destination: an invalid source must
+    # never create or truncate a file in the guest.
+    $Source = Get-Item -LiteralPath $LocalPath -ErrorAction Stop
+    if ($Source -isnot [System.IO.FileInfo]) { throw "LocalPath must name a file: $LocalPath" }
+    $InputFile = [System.IO.File]::OpenRead($Source.FullName)
+    $Handle = $null
     try {
-        for ($Off = 0; $Off -lt $Bytes.Length; $Off += 32768) {
-            $Len = [Math]::Min(32768, $Bytes.Length - $Off)
-            $B64 = [Convert]::ToBase64String($Bytes, $Off, $Len)
-            Invoke-QgaCommand -Session $Session -Execute "guest-file-write" -Arguments @{ handle = $Handle; 'buf-b64' = $B64 } | Out-Null
+        $Handle = Invoke-QgaCommand -Session $Session -Execute "guest-file-open" -Arguments @{ path = $RemotePath; mode = $Mode }
+        $Buffer = [byte[]]::new(262144)
+        while (($Length = $InputFile.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
+            $Offset = 0
+            while ($Offset -lt $Length) {
+                $Remaining = $Length - $Offset
+                $B64 = [Convert]::ToBase64String($Buffer, $Offset, $Remaining)
+                $Reply = Invoke-QgaCommand -Session $Session -Execute "guest-file-write" -Arguments @{ handle = $Handle; 'buf-b64' = $B64 }
+                $Written = [long]$Reply.count
+                if ($Written -le 0 -or $Written -gt $Remaining) {
+                    throw "Guest file write returned an invalid byte count ($Written of $Remaining) for $RemotePath."
+                }
+                $Offset += [int]$Written
+            }
         }
     }
     finally {
-        Invoke-QgaCommand -Session $Session -Execute "guest-file-close" -Arguments @{ handle = $Handle } | Out-Null
+        $InputFile.Dispose()
+        if ($null -ne $Handle) {
+            Invoke-QgaCommand -Session $Session -Execute "guest-file-close" -Arguments @{ handle = $Handle } | Out-Null
+        }
     }
 }
 
@@ -130,6 +154,8 @@ function Invoke-CastleGuestSetup {
         [string]$Script = "setup-wine.sh",
         [string[]]$Programs = @(),
         [switch]$RunAll = $false,
+        # Guest half of a launch profile; lands as /tmp/castle-profile.env.
+        [string]$ProfileFile = $null,
         [int]$TimeoutSec = 900,
         [System.Diagnostics.Process]$QemuProcess = $null
     )
@@ -162,7 +188,10 @@ function Invoke-CastleGuestSetup {
     # The script itself is uploaded through the agent (always the current host
     # copy). The CASTLE share is still mounted at /mnt/castle for anything the
     # script wants from it, but its absence is not fatal.
-    $Cmd = "for i in `$(seq 1 10); do [ -e /dev/disk/by-label/CASTLE ] && break; sleep 2; done; " +
+    $HasProfile = (-not [string]::IsNullOrEmpty($ProfileFile)) -and (Test-Path -LiteralPath $ProfileFile)
+    # Without a profile, one left over from an earlier launch must not apply.
+    $Cmd = $(if ($HasProfile) { "" } else { "rm -f /tmp/castle-profile.env; " }) +
+    "for i in `$(seq 1 10); do [ -e /dev/disk/by-label/CASTLE ] && break; sleep 2; done; " +
     "mkdir -p /mnt/castle && (mountpoint -q /mnt/castle || mount -o ro /dev/disk/by-label/CASTLE /mnt/castle 2>/dev/null); " +
     ": > $Log; exec bash $RemoteScript $ScriptArgs >> $Log 2>&1"
 
@@ -175,6 +204,7 @@ function Invoke-CastleGuestSetup {
         foreach ($s in Get-ChildItem $ScriptsDir -Filter "*.sh" -File) {
             Send-CastleGuestFile -Session $Qga -LocalPath $s.FullName -RemotePath "/tmp/castle-$($s.Name)"
         }
+        if ($HasProfile) { Send-CastleGuestFile -Session $Qga -LocalPath $ProfileFile -RemotePath "/tmp/castle-profile.env" }
         Write-Host "  [GUEST] Agent up. Running $Script $ScriptArgs" -ForegroundColor Green
         Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
         $Exec = Invoke-QgaCommand -Session $Qga -Execute "guest-exec" -Arguments @{

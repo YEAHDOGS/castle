@@ -110,6 +110,77 @@ The fast path is **build once, clone many**:
 ```
 An `-Instance` of a cloud target automatically clones the target's finished disk (`data/ubuntu-cloud-desktop.qcow2`) when it exists and falls back to the raw image otherwise. Clones re-run only cloud-init's cheap per-instance steps and skip the first-boot reboot. Never boot the golden disk while clones depend on it. To rebuild the golden image (new profile, new base image), delete `data/ubuntu-cloud-desktop.qcow2` and its `.vars.fd`, then run step 1 again. Dropping a new `.exe` in the folder needs no rebuild: it is picked up at the next login of any VM.
 
+### Launch profiles: one file for target, size, payload, installs and commands
+A profile says what a VM is for, so a launch is one short command instead of a long one plus a hand-written setup script:
+
+```powershell
+.\start.ps1 -Profile list                          # what is there
+.\start.ps1 -Profile penguin                       # profiles\penguin.psd1
+.\start.ps1 -Profile penguin -Target endeavouros   # the command line wins over the file
+.\start.ps1 -Profile C:\somewhere\mine.psd1        # any path
+```
+
+A profile is a PowerShell data file (`.psd1`, plain data, nothing runs when it is loaded). Every key is optional:
+
+```powershell
+@{
+    Description  = "What this VM is for"
+    Target       = "debian-x11"                 # target id from modules/targets.ps1
+    Instance     = "job-01"                     # own disk under data\instances
+    Background   = $true
+    MemoryGB     = 4                            # exact guest RAM (no 4 GB floor)
+    Cores        = 6
+    Screen       = "1440x900"                   # guest screen mode (X11 guests)
+    QemuArgs     = @("-rtc", "base=localtime")  # extra raw QEMU arguments, appended last
+    Env          = @{ CASTLE_VM_AUDIO = "none" } # CASTLE_* knobs for this launch only
+    Payload      = @(                           # host folders packed into data\copy before boot
+        @{ Source = "..\..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
+    )
+    Packages     = @{ apt = @("htop"); pacman = @("htop") }   # the guest's own package manager picks its list
+    RootCommands = @("timedatectl set-timezone UTC")          # as root, in order; a failure stops the setup
+    UserCommands = @("xterm -e htop")                         # as the desktop user, inside the X11 session
+    Setup        = "penguin"                    # then scripts\setup-penguin.sh; without it: setup-profile.sh
+}
+```
+
+- **Payload.** `Source` is relative to the profile file. A git checkout is packed as git sees it (tracked and untracked files, ignored ones left out), so virtualenvs, build output and recordings stay behind; `Include` adds ignored files by name. Other folders are packed whole.
+- **How it reaches the guest.** `MemoryGB`, `Cores`, `QemuArgs` and `Env` shape the QEMU launch. Packages, commands and `Screen` are written to `data\seeds\profile\castle-profile.env`, uploaded through the guest agent as `/tmp/castle-profile.env`, and applied by `castle_profile_apply` in `scripts/castle-lib.sh`.
+- **Setup scripts stay small.** `castle-lib.sh` carries what every setup needs on both Arch-based and Debian-based guests: `castle_wait_cloud_init`, `castle_user`, `castle_pkg_install` / `castle_need` (pacman or apt), `castle_mount_label`, `castle_wait_x11`, `castle_on_x`, `castle_in_session`, `castle_ensure_screen`. `scripts/setup-penguin.sh` is the worked example; `scripts/setup-profile.sh` is the generic one that only applies the profile.
+- `CASTLE_VM_RAM_GB` and `CASTLE_VM_CORES` set the same exact sizes without a profile.
+
+#### `debian-x11`: the light graphical guest
+Debian 13's cloud image with Xorg + Openbox (no desktop environment), Firefox, Python and the guest agent, installed by cloud-init on first boot (`scripts/cloud-init/x11/user-data`). It auto-logs in as `castle` into a real X11 session, which screen readers and input senders (mss, pynput, xdotool) need. First boot installs the packages and starts the desktop without a reboot; later boots and `-Instance` clones skip that. It takes `-Copy`, `-Setup` and `-Profile` like `endeavouros`, and its disk persists, so nothing is re-installed per boot the way a live ISO does.
+
+#### Example: the Cart Surfer bot, hands-off
+`profiles\penguin.psd1` packs the `penguin-autosurf` checkout next to this repo (plus its `.env`), boots `debian-x11` in the background, and `scripts/setup-penguin.sh` unpacks the project, builds its Python environment, opens Firefox on the game and starts the bot, which signs in and plays on a loop:
+
+```powershell
+.\start.ps1 -Profile penguin
+```
+
+### Android: run apps / APKs locally
+Two targets, pick by what you need:
+
+| | `android-avd` (Google's emulator) | `blissos` (BlissOS 16, QEMU guest) |
+|---|---|---|
+| Android | 15, Google Play image | 13, GApps |
+| Runs ARM-only apps | yes (Google's ARM translation) | depends on the build's native bridge |
+| Graphics | host GPU (the emulator's own renderer) | software (SwiftShader); virgl hangs QEMU on this host |
+| Lives in | `data/android-sdk/` (SDK + AVD, nothing in `%LOCALAPPDATA%`) | `data/Bliss-*.iso` + an ext4 `/data` disk next to it |
+| Needs | Java 17+ once (Google's `avdmanager`), WHPX/KVM | WSL Ubuntu once (formats the ext4 disk), WHPX/KVM |
+
+```powershell
+.\start.ps1 android-avd            # first run: SDK + Android 15 image (~2.5 GB), creates the AVD, boots to the home screen (~95 s cold, seconds after that via Quick Boot)
+.\start.ps1 android-avd -Copy      # same, then adb-installs every .apk in data\copy and launches it
+.\android.ps1 -Apk C:\path\app.apk # install + launch one APK into the running emulator
+.\android.ps1 -Stop                # clean shutdown (snapshot saved) ; -Wipe = factory reset ; -Purge = delete the AVD
+
+.\start.ps1 blissos -Background    # verified ISO (SourceForge SHA256), straight into Android, no installer
+```
+- **Downloads and checks.** `android.ps1` reads the cmdline-tools zip name and SHA-1 from Google's SDK manifest over HTTPS, checks the zip and pins its SHA-512 in `.castle_trust.json`. The emulator, platform-tools and system image are installed by Google's own tool, which checks them against the same manifests. Installing them means accepting the [Android SDK License](https://developer.android.com/studio/terms): it asks once, or pass `-AcceptLicenses` (`CASTLE_ACCEPT_ANDROID_LICENSES=1`). Since cmdline-tools 23, `sdkmanager` forwards to Google's new "Android CLI", which announces usage metrics; `android.ps1` calls it directly with `--no-metrics`. Pick another image with `CASTLE_AVD_IMAGE` (e.g. `system-images;android-36;google_apis_playstore;x86_64`) and the RAM with `CASTLE_AVD_RAM_MB` (default 4096).
+- **Network.** Both get internet through the host's user-mode NAT; inside Android the host is `10.0.2.2`. The AVD shows up in `adb devices` as `emulator-5554`. BlissOS forwards its adbd to a free loopback port printed at boot (`adb connect 127.0.0.1:5655`); use `data\android-sdk\platform-tools\adb.exe` once the AVD target has installed it.
+- **BlissOS boot.** Every boot loads the ISO's kernel/initrd directly with its "No HW Acceleration" entry (`nomodeset HWACCEL=0`) plus `DATA=vda SETUPWIZARD=0`. The VM disk is not installed to: it is a bare ext4 volume (formatted once through WSL, then never touched again) mounted as `/data`, so apps and settings persist. Without WSL it still boots, with `/data` in RAM. First boot is slow (several minutes while Android optimises apps under software rendering).
+
 ### Boot any ISO you already have (`boot-iso.ps1` / `boot-iso.sh`)
 Outside the manifest: point the script at any bootable ISO (EndeavourOS, Ubuntu, Kali, Arch, Windows ...) and a disk size, and it boots it in QEMU with a fresh qcow2 of that size under `data/adhoc/`. First run boots the installer from the ISO; later runs boot the installed disk with the ISO still attached as a CD. Same QEMU setup as the pipeline (WHPX/KVM with TCG fallback, virtio, OVMF with per-VM NVRAM, the `CASTLE` USB share, QMP and guest-agent sockets on Windows), plus knobs on top:
 ```powershell

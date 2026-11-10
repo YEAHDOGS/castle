@@ -1,0 +1,119 @@
+#cloud-config
+# ==============================================================================
+# Castle cloud-init profile: minimal X11 desktop (Xorg + Openbox, no desktop
+# environment) for running a browser and scripted tools
+# ==============================================================================
+# The lightest graphical guest in the pipeline: about 250 MB of RAM at idle
+# against 1.3 GB for a live KDE session. It auto-logs in as castle into a bare
+# Openbox session on a real Xorg server (screen readers and input senders such
+# as mss, pynput and xdotool need X11, not Wayland). Firefox, sound (PipeWire), Python (venv, tk
+# and headers for building wheels) and the QEMU guest agent are installed, so
+# `start.ps1 -Copy -Setup <name>` / `-Profile <name>` can drive it right away.
+#
+# First boot installs the packages (a few minutes) and starts the desktop
+# without a reboot. The guest agent comes up first, so the host can attach and
+# watch; setup scripts wait for this file to finish (castle_wait_cloud_init).
+# Later boots, and -Instance clones of the finished disk, skip all of it.
+# Login: castle / wearedogs
+# ==============================================================================
+
+bootcmd:
+  - mkdir -p /var/lib/castle
+
+users:
+  - name: castle
+    gecos: Castle
+    shell: /bin/bash
+    groups: [sudo, video, audio, input]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  expire: false
+  users:
+    - name: castle
+      password: wearedogs
+      type: text
+
+ssh_pwauth: true
+
+# Package work is done in runcmd (below) instead of the declarative `packages`
+# module so that a clone of a finished disk never touches apt at all.
+package_update: false
+package_upgrade: false
+
+# The Castle USB share (clonewars/scripts on the host) -- read-only FAT.
+mounts:
+  - ["LABEL=CASTLE", "/mnt/castle", "vfat", "ro,nofail,x-systemd.automount", "0", "0"]
+
+write_files:
+  # Auto-login straight into Openbox.
+  - path: /etc/lightdm/lightdm.conf.d/50-castle.conf
+    permissions: "0644"
+    content: |
+      [Seat:*]
+      autologin-user=castle
+      autologin-user-timeout=0
+      autologin-session=openbox
+      user-session=openbox
+
+  # QEMU's window starts at 640x480 and offers that as the preferred mode.
+  - path: /etc/X11/xorg.conf.d/10-castle-screen.conf
+    permissions: "0644"
+    content: |
+      Section "Monitor"
+          Identifier "Virtual-1"
+          Option "PreferredMode" "1440x900"
+      EndSection
+
+  # Session start: no blanking, no screen saver, a plain background.
+  - path: /etc/xdg/openbox/autostart
+    permissions: "0644"
+    content: |
+      xset s off -dpms &
+      xsetroot -solid "#20303c" &
+      # Publish the display to the user's systemd session so tools started
+      # from outside (the guest agent) can find it.
+      dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null &
+      [ -x /usr/local/bin/castle-session-start ] && /usr/local/bin/castle-session-start &
+
+  # One-shot golden build: everything a clone must never repeat lives here.
+  - path: /usr/local/sbin/castle-golden-build
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Castle: install the minimal X11 desktop once; clones skip this via the marker.
+      set -e
+      export DEBIAN_FRONTEND=noninteractive
+      # Files this profile already wrote (Openbox's autostart) are kept as they
+      # are; without this dpkg stops to ask and the whole build fails.
+      APT="apt-get -y --no-install-recommends -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
+      apt-get update
+      # The agent first: the host attaches to it and follows the rest of this build.
+      $APT install qemu-guest-agent
+      systemctl enable qemu-guest-agent || true
+      systemctl start qemu-guest-agent || true
+      $APT install \
+        xserver-xorg-core xserver-xorg-input-libinput xinit x11-xserver-utils x11-utils \
+        openbox lightdm lightdm-gtk-greeter dbus-x11 dbus-user-session xterm xdotool \
+        fonts-dejavu-core fonts-liberation libgl1 libegl1 libxtst6 \
+        firefox-esr \
+        pipewire pipewire-pulse pipewire-alsa wireplumber libpulse0 alsa-utils \
+        python3 python3-venv python3-pip python3-tk python3-dev build-essential \
+        libarchive-tools openssh-server curl git ca-certificates
+      apt-get clean
+      # A sound server for every user session. Without one, Flash-era games in
+      # the browser (Ruffle) freeze on their first frame waiting for audio.
+      systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service || true
+      # Debian calls the browser firefox-esr; scripts and tools say firefox.
+      ln -sf /usr/bin/firefox-esr /usr/local/bin/firefox
+      systemctl set-default graphical.target
+      touch /var/lib/castle/start-desktop
+
+runcmd:
+  # The marker is only written when the build succeeded: a failed first boot is retried on the next one.
+  - test -f /var/lib/castle/first-boot-done || { /usr/local/sbin/castle-golden-build && touch /var/lib/castle/first-boot-done; }
+  # First boot only: bring the desktop up now instead of rebooting into it.
+  - test -f /var/lib/castle/start-desktop && rm -f /var/lib/castle/start-desktop && systemctl start lightdm || true
+
+final_message: "castle: minimal X11 desktop ready after $UPTIME seconds. Log in as castle."

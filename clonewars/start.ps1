@@ -57,6 +57,13 @@ param (
     [Parameter()]
     [String]$Setup = "auto",
 
+    # Launch profile: one .psd1 file naming the target, VM size, payload,
+    # packages and commands (see modules/profiles.ps1). A name looks in
+    # profiles\<name>.psd1; "list" shows them. Command-line switches win over
+    # the profile's values.
+    [Parameter()]
+    [String]$Profile,
+
     # EXPERIMENTAL host-GPU 3D for the guest (virtio-vga-gl + SDL OpenGL
     # display). Hangs QEMU on this host (see the note near the end of the copy
     # payload block); left in for other hosts / newer QEMU builds. CASTLE_VM_GL=1/0.
@@ -84,6 +91,7 @@ $ModuleRoot = Join-Path $PSScriptRoot "modules"
 . (Join-Path $ModuleRoot "launch.ps1")
 . (Join-Path $ModuleRoot "resolvers.ps1")
 . (Join-Path $ModuleRoot "guest.ps1")
+. (Join-Path $ModuleRoot "profiles.ps1")
 
 $DataDir = Join-Path $PSScriptRoot "data"
 $CopyDir = Join-Path $DataDir "copy"
@@ -93,6 +101,48 @@ function Get-CopyPayloadFiles {
     if (-not (Test-Path $CopyDir)) { return @() }
     return @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { -not ($_.Name -ieq "README.md" -and $_.DirectoryName -eq (Get-Item $CopyDir).FullName) })
 }
+
+# ==============================================================================
+# LAUNCH PROFILE -- profiles\<name>.psd1 fills in what the command line left out
+# ==============================================================================
+$ProfileData = $null
+$ProfileEnvFile = $null
+if ($Profile -eq "list") {
+    Write-Host ""
+    Write-Host "  Castle launch profiles (.\start.ps1 -Profile <name>)" -ForegroundColor Cyan
+    Write-Host "  -------------------------------------------" -ForegroundColor DarkGray
+    foreach ($Entry in Get-CastleProfiles -Root $PSScriptRoot) {
+        Write-Host ("  {0}  {1}  {2}" -f $Entry.Name.PadRight(16), ([string]$Entry.Target).PadRight(18), $Entry.Description) -ForegroundColor White
+    }
+    Write-Host ""
+    Exit 0
+}
+if (-not [string]::IsNullOrWhiteSpace($Profile)) {
+    $ProfileData = Import-CastleProfile -Name $Profile -Root $PSScriptRoot
+    if (-not $ProfileData) { Exit 1 }
+    Write-Host ""
+    Write-Host "  [PROFILE] $([System.IO.Path]::GetFileNameWithoutExtension($ProfileData.Path)) -- $($ProfileData.Description)" -ForegroundColor Cyan
+    if (-not $PSBoundParameters.ContainsKey("Target") -and $ProfileData.Target) { $Target = [string]$ProfileData.Target }
+    if (-not $PSBoundParameters.ContainsKey("Instance") -and $ProfileData.Instance) { $Instance = [string]$ProfileData.Instance }
+    if (-not $PSBoundParameters.ContainsKey("Mirror") -and $ProfileData.Mirror) { $Mirror = [string]$ProfileData.Mirror }
+    if (-not $PSBoundParameters.ContainsKey("Background") -and $ProfileData.Background) { $Background = $true }
+    if (-not $PSBoundParameters.ContainsKey("Setup")) { $Setup = if ($ProfileData.Setup) { [string]$ProfileData.Setup } else { "profile" } }
+    if ([string]::IsNullOrWhiteSpace($Target)) {
+        Write-Host "  [FAIL] The profile names no Target; pass one: .\start.ps1 <target-id> -Profile $Profile" -ForegroundColor Red
+        Exit 1
+    }
+    if (-not ($DeleteDisk -or $DeleteIso -or $Purge)) {
+        foreach ($Key in @($ProfileData.Env.Keys | Where-Object { $_ })) { Set-Item -Path "Env:$Key" -Value ([string]$ProfileData.Env[$Key]) }
+        if ($ProfileData.MemoryGB) { $env:CASTLE_VM_RAM_GB = [string]$ProfileData.MemoryGB }
+        if ($ProfileData.Cores) { $env:CASTLE_VM_CORES = [string]$ProfileData.Cores }
+        $Global:CastleExtraQemuArgs = @($ProfileData.QemuArgs | Where-Object { $_ })
+        if (-not (Update-CastleProfilePayload -Profile $ProfileData -CopyDir $CopyDir)) { Exit 1 }
+        $ProfileEnvFile = Write-CastleProfileEnv -Profile $ProfileData -Path (Join-Path (Join-Path (Join-Path $DataDir "seeds") "profile") "castle-profile.env")
+        # A profile is applied through the guest agent, like a copy payload.
+        $Copy = $true
+    }
+}
+else { $Global:CastleExtraQemuArgs = @() }
 
 # ==============================================================================
 # DIRECT COMMAND LINE CLEANUP / REMOVAL
@@ -131,8 +181,16 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         Exit $LASTEXITCODE
     }
 
+    # Google emulator: the AVD lives in data/android-sdk; android.ps1 removes it.
+    if ($Matched[0].Runtime -eq "avd") {
+        & (Join-Path $PSScriptRoot "android.ps1") -Purge
+        Exit $LASTEXITCODE
+    }
+
     $Resolved = Resolve-TargetVersion -Target $Matched[0] -Mirror $Mirror -NoMirrorPrompt
-    $DiskName = if ($Resolved.File) { $Resolved.File -replace '\.(iso|img\.gz|zip)$', '.qcow2' } else { "$($Resolved.Id).qcow2" }
+    # The same naming the launch uses: a cloud-image target's disk is <id>.qcow2,
+    # while its File is the shared downloaded image, which -DeleteDisk must not touch.
+    $DiskName = Get-TargetDiskName $Resolved
     $DiskFile = if (-not [string]::IsNullOrEmpty($Instance)) {
         Join-Path (Join-Path $DataDir "instances") "$Instance.qcow2"
     }
@@ -246,6 +304,7 @@ function Show-CastleMenu {
         }
 
         if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
+        if ($Entry.Runtime -eq "avd") { $IsoIcon = "[AVD]"; $DiskIcon = "      "; $SizeStr = "" }
 
         $IdxStr = "[{0,2}]" -f $Index
         Write-Host "   $IdxStr $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
@@ -253,7 +312,7 @@ function Show-CastleMenu {
     }
 
     Write-Host ""
-    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)" -ForegroundColor DarkGray
+    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)" -ForegroundColor DarkGray
     Write-Host "   Usage: Select a number, enter a Target ID, type 'help' or 'exit'." -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -339,6 +398,8 @@ function Show-HelpDocs {
     Write-Host "                                 every .exe in it (EndeavourOS; via the guest agent)."
     Write-Host "     -Program <name> | -p        Run only that program after the install (implies -Copy)."
     Write-Host "     -Setup auto|wine|opengoal   Guest setup script for -Copy (scripts/setup-<name>.sh; auto = by payload)."
+    Write-Host "     -Profile <name|path|list>   Launch profile: target, VM size, payload, packages and commands in one"
+    Write-Host "                                 file (profiles\<name>.psd1; see modules/profiles.ps1)."
     Write-Host "     -Gl                         Host-GPU OpenGL for the guest (virtio-vga-gl; -Setup opengoal implies it)."
     Write-Host ""
     Write-Host "   SECURITY & TRUST PINNING:" -ForegroundColor White
@@ -598,12 +659,13 @@ if ($Target -eq "list") {
         }
 
         if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
+        if ($Entry.Runtime -eq "avd") { $IsoIcon = "[AVD]"; $DiskIcon = "      "; $SizeStr = "" }
 
         Write-Host "  $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
     }
 
     Write-Host ""
-    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)" -ForegroundColor DarkGray
+    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Usage: .\start.ps1 <target-id>" -ForegroundColor DarkGray
     Write-Host ""
@@ -647,6 +709,16 @@ if ($Matched[0].Runtime -eq "docker") {
     Write-Host "  Target: $($Matched[0].Name)  (docker.ps1 -Profile $($Matched[0].DockerProfile))" -ForegroundColor White
     Write-Host "  ================================================================" -ForegroundColor DarkGray
     & (Join-Path $PSScriptRoot "docker.ps1") -Profile $Matched[0].DockerProfile
+    Exit $LASTEXITCODE
+}
+
+# Google Android Emulator: android.ps1 owns the SDK, the AVD and the boot.
+if ($Matched[0].Runtime -eq "avd") {
+    Write-Host ""
+    Write-Host "  Castle VM Pipeline -> Android Emulator (android.ps1)" -ForegroundColor Cyan
+    $AvdArgs = @{}
+    if ($Copy) { $AvdArgs.Copy = $true }
+    & (Join-Path $PSScriptRoot "android.ps1") @AvdArgs
     Exit $LASTEXITCODE
 }
 
@@ -787,7 +859,8 @@ if (-not $Copy) { $ExtraCdroms = @(); $EffectiveCopyIso = $null; $EffectiveCopyD
 # Wine prefix and game builds on it instead of in RAM, and it persists, so a
 # second run skips the rebuilds. CASTLE_VM_SCRATCH=0 keeps everything in RAM.
 $ScratchDisk = $null
-if ($Copy -and $env:CASTLE_VM_SCRATCH -ne "0") {
+# Cloud-image targets keep everything on their own disk and need none.
+if ($Copy -and $env:CASTLE_VM_SCRATCH -ne "0" -and $Iso.ImageKind -ne "cloud") {
     $ScratchName = if (-not [string]::IsNullOrEmpty($Instance)) { "$Instance-scratch.qcow2" } else { "$($Iso.Id)-scratch.qcow2" }
     $ScratchDisk = Join-Path (Join-Path $DataDir "scratch") $ScratchName
 }
@@ -928,6 +1001,18 @@ elseif ($Iso.ImageKind -eq "cloud" -and -not [string]::IsNullOrEmpty($Instance) 
 elseif ($Iso.ImageKind -eq "cloud") { $IsoPath }
 else { $null }
 $FirstBoot = New-VirtualDisk -DiskPath $DiskPath -DiskSize $DiskSize -BaseDisk $EffectiveBase
+# Data-disk targets (BlissOS): the disk is a bare filesystem the live system
+# mounts, never an install target. Format it once; an existing filesystem is
+# always kept (Test-Ext4Disk reads the superblock, not the file size).
+if ($Iso.DataDiskFs -eq "ext4") {
+    # Both checks: a blank/new disk (New-VirtualDisk) that also has no ext4
+    # superblock. Either one alone could misfire (a lazily initialised ext4
+    # qcow2 is tiny; a disk locked by a running VM cannot be read).
+    if ($FirstBoot -and -not (Test-Ext4Disk -DiskPath $DiskPath)) {
+        Initialize-Ext4Disk -DiskPath $DiskPath -DiskSize $DiskSize | Out-Null
+    }
+    $FirstBoot = $false
+}
 
 # ==============================================================================
 # PHASE 4 -- HARDWARE DETECTION
@@ -958,5 +1043,6 @@ Start-CastleVm `
     -Programs $Programs `
     -RunAll:$RunAll `
     -SetupScript $SetupScript `
+    -ProfileFile $ProfileEnvFile `
     -ExtraCdroms $ExtraCdroms `
     -Gl:$Gl

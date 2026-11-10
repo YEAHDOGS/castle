@@ -503,22 +503,64 @@ $IsoMatrix = @(
         DiskSize      = "60G"
         OsFamily      = "linux"
     },
+    @{
+        Id            = "debian-x11"
+        Name          = "Debian 13 (cloud image, minimal X11 desktop)"
+        Description   = "Debian Trixie cloud image with Xorg + Openbox, Firefox and Python: the light guest for browser automation and scripted tools (about 250 MB idle). Takes -Copy / -Setup / -Profile."
+        # The "generic" image, not "genericcloud": its kernel carries the
+        # virtio-gpu and input drivers a graphical session needs.
+        Url           = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
+        IsoName       = "debian-13-generic-amd64.qcow2"
+        File          = "debian-13-generic-amd64.qcow2"
+        HashUrlSha512 = "https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS"
+        # QEMU Profile
+        ImageKind     = "cloud"
+        CloudInit     = "x11"
+        Firmware      = "uefi"
+        DiskSize      = "24G"
+        OsFamily      = "linux"
+        SupportsCopy  = $true
+    },
 
     # ══════════════════════════════════════════════════════════════════════════
     # ANDROID (Mobile/Desktop OS)
     # ══════════════════════════════════════════════════════════════════════════
 
+    # Two ways to run Android apps:
+    #   android-avd  Google's official emulator (itself QEMU-based, WHPX/KVM
+    #                accelerated, host-GPU rendering, Play Store, ARM app
+    #                translation). Runtime = "avd": start.ps1 hands it to android.ps1.
+    #   blissos      BlissOS (Android-x86 successor) as a regular clonewars QEMU
+    #                guest. Software rendering (GL passthrough deadlocks QEMU on
+    #                this host), adb over a forwarded port.
+
     @{
-        Id            = "android"
-        Name          = "Android-x86 (9.0-r2 Pie)"
-        Description   = "An open-source project to port Android to the x86 platform, running smoothly under QEMU."
-        Url           = "https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso"
-        IsoName       = "android-x86_64-9.0-r2.iso"
-        File          = "android-x86_64-9.0-r2.iso"
-        HashUrlSha1   = "https://raw.githubusercontent.com/android-x86/android-x86-com.github.io/master/releases/releasenote-9-0-r2.html"
+        Id            = "android-avd"
+        Name          = "Android 15 (Google emulator, Play Store)"
+        Description   = "Google's official Android Emulator with an Android 15 Google Play x86_64 image (runs ARM apps too). SDK lives in data/android-sdk. -Copy installs every .apk in data/copy and launches it."
+        Runtime       = "avd"
+        OsFamily      = "android"
+    },
+    @{
+        Id            = "blissos"
+        Name          = "BlissOS 16.9.7 (Android 13, GApps)"
+        Description   = "BlissOS live image booted straight into Android (no installer) with a persistent ext4 /data disk. Software rendering; adb at 127.0.0.1:<port printed at boot>."
+        Url           = "https://downloads.sourceforge.net/project/blissos-x86/Official/BlissOS16/Gapps/Generic/Bliss-v16.9.7-x86_64-OFFICIAL-gapps-20241011.iso"
+        IsoName       = "Bliss-v16.9.7-x86_64-OFFICIAL-gapps-20241011.iso"
+        File          = "Bliss-v16.9.7-x86_64-OFFICIAL-gapps-20241011.iso"
+        HashUrlSha256 = "https://downloads.sourceforge.net/project/blissos-x86/Official/BlissOS16/Gapps/Generic/Bliss-v16.9.7-x86_64-OFFICIAL-gapps-20241011.iso.sha256"
         # QEMU Profile
         DiskSize      = "16G"
         OsFamily      = "android"
+        # The VM disk is not installed to: it is a bare ext4 volume (formatted
+        # once on the host, see Initialize-Ext4Disk) that the live system mounts
+        # as /data (DATA=vda), so apps and settings persist across boots.
+        DataDiskFs    = "ext4"
+        # Every boot goes straight to Android from the ISO's own kernel/initrd:
+        # the "No HW Acceleration" entry (nomodeset HWACCEL=0 = SwiftShader),
+        # since virgl (virtio-vga-gl) hangs QEMU here. SETUPWIZARD=0 lands on
+        # the home screen; sign in to Google later from the Play Store.
+        DirectBoot    = @{ Config = "isolinux/isolinux.cfg"; Label = "nomodeset"; AppendExtra = "DATA=vda SETUPWIZARD=0"; Always = $true }
     },
 
     # ══════════════════════════════════════════════════════════════════════════

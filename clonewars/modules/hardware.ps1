@@ -76,6 +76,14 @@ function Get-HostHardwareProfile {
         $MaxRamGB = [Math]::Max(4, [int]$env:CASTLE_VM_MAX_RAM_GB)
     }
     $MemoryGB = [Math]::Min($MaxRamGB, [Math]::Max(4, [Math]::Round($TotalRamGB / 2)))
+    # Exact sizes for one launch (a launch profile's MemoryGB / Cores set these):
+    # a small guest that only runs a browser does not need the 4GB floor.
+    if ($env:CASTLE_VM_RAM_GB -and ($env:CASTLE_VM_RAM_GB -as [int]) -and [int]$env:CASTLE_VM_RAM_GB -ge 1) {
+        $MemoryGB = [int]$env:CASTLE_VM_RAM_GB
+    }
+    if ($env:CASTLE_VM_CORES -and ($env:CASTLE_VM_CORES -as [int]) -and [int]$env:CASTLE_VM_CORES -ge 1) {
+        $CpuCores = [Math]::Min($HostCores, [int]$env:CASTLE_VM_CORES)
+    }
 
     # CPU Profile Vendor Selection
     $CpuProfile = switch -Wildcard ($CpuVendor) {

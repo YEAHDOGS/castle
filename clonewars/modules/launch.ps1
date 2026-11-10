@@ -385,7 +385,9 @@ function Get-DirectBootFiles {
         }
         if (-not (Test-Path $ConfigPath)) { throw "config $($Spec.Config) not in ISO" }
 
-        # syslinux: LABEL <name> ... LINUX / INITRD / APPEND until the next LABEL.
+        # syslinux: LABEL <name> ... LINUX|KERNEL / INITRD / APPEND until the
+        # next LABEL (keywords are case-insensitive). Android-x86/BlissOS put
+        # the initrd inside APPEND as initrd=<path> instead of an INITRD line.
         $Block = $null
         foreach ($Line in Get-Content $ConfigPath) {
             if ($Line -match '^\s*LABEL\s+(\S+)') {
@@ -394,11 +396,15 @@ function Get-DirectBootFiles {
                 continue
             }
             if (-not $Block) { continue }
-            if ($Line -match '^\s*LINUX\s+(\S+)') { $Block.Kernel = $Matches[1] }
+            if ($Line -match '^\s*(LINUX|KERNEL)\s+(\S+)') { $Block.Kernel = $Matches[2] }
             elseif ($Line -match '^\s*INITRD\s+(\S+)') { $Block.Initrd = $Matches[1] }
             elseif ($Line -match '^\s*APPEND\s+(.+?)\s*$') { $Block.Append = $Matches[1] }
         }
-        if (-not $Block -or -not $Block.Kernel -or -not $Block.Initrd) { throw "label '$($Spec.Label)' has no LINUX/INITRD lines" }
+        if ($Block -and -not $Block.Initrd -and $Block.Append -match '(^|\s)initrd=(\S+)') {
+            $Block.Initrd = $Matches[2]
+            $Block.Append = ($Block.Append -replace '(^|\s)initrd=\S+', '').Trim()
+        }
+        if (-not $Block -or -not $Block.Kernel -or -not $Block.Initrd) { throw "label '$($Spec.Label)' has no kernel/initrd lines" }
 
         $Files = @{}
         foreach ($Kind in "Kernel", "Initrd") {
@@ -411,13 +417,102 @@ function Get-DirectBootFiles {
             if (-not (Test-Path $Local)) { throw "$InIso not in ISO" }
             $Files[$Kind] = $Local
         }
+        # AppendExtra key=value tokens replace a same-named token of the entry
+        # (DATA= -> DATA=vda); anything else is appended.
         $Append = $Block.Append
-        if ($Spec.AppendExtra) { $Append = "$Append $($Spec.AppendExtra)" }
+        if ($Spec.AppendExtra) {
+            foreach ($Tok in ($Spec.AppendExtra -split '\s+' | Where-Object { $_ })) {
+                $Key = if ($Tok -match '^([^=]+)=') { $Matches[1] } else { $null }
+                $Pattern = if ($Key) { "(^|\s)$([regex]::Escape($Key))=\S*" } else { $null }
+                if ($Pattern -and $Append -match $Pattern) { $Append = [regex]::Replace($Append, $Pattern, "`$1$Tok") }
+                else { $Append = "$Append $Tok" }
+            }
+        }
         return @{ Kernel = $Files.Kernel; Initrd = $Files.Initrd; Append = $Append }
     }
     catch {
         Write-Host "  [*] Direct boot skipped ($($_.Exception.Message)); the ISO menu will show instead." -ForegroundColor DarkGray
         return $null
+    }
+}
+
+
+function Test-Ext4Disk {
+    <#
+    .SYNOPSIS
+        $true when a qcow2 starts with an ext2/3/4 superblock (magic 0xEF53 at
+        byte 1080). Read through qemu-img dd, so it works on any image format.
+    #>
+    param ([string]$DiskPath)
+    if (-not (Test-Path $DiskPath)) { return $false }
+    $Tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        Remove-Item $Tmp -Force
+        & $Script:QemuImg dd -f qcow2 -O raw bs=2048 count=1 "if=$DiskPath" "of=$Tmp" 2>&1 | Out-Null
+        if (-not (Test-Path $Tmp)) { return $false }
+        $Bytes = [System.IO.File]::ReadAllBytes($Tmp)
+        return ($Bytes.Length -ge 1082 -and $Bytes[1080] -eq 0x53 -and $Bytes[1081] -eq 0xEF)
+    }
+    catch { return $false }
+    finally { Remove-Item $Tmp -Force -ErrorAction SilentlyContinue }
+}
+
+
+function Initialize-Ext4Disk {
+    <#
+    .SYNOPSIS
+        Turns a blank target disk into a bare ext4 volume (no partition table)
+        for guests that mount it directly, e.g. BlissOS DATA=vda as /data.
+        mkfs.ext4 runs in WSL (the only ext4 formatter on a stock Windows box)
+        against a sparse raw image, which is then converted to qcow2.
+    .OUTPUTS
+        $true when the disk now holds ext4.
+    #>
+    param (
+        [string]$DiskPath,
+        [string]$DiskSize = "16G",
+        [string]$Label = "castledata"
+    )
+
+    if (Test-Ext4Disk -DiskPath $DiskPath) { return $true }
+    $IsLinuxOS = ($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true)
+    $Raw = [System.IO.Path]::ChangeExtension($DiskPath, ".ext4.raw")
+    try {
+        Write-Host "  [DISK] Formatting the data disk as ext4 (one time)..." -ForegroundColor Yellow
+        if (Test-Path $Raw) { Remove-Item $Raw -Force }
+        if ($IsLinuxOS) {
+            & $Script:QemuImg create -q -f raw $Raw $DiskSize | Out-Null
+            & mkfs.ext4 -F -q -L $Label $Raw
+        }
+        else {
+            if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { throw "WSL is not installed (wsl --install -d Ubuntu)" }
+            # Sparse on NTFS, so the 16 GB image only takes what mkfs writes.
+            [System.IO.File]::Create($Raw).Dispose()
+            & fsutil sparse setflag $Raw | Out-Null
+            $Fs = [System.IO.File]::OpenWrite($Raw)
+            $Bytes = switch -Regex ($DiskSize) { '^(\d+)G$' { [int64]$Matches[1] * 1GB } '^(\d+)M$' { [int64]$Matches[1] * 1MB } default { 16GB } }
+            $Fs.SetLength($Bytes); $Fs.Dispose()
+            $Full = (Resolve-Path $Raw).Path
+            $WslPath = "/mnt/" + $Full.Substring(0, 1).ToLower() + ($Full.Substring(2) -replace '\\', '/')
+            # Full path: 'wsl -e' runs without a login shell, so /sbin is not on PATH.
+            & wsl.exe -e /sbin/mkfs.ext4 -F -q -L $Label -E lazy_itable_init=1,lazy_journal_init=1 $WslPath 2>&1 | ForEach-Object { Write-Host "     $_" -ForegroundColor DarkGray }
+            if ($LASTEXITCODE -ne 0) { throw "mkfs.ext4 in WSL exited with $LASTEXITCODE" }
+        }
+        if (Test-Path $DiskPath) { Remove-Item $DiskPath -Force }
+        & $Script:QemuImg convert -q -f raw -O qcow2 $Raw $DiskPath
+        if ($LASTEXITCODE -ne 0) { throw "qemu-img convert exited with $LASTEXITCODE" }
+        $Ok = Test-Ext4Disk -DiskPath $DiskPath
+        if ($Ok) { Write-Host "  [OK] Data disk ready (ext4, label $Label): $DiskPath" -ForegroundColor Green }
+        return $Ok
+    }
+    catch {
+        Write-Host "  [?] Could not format the data disk: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "     The guest will run with /data in RAM (nothing persists across boots)." -ForegroundColor DarkGray
+        if (-not (Test-Path $DiskPath)) { & $Script:QemuImg create -q -f qcow2 $DiskPath $DiskSize | Out-Null }
+        return $false
+    }
+    finally {
+        Remove-Item $Raw -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -534,7 +629,9 @@ function Build-QemuArgs {
         # initramfs still finds the ISO on the CD-ROM by its archiso UUID.
         # Only while the CD is what we boot (first boot); an installed disk
         # boots its own bootloader. CASTLE_VM_DIRECTBOOT=0 shows the menu.
-        if ($FirstBoot -and $Target.DirectBoot -and $env:CASTLE_VM_DIRECTBOOT -ne "0") {
+        # DirectBoot.Always: the ISO is the OS on every boot (BlissOS live + a
+        # data disk), not just an installer.
+        if (($FirstBoot -or $Target.DirectBoot.Always) -and $Target.DirectBoot -and $env:CASTLE_VM_DIRECTBOOT -ne "0") {
             $Direct = Get-DirectBootFiles -Target $Target -IsoPath $IsoPath
             if ($Direct) {
                 $Args += @("-kernel", $Direct.Kernel, "-initrd", $Direct.Initrd, "-append", $Direct.Append)
@@ -598,12 +695,23 @@ function Build-QemuArgs {
         )
     }
 
-    # Attach the /scripts folder as a Virtual FAT drive (skip for android target).
-    # It rides on USB rather than the default IDE bus: ide-hd refuses a read-only
-    # backing node ("Block node is read-only"), and USB keeps the share out of the
-    # hard-disk enumeration so it can never shadow the real boot disk.
+    # Android guests: user-mode network on virtio-net (eth0 in Android) with the
+    # guest's adbd port 5555 forwarded to a free loopback port, so the host's
+    # adb can reach it (adb connect 127.0.0.1:<port>).
+    if ($OsFamily -eq "android") {
+        $AdbPort = Get-FreeTcpPort -Start 5655
+        $Script:LastAdbPort = $AdbPort
+        $Args += @("-nic", "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$AdbPort-:5555")
+        Write-Host "  [*] adb:        adb connect 127.0.0.1:$AdbPort   (once Android is up)" -ForegroundColor Green
+    }
+
+    # Attach the /scripts folder as a Virtual FAT drive (not for Android guests,
+    # which do not mount it). It rides on USB rather than the default IDE bus:
+    # ide-hd refuses a read-only backing node ("Block node is read-only"), and
+    # USB keeps the share out of the hard-disk enumeration so it can never
+    # shadow the real boot disk.
     $ScriptsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
-    if ((Test-Path $ScriptsDir) -and $Target.Id -ne "android") {
+    if ((Test-Path $ScriptsDir) -and $OsFamily -ne "android") {
         $Args += @(
             # Labelled CASTLE so guests can mount it by label (LABEL=CASTLE / /dev/disk/by-label/CASTLE).
             "-blockdev", "driver=vvfat,node-name=castlescripts,dir=$ScriptsDir,label=CASTLE,rw=off,read-only=on"
@@ -745,6 +853,8 @@ function Start-CastleVm {
         [switch]$RunAll = $false,
         # Which scripts/setup-*.sh the guest agent runs (auto, wine, opengoal, ...).
         [string]$SetupScript = "setup-auto.sh",
+        # Guest half of a launch profile (packages, commands), uploaded for the setup script.
+        [string]$ProfileFile = $null,
         [string[]]$ExtraCdroms = @(),
         [switch]$Gl = $false
     )
@@ -793,6 +903,9 @@ function Start-CastleVm {
         -ScratchDisk $ScratchDisk `
         -ExtraCdroms $ExtraCdroms `
         -Gl $Gl
+    # Raw extra arguments from a launch profile (QemuArgs) go last, so they can
+    # add devices or override an earlier option.
+    if ($Global:CastleExtraQemuArgs) { $QemuArgs += @($Global:CastleExtraQemuArgs) }
 
     if ($Background -or $Provision) {
         if ($Background) { Write-Host "  [BOOT] Launching VM in the background (asynchronous)..." -ForegroundColor Green }
@@ -808,7 +921,7 @@ function Start-CastleVm {
         Write-Host "  [BOOT] VM process started (PID: $($Process.Id))." -ForegroundColor Green
 
         if ($Provision) {
-            Invoke-CastleGuestSetup -QgaPort $Script:LastQgaPort -Script $SetupScript -Programs $Programs -RunAll:$RunAll -QemuProcess $Process | Out-Null
+            Invoke-CastleGuestSetup -QgaPort $Script:LastQgaPort -Script $SetupScript -Programs $Programs -RunAll:$RunAll -ProfileFile $ProfileFile -QemuProcess $Process | Out-Null
         }
         if (-not $Background -and -not $Process.HasExited) {
             Write-Host ""
