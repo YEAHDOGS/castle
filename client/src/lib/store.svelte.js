@@ -122,6 +122,31 @@ class DriveStore {
     if (!quiet) this.toast('Connected');
   }
 
+  /**
+   * Switches between your own data and the sample data without reloading. Going live
+   * returns to the box this device remembers, or in the desktop app to the box it runs.
+   * In a browser the address follows (/demo), so a reload stays in the same mode.
+   */
+  async setDemo(on) {
+    if (on === this.isDemo) return;
+    if (!isDesktopApp()) history.replaceState(null, '', (on ? '/demo' : '/') + location.search);
+    this.connectOpen = false;
+    if (on) {
+      this.useAdapter(fixedDemoAdapter());
+      this.boxUrl = null;
+    } else {
+      const adapter = startingAdapter();
+      this.useAdapter(adapter);
+      this.boxUrl = adapter.isBox ? adapter.url : null;
+      if (await this.connectLocalBox()) return;
+    }
+    try {
+      await this.refresh();
+    } catch (err) {
+      this.toast(err?.message || GENERIC_ERROR);
+    }
+  }
+
   /** Back to the local drive; the token is forgotten on this device. */
   async disconnect() {
     forgetBox();

@@ -7,6 +7,7 @@
   import { viewIn } from '../lib/motion.js';
   import Sidebar from './Sidebar.svelte';
   import Avatar from './Avatar.svelte';
+  import ModeSwitch from './ModeSwitch.svelte';
 
   /**
    * title, subtitle: header text. tag: small label beside the title (e.g. SAMPLE DATA).
@@ -41,6 +42,7 @@
       {#if actions}
         {@render actions()}
       {/if}
+      <div class="hidden sm:block"><ModeSwitch /></div>
     </header>
 
     {#if items.length}

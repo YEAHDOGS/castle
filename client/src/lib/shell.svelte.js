@@ -56,6 +56,14 @@ class Shell {
     }
   }
 
+  /** Live or demo. People differ between the two, so the switch lands on the first one. */
+  async setDemo(on) {
+    this.userId = null;
+    this.userMenuOpen = false;
+    await store.setDemo(on);
+    store.toast(on ? 'Demo: sample data, nothing is saved' : store.boxUrl ? 'Live: your box' : 'Live: no box connected');
+  }
+
   /**
    * Switches person. A locked person needs their PIN; the demo's is DEMO_PIN.
    * @returns {string | null} an error to show, or null when the switch happened

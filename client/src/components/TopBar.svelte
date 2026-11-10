@@ -1,5 +1,6 @@
 <!-- TopBar: search + view toggle + New. Minimal words, HUD chrome. -->
 <script>
+  import ModeSwitch from './ModeSwitch.svelte';
   import { Search, LayoutGrid, List, Plus, X, ArrowDownUp, ArrowUp, ArrowDown, Server } from '@lucide/svelte';
   import { scale } from 'svelte/transition';
   import { store, SORT_LABELS } from '../lib/store.svelte.js';
@@ -63,6 +64,8 @@
     <Server class="h-4 w-4" strokeWidth={1.75} />
     <span class="micro hidden lg:inline">{store.boxUrl ? 'BOX' : store.isDemo ? 'DEMO' : 'LOCAL'}</span>
   </button>
+
+  <div class="hidden sm:block"><ModeSwitch /></div>
 
   <!-- density toggle: compact grid / comfortable list -->
   <div class="flex items-center border border-hairline" role="group" aria-label="Density">

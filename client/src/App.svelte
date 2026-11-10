@@ -28,8 +28,8 @@
   });
 </script>
 
-<!-- Changing section fades and settles the whole interface in, rather than cutting to it. -->
-{#key shell.section}
+<!-- Changing section, or switching between live and demo, fades and settles the whole interface in, rather than cutting to it. -->
+{#key `${shell.section}:${store.isDemo}`}
   <div in:scale={sectionIn()}>
     <Section />
   </div>
