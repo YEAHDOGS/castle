@@ -6,7 +6,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [svelte(), tailwindcss()],
   // Tauri expects a fixed dev port; the web build works on any static host.
-  server: { port: 1420, strictPort: true },
+  // The app shell's build output changes constantly and holds files open; watching it
+  // crashes the dev server on Windows, and nothing in it is part of the interface.
+  server: { port: 1420, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   build: {
     target: 'esnext',
   },

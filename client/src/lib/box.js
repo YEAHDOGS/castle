@@ -16,6 +16,7 @@ const THUMB_MAX_BYTES = 3 * 1024 * 1024; // images up to this size get a grid th
 const TEXT_MAX_BYTES = 20000; // text files up to this size get an inline preview
 const TEXT_MIMES = ['application/json'];
 const UNREACHABLE = "Can't reach the box";
+const LOCAL_HOSTS = ['127.0.0.1', 'localhost']; // a connect link may only name a box on this computer
 
 /** @returns {{ url: string, token: string } | null} the remembered box, if any */
 export function readBox() {
@@ -51,9 +52,20 @@ export function forgetBox() {
 export function takeConnectLink() {
   if (typeof location === 'undefined' || !location.hash.startsWith(CONNECT_HASH)) return null;
   if (isDemoRoute()) return null; // the demo never talks to a box
-  const token = location.hash.slice(CONNECT_HASH.length);
+  // "#connect=<token>" means the box serving this page. "#connect=<token>&box=<address>"
+  // names another one, which is how the live development interface reaches the box.
+  const [token, ...rest] = location.hash.slice(CONNECT_HASH.length).split('&');
+  const named = new URLSearchParams(rest.join('&')).get('box');
   history.replaceState(null, '', location.pathname + location.search);
-  return token ? { url: location.origin, token } : null;
+  if (!token) return null;
+  if (!named) return { url: location.origin, token };
+  // Only a box on this computer: a link must not be able to send your files to someone else's box.
+  try {
+    const url = new URL(named);
+    return LOCAL_HOSTS.includes(url.hostname) && url.protocol === 'http:' ? { url: url.origin, token } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** "127.0.0.1:8787/" -> "http://127.0.0.1:8787". Throws on anything that is not an http(s) address. */

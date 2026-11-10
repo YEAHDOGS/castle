@@ -1,39 +1,46 @@
 #!/usr/bin/env bash
 #===============================================================================
-# start.sh -- starts Castle on this computer: the box with its web app, then the
-# desktop app. Works on Linux and on Windows.
+# start.sh -- starts all of Castle on this computer, from source, with everything on.
+# Works on Linux and on Windows.
 #
 #   Linux, Git Bash or WSL:           ./start.sh
-#   PowerShell or Command Prompt:     .\start.cmd   (finds Git Bash and runs this file)
+#   PowerShell or Command Prompt:     .\start.cmd   (finds a bash and runs this file)
 #
-#   1. Builds the box daemon (castled), the web app and the desktop app. Each is built
-#      when it is missing or older than its source, so a second run starts at once.
-#   2. Starts the box in the background, serving the web app at
-#      http://127.0.0.1:<port>.
-#   3. Opens the desktop app, which connects to that same box.
+# By default it runs LIVE, for working on Castle. It starts the box, opens the desktop
+# app, and keeps both following your edits until you press Ctrl+C:
+#   interface (client/src)         changes appear in the open app and browser at once
+#   app shell (client/src-tauri)   the app rebuilds and reopens itself
+#   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
+# The same live interface is in the browser at http://localhost:1420.
 #
-# Needs Rust (cargo) and Node.js (npm). Nothing here needs administrator rights.
+# With --release it instead builds everything once, starts it and returns: the box in
+# the background serving the built web app at http://127.0.0.1:<port>, and the built
+# desktop app. Nothing follows your edits in that mode.
 #
-# The box keeps running after the desktop app is closed, so the web app stays up.
-#
-# The vault, the games folder, the clonewars folder and the port come from the
-# desktop app's box.json, so the web app and the desktop app show the same box:
+# Either way the box keeps running afterwards. Clones uses the clonewars folder in this
+# checkout and Arcade the first Games folder found on a drive. The vault, the port and
+# those two folders can be set in the desktop app's box.json:
 #   Windows  %APPDATA%\net.wearedogs.castle\box.json
 #   Linux    ~/.config/net.wearedogs.castle/box.json
 #
+# Needs Rust (cargo) and Node.js (npm). Nothing here needs administrator rights.
+#
 # Usage:
-#   ./start.sh              start everything
-#   ./start.sh --build      rebuild everything first, even if it looks current
-#   ./start.sh --browser    also open the web app in the default browser
-#   ./start.sh --no-app     web service only
+#   ./start.sh              live: box, desktop app and browser interface, following edits
+#   ./start.sh --no-app     live, without the desktop app (box and browser interface)
+#   ./start.sh --browser    also open the interface in the default browser
+#   ./start.sh --release    build everything once, start it, and return
+#   ./start.sh --build      rebuild first, even if it looks current
 #   ./start.sh --stop       stop the box this script started
 #   ./start.sh --data DIR --port N    override box.json for this run
-#   ./start.sh --linux      inside WSL: run a Linux box there instead of handing over to Windows
+#   ./start.sh --linux      inside WSL: stay in Linux instead of handing over to Windows
 #===============================================================================
 set -euo pipefail
 
 DEFAULT_PORT=8787
 START_TIMEOUT_SECONDS=20
+DEV_PORT=1420       # where the live interface is served (client/vite.config.js)
+WATCH_SECONDS=2     # how often the box daemon's source is checked for changes
 PROBE_SECONDS=0.25
 APP_ID="net.wearedogs.castle"
 
@@ -116,7 +123,9 @@ app_is_open() {
     fi
 }
 
-is_listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+# True when something on this computer listens on the port, over IPv4 or IPv6 (the live
+# interface's server listens on IPv6 only on some machines).
+is_listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null || (exec 3<>"/dev/tcp/::1/$1") 2>/dev/null; }
 
 # One value from box.json, or nothing. Needs node; without it the defaults apply.
 config_value() {
@@ -188,16 +197,17 @@ open_url() {
 }
 
 # ---- options ----
-BUILD=0; BROWSER=0; NO_APP=0; STOP=0; DATA=""; PORT=""
+BUILD=0; BROWSER=0; NO_APP=0; STOP=0; RELEASE=0; DATA=""; PORT=""
 while (( $# > 0 )); do
     case "$1" in
+        --release) RELEASE=1; shift ;;
         --build)   BUILD=1; shift ;;
         --browser) BROWSER=1; shift ;;
         --no-app)  NO_APP=1; shift ;;
         --stop)    STOP=1; shift ;;
         --data)    DATA="${2:?--data needs a folder}"; shift 2 ;;
         --port)    PORT="${2:?--port needs a number}"; shift 2 ;;
-        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
         *) die "Unknown option '$1' (see --help)" ;;
     esac
 done
@@ -226,61 +236,51 @@ CLONEWARS="$(config_value clonewars)"
 ARCADE="$(config_value arcade)"
 [[ -n "$ARCADE" ]] || ARCADE="$(find_games_folder)"
 URL="http://127.0.0.1:$PORT"
+DEV_URL="http://localhost:$DEV_PORT"
 
-# ---- build what is missing or out of date ----
 need_cargo() { command -v cargo >/dev/null 2>&1 || die 'Building Castle needs Rust (cargo). Install it from https://rustup.rs'; }
 need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.js (npm). Install it from https://nodejs.org'; }
 install_packages() { [[ -d "$CLIENT_DIR/node_modules" ]] || (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund); }
 
-if is_admin; then
-    say 'Note: this terminal has administrator rights. Castle does not need them, and a box started here can only be stopped from an administrator terminal.'
-fi
-
-read_started
 DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$ROOT/security/audits")
 WEB_SOURCES=("$CLIENT_DIR/src" "$CLIENT_DIR/index.html" "$CLIENT_DIR/package.json" "$CLIENT_DIR/public")
 APP_SOURCES=("${WEB_SOURCES[@]}" "$CLIENT_DIR/src-tauri/src" "$CLIENT_DIR/src-tauri/Cargo.toml" "$CLIENT_DIR/src-tauri/tauri.conf.json")
 
-if (( BUILD )) || is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}"; then
-    need_cargo
-    # Windows will not overwrite a program that is running, so the old box stops first.
-    if [[ -n "$STARTED_PID" ]]; then
-        say 'Stopping the running box so it can be rebuilt.'
-        stop_pid "$STARTED_PID"; rm -f "$PID_FILE"; STARTED_PID=""
-        sleep 0.5
-    fi
-    say 'Building the box daemon (the first build takes a few minutes).'
-    (cd "$DAEMON_DIR" && cargo build --release) || die 'The box daemon did not build.'
-    touch "$DAEMON_EXE" # cargo leaves the file alone when nothing changed; mark it checked
-fi
-if (( BUILD )) || is_stale "$WEB_DIR/index.html" "${WEB_SOURCES[@]}"; then
-    need_npm
-    say 'Building the web app.'
-    install_packages
-    (cd "$CLIENT_DIR" && npm run build) || die 'The web app did not build.'
-fi
-if (( ! NO_APP )) && { (( BUILD )) || is_stale "$APP_EXE" "${APP_SOURCES[@]}"; }; then
-    if app_is_open; then
-        say 'The desktop app is open, so it was not rebuilt. Close it and run this again to get the newest one.'
-    else
-        need_cargo; need_npm
-        say 'Building the desktop app (the first build takes several minutes).'
-        install_packages
-        # The app bundles the daemon; daemon.js puts the one just built where the build looks for it.
-        (cd "$CLIENT_DIR" && node scripts/daemon.js && npx tauri build --no-bundle) || die 'The desktop app did not build.'
-        [[ -f "$APP_EXE" ]] || die "The desktop app built, but $APP_EXE is missing."
-        touch "$APP_EXE"
-    fi
-fi
+# Stops the box this script started, if one is running.
+stop_started_box() {
+    read_started
+    [[ -n "$STARTED_PID" ]] || return 0
+    stop_pid "$STARTED_PID"; rm -f "$PID_FILE"; STARTED_PID=""
+    sleep 0.5
+}
 
-# ---- the box ----
-if [[ -n "$STARTED_PID" && "$STARTED_PORT" == "$PORT" ]]; then
-    say "The box is already running (process $STARTED_PID)."
-elif is_listening "$PORT"; then
-    die "Something else is already listening on port $PORT. If the Castle desktop app is open, close it and run this again: on its own it starts a box without the web app."
-else
+# Builds the daemon. Windows will not overwrite a program that is running, so the box
+# stops first. Returns 1 if the build fails; the old program is then still in place.
+build_daemon() {
+    stop_started_box
+    if (cd "$DAEMON_DIR" && cargo build --release); then
+        touch "$DAEMON_EXE" # cargo leaves the file alone when nothing changed; mark it checked
+        return 0
+    fi
+    # Mark the old program checked too, so a broken edit is not rebuilt every two seconds.
+    [[ -f "$DAEMON_EXE" ]] && touch "$DAEMON_EXE"
+    return 1
+}
+
+# Starts the box with everything on, unless it is already running. Returns 1 on failure.
+start_box() {
+    read_started
+    if [[ -n "$STARTED_PID" && "$STARTED_PORT" == "$PORT" ]]; then
+        say "The box is already running (process $STARTED_PID)."
+        return 0
+    fi
+    if is_listening "$PORT"; then
+        say "Something else is already listening on port $PORT. If a Castle desktop app is open, close it and run this again."
+        return 1
+    fi
     mkdir -p "$DATA"
-    box_args=(--data "$(native "$DATA")" --bind "127.0.0.1:$PORT" --web "$(native "$WEB_DIR")")
+    local box_args=(--data "$(native "$DATA")" --bind "127.0.0.1:$PORT")
+    [[ -f "$WEB_DIR/index.html" ]] && box_args+=(--web "$(native "$WEB_DIR")")
     # A folder that is not there right now (an unplugged drive) is left out, so the box still starts.
     if [[ -n "$CLONEWARS" && -d "$CLONEWARS" ]]; then box_args+=(--clonewars "$(native "$CLONEWARS")"); else say 'Clones: off (no clonewars folder).'; fi
     if [[ -n "$ARCADE" && -d "$ARCADE" ]]; then
@@ -288,37 +288,126 @@ else
     else
         say 'Arcade: off (no Games folder found on any drive; plug it in and press Find my games in the app).'
     fi
+    local box_pid waited=0
     box_pid="$(launch_box "${box_args[@]}")"
-    [[ "$box_pid" =~ ^[0-9]+$ ]] || die "$NOT_STARTED"
-    waited=0
+    [[ "$box_pid" =~ ^[0-9]+$ ]] || { say "$NOT_STARTED"; return 1; }
     until is_listening "$PORT"; do
         if ! is_castled "$box_pid" || (( waited >= START_TIMEOUT_SECONDS * 4 )); then
-            die "$NOT_STARTED"
+            say "$NOT_STARTED"
+            return 1
         fi
         sleep "$PROBE_SECONDS"
         waited=$(( waited + 1 ))
     done
     printf '%s %s\n' "$box_pid" "$PORT" > "$PID_FILE"
     say "Box started (process $box_pid). Vault: $(native "$DATA")"
+}
+
+if is_admin; then
+    say 'Note: this terminal has administrator rights. Castle does not need them, and a box started here can only be stopped from an administrator terminal.'
 fi
 
-TOKEN="$(tr -d '[:space:]' < "$DATA/.castle/token")"
-LINK="$URL/#connect=$TOKEN"
-say "Web app: $LINK"
-say '         (the part after # is the key to the box; do not share the link)'
-if (( BROWSER )); then open_url "$LINK"; fi
+# ---- the box daemon: needed either way ----
+if (( BUILD )) || is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}"; then
+    need_cargo
+    say 'Building the box daemon (the first build takes a few minutes).'
+    build_daemon || die 'The box daemon did not build.'
+fi
 
-# ---- the desktop app ----
-if (( ! NO_APP )); then
-    if app_is_open; then
-        say 'The desktop app is already open.'
-    else
-        if (( ON_WINDOWS )); then
-            cmd //c start "" "$(native "$APP_EXE")"
-        else
-            setsid nohup "$APP_EXE" >/dev/null 2>&1 < /dev/null &
-        fi
-        say 'Desktop app opened.'
+#===============================================================================
+# Built mode (--release): build everything once, start it, and return.
+#===============================================================================
+if (( RELEASE )); then
+    if (( BUILD )) || is_stale "$WEB_DIR/index.html" "${WEB_SOURCES[@]}"; then
+        need_npm
+        say 'Building the web app.'
+        install_packages
+        (cd "$CLIENT_DIR" && npm run build) || die 'The web app did not build.'
     fi
+    if (( ! NO_APP )) && { (( BUILD )) || is_stale "$APP_EXE" "${APP_SOURCES[@]}"; }; then
+        if app_is_open; then
+            say 'The desktop app is open, so it was not rebuilt. Close it and run this again to get the newest one.'
+        else
+            need_cargo; need_npm
+            say 'Building the desktop app (the first build takes several minutes).'
+            install_packages
+            # The app bundles the daemon; daemon.js puts the one just built where the build looks for it.
+            (cd "$CLIENT_DIR" && node scripts/daemon.js && npx tauri build --no-bundle) || die 'The desktop app did not build.'
+            [[ -f "$APP_EXE" ]] || die "The desktop app built, but $APP_EXE is missing."
+            touch "$APP_EXE"
+        fi
+    fi
+
+    start_box || exit 1
+    TOKEN="$(tr -d '[:space:]' < "$DATA/.castle/token")"
+    LINK="$URL/#connect=$TOKEN"
+    say "Web app: $LINK"
+    say '         (the part after # is the key to the box; do not share the link)'
+    if (( BROWSER )); then open_url "$LINK"; fi
+
+    if (( ! NO_APP )); then
+        if app_is_open; then
+            say 'The desktop app is already open.'
+        else
+            if (( ON_WINDOWS )); then
+                cmd //c start "" "$(native "$APP_EXE")"
+            else
+                setsid nohup "$APP_EXE" >/dev/null 2>&1 < /dev/null &
+            fi
+            say 'Desktop app opened.'
+        fi
+    fi
+    say 'The box keeps running in the background. Stop it with:  ./start.sh --stop'
+    exit 0
 fi
-say 'The box keeps running in the background. Stop it with:  ./start.sh --stop'
+
+#===============================================================================
+# Live mode (the default): everything runs from source and follows your edits.
+#   interface (client/src)         changes appear in the open app and browser at once
+#   app shell (client/src-tauri)   the app rebuilds and reopens itself
+#   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
+# This stays in the foreground. Ctrl+C ends the app and the watching; the box keeps running.
+#===============================================================================
+need_cargo; need_npm
+install_packages
+if app_is_open; then
+    die 'A Castle desktop app is already open. Close it and run this again, so the live one can take its place.'
+fi
+if is_listening "$DEV_PORT"; then
+    die "Something is already using port $DEV_PORT, which the live interface needs. Another ./start.sh may still be running."
+fi
+
+start_box || exit 1
+TOKEN="$(tr -d '[:space:]' < "$DATA/.castle/token")"
+LINK="$DEV_URL/#connect=$TOKEN&box=$URL"
+say "Web app (live): $LINK"
+say '                (the part after # is the key to the box; do not share the link)'
+
+# The box follows its own source: checked every couple of seconds, rebuilt and restarted on a change.
+watch_daemon() {
+    while sleep "$WATCH_SECONDS"; do
+        is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}" || continue
+        say 'The box daemon changed. Rebuilding and restarting it.'
+        build_daemon || say 'The box daemon did not build. The previous one is starting again; fix the error above and save.'
+        start_box || true
+    done
+}
+watch_daemon &
+WATCHER=$!
+trap 'kill "$WATCHER" 2>/dev/null || true; say "Live mode ended. The box keeps running; stop it with:  ./start.sh --stop"' EXIT
+
+if (( BROWSER )); then
+    # Give the live interface a moment to come up before the browser asks for it.
+    ( until is_listening "$DEV_PORT"; do sleep "$PROBE_SECONDS"; done; open_url "$LINK" ) &
+fi
+
+cd "$CLIENT_DIR"
+if (( NO_APP )); then
+    say 'Starting the live interface. Ctrl+C to end.'
+    npm run dev
+else
+    # The desktop app bundles the daemon; daemon.js puts it where the app's build looks for it.
+    node scripts/daemon.js >/dev/null || die 'Could not prepare the daemon for the desktop app.'
+    say 'Starting the live desktop app (the first build takes several minutes). Ctrl+C to end.'
+    npx tauri dev
+fi
