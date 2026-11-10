@@ -24,8 +24,11 @@ jobs:
       - name: Update rolling latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          APK=$(ls *.apk | head -1)
+          # The artifact keeps the build's folder layout, so look for the APK wherever it landed.
+          APK=$(find . -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then echo "No APK in the artifact."; exit 1; fi
           # Stable filename so the README download link never breaks
           STABLE="castle-android-latest.apk"
           cp "$APK" "$STABLE"
