@@ -1,0 +1,156 @@
+name: Build apps
+
+# Manual only: Actions -> Build apps -> Run workflow, then tick the platforms you want.
+# Each installer is published as its own file on a GitHub release tagged v<package.json version>
+# (castle-win-x64.exe, castle-linux-x64.AppImage, castle-android.apk ...). Running again at the
+# same version replaces that release's files.
+#
+# The desktop apps carry the box daemon (castled) inside them, built from castled/ in this
+# repo by client/scripts/daemon.js.
+# Android and iOS reuse android.yml and ios.yml, so there is one recipe for each.
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: Windows (castle-win-x64.exe)
+        type: boolean
+        default: true
+      linux:
+        description: Linux (castle-linux-x64.AppImage / .deb)
+        type: boolean
+        default: true
+      android:
+        description: Android (castle-android.apk)
+        type: boolean
+        default: false
+      ios:
+        description: iOS (castle-ios-unsigned.ipa)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          INPUTS: ${{ toJSON(inputs) }}
+        run: |
+          node -e '
+            const inputs = JSON.parse(process.env.INPUTS);
+            const all = [
+              { platform: "windows", os: "windows-latest", bundles: "nsis" },
+              { platform: "linux", os: "ubuntu-24.04", bundles: "deb,appimage" },
+            ];
+            const picked = all.filter((entry) => inputs[entry.platform] === true || inputs[entry.platform] === "true");
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(picked)}\n`);
+            console.log("Desktop builds:", picked.map((entry) => entry.platform).join(", ") || "none");
+          '
+
+  desktop:
+    name: ${{ matrix.platform }}
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf
+      - name: Build the box daemon
+        run: node scripts/daemon.js
+      - name: Build the desktop app
+        run: npx tauri build --bundles ${{ matrix.bundles }}
+      - name: Collect into build/
+        run: node scripts/collect-builds.js ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.platform }}
+          path: client/build/*
+          if-no-files-found: error
+          retention-days: 1
+
+  android:
+    name: android
+    if: inputs.android
+    uses: ./.github/workflows/android.yml
+
+  ios:
+    name: ios
+    if: inputs.ios
+    uses: ./.github/workflows/ios.yml
+
+  # Gathers whatever was built into one GitHub release. Platforms that failed are skipped.
+  release:
+    name: Release
+    needs: [desktop, android, ios]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob globstar
+          mkdir -p build
+          for f in artifacts/windows/* artifacts/linux/*; do cp "$f" build/; done
+          for f in artifacts/castle-android-apk/**/*.apk; do cp "$f" build/castle-android.apk; break; done
+          for f in artifacts/castle-ios-ipa/*.ipa; do cp "$f" build/castle-ios-unsigned.ipa; break; done
+          files=(build/*)
+          if [ ${#files[@]} -eq 0 ]; then echo "Nothing was built; nothing to release."; exit 1; fi
+          version=$(node -p 'require("./client/package.json").version')
+          tag="v${version}"
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          {
+            echo "## Downloads"
+            echo
+            for f in "${files[@]}"; do
+              name=$(basename "$f")
+              size=$(awk -v b="$(stat -c %s "$f")" 'BEGIN { printf "%.1f MB", b / 1048576 }')
+              echo "- [${name}](${repo_url}/releases/download/${tag}/${name}) (${size})"
+            done
+            echo
+            echo "Built from ${GITHUB_SHA}."
+          } > notes.md
+          echo "Releasing ${tag} with: ${files[*]}"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+            gh release edit "$tag" --notes-file notes.md
+          else
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Castle ${version}" --notes-file notes.md
+          fi
+          { echo "# Castle ${version}"; echo; echo "Release: ${repo_url}/releases/tag/${tag}"; echo; cat notes.md; } >> "$GITHUB_STEP_SUMMARY"

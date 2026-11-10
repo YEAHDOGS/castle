@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/* ============ CASTLE — Death Stranding HUD x wearedogs.net motion ============
+   Canvas: near-black void. Voice: chiral orange (#ff6a00). Data: bridge cyan (#00d7ff).
+   Motion dialect: expo-out everywhere — cubic-bezier(0.16, 1, 0.3, 1).
+   Speeds: 0.15s hovers, 0.25s UI, 0.32s moments. transform/opacity ONLY. */
+
+@theme {
+  --color-void: #050508;
+  --color-abyss: #000000;
+  --color-panel: rgba(12, 14, 18, 0.72);
+  --color-panel-solid: #0b0d11;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-hairline-faint: rgba(255, 255, 255, 0.05);
+  --color-chiral: #ff6a00;
+  --color-chiral-dim: rgba(255, 106, 0, 0.14);
+  --color-bridge: #00d7ff;
+  --color-bridge-dim: rgba(0, 215, 255, 0.12);
+  --color-text-dim: rgba(255, 255, 255, 0.55);
+  --color-text-faint: rgba(255, 255, 255, 0.38);
+  --color-violet: #a78bfa; /* third person tone in the people menu */
+  --color-live: #4ade80; /* running / healthy state dots in Clones and AI */
+
+  --font-hud: "Inter", "Outfit", system-ui, sans-serif;
+  --font-mono2: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html, body {
+  height: 100%;
+  background: var(--color-void);
+  color: #fff;
+  font-family: var(--font-hud);
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* faint ambient top-glow over the void — background moves, content doesn't */
+  background-image: radial-gradient(circle at 50% -10%, rgba(255, 106, 0, 0.07), transparent 55%);
+  background-attachment: fixed;
+}
+
+#app { height: 100dvh; }
+
+/* ---- motion utilities ---- */
+.expo { transition-timing-function: var(--ease-expo) !important; }
+.t-hover { transition-duration: 150ms; }
+.t-ui { transition-duration: 250ms; }
+.t-moment { transition-duration: 320ms; }
+
+/* ---- HUD corner brackets (geometric wireframe touch) ---- */
+.hud-corners {
+  --corner: var(--color-chiral);
+  --cs: 14px; /* corner size */
+  --cw: 2px;  /* corner weight */
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner)),
+    linear-gradient(var(--corner), var(--corner));
+  background-size:
+    var(--cs) var(--cw), var(--cw) var(--cs),
+    var(--cs) var(--cw), var(--cw) var(--cs),
+    var(--cs) var(--cw), var(--cw) var(--cs),
+    var(--cs) var(--cw), var(--cw) var(--cs);
+  background-position:
+    left top, left top,
+    right top, right top,
+    left bottom, left bottom,
+    right bottom, right bottom;
+}
+.hud-corners-cyan { --corner: var(--color-bridge); }
+.hud-corners-faint { --corner: rgba(255, 255, 255, 0.22); }
+
+/* ---- glass panel over void ---- */
+.glass {
+  background: var(--color-panel);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid var(--color-hairline);
+}
+
+/* ---- scanline restraint: barely-there CRT texture ---- */
+.scanlines { position: relative; }
+.scanlines::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 3px,
+    rgba(255, 255, 255, 0.014) 3px, rgba(255, 255, 255, 0.014) 4px
+  );
+}
+
+/* ---- wireframe grid for empty states ---- */
+.wiregrid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(circle at 50% 40%, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at 50% 40%, black 30%, transparent 75%);
+}
+
+/* ---- breathing glow for drag-over / live states (opacity+shadow only) ---- */
+@keyframes hud-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px var(--color-chiral), 0 0 24px rgba(255, 106, 0, 0.25); }
+  50% { box-shadow: 0 0 0 1px var(--color-chiral), 0 0 44px rgba(255, 106, 0, 0.45); }
+}
+.hud-breathe { animation: hud-breathe 1.6s var(--ease-expo) infinite; }
+
+/* ---- the selection cursor: unmistakable animated HUD focus ring ---- */
+@keyframes focus-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-bridge), 0 0 14px rgba(0, 215, 255, 0.35); }
+  50% { box-shadow: 0 0 0 2px var(--color-bridge), 0 0 30px rgba(0, 215, 255, 0.7); }
+}
+.hud-focus {
+  animation: focus-pulse 1.8s var(--ease-expo) infinite;
+  border-color: rgba(0, 215, 255, 0.7) !important;
+}
+
+/* ---- mono microcopy ---- */
+.micro {
+  font-family: var(--font-mono2);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- scrollbars: thin, quiet ---- */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- focus: bridge-cyan ring, never invisible ---- */
+:focus-visible {
+  outline: 2px solid var(--color-bridge);
+  outline-offset: 2px;
+}
+
+/* ---- selection ---- */
+::selection { background: rgba(255, 106, 0, 0.4); }
+
+/* ---- reduced motion: still everything, show final state ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Settings > Look and feel > Motion: Reduced. Same stillness as the OS setting. ---- */
+html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}

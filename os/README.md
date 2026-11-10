@@ -24,8 +24,8 @@ On first login, root's shell starts the compositor automatically in GUI mode.
 
 ```bash
 sudo pacman -S archiso
-git clone https://github.com/YEAHDOGS/castle-os.git
-cd castle-os
+git clone https://github.com/YEAHDOGS/castle.git
+cd castle/os
 ./build.sh cli      # headless ISO
 ./build.sh gui      # GUI ISO
 # ISO lands in out/
@@ -37,7 +37,7 @@ Full reproduction steps, QEMU test command, and flashing instructions:
 ## How to get the ISO
 
 The ISOs are built automatically by the
-[`build-iso`](https://github.com/YEAHDOGS/castle-os/actions/workflows/build-iso.yml)
+[`build-iso`](https://github.com/YEAHDOGS/castle/actions/workflows/build-iso.yml)
 workflow on every `master` push that touches the profile, tools, or build
 script (and can be run manually via **Actions → build-iso → Run workflow**).
 

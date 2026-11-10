@@ -10,9 +10,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "profile/**"
-      - "tools/**"
-      - "build.sh"
+      - "os/**"
       - ".github/workflows/build-iso.yml"
   workflow_dispatch:
 
@@ -23,6 +21,9 @@ jobs:
     container:
       image: archlinux:latest
       options: --privileged
+    defaults:
+      run:
+        working-directory: os
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +48,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: castle-os-iso
-          path: out/*.iso
+          path: os/out/*.iso
           if-no-files-found: error
           retention-days: 7

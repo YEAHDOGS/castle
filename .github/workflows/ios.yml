@@ -1,0 +1,55 @@
+# iOS: builds an UNSIGNED ipa on a macOS runner.
+# Unsigned = install via AltStore / SideStore / Sideloadly with your own Apple ID.
+# Real-device install with proper signing (Apple Developer account) is a later step.
+# Trigger: the "Run workflow" button in the Actions tab.
+name: iOS IPA
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Rust toolchain + iOS target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - run: npm ci
+
+      - name: Init iOS target
+        run: npx tauri ios init
+
+      - name: Build unsigned app
+        run: npx tauri ios build --no-sign
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(find src-tauri/gen/apple/build -maxdepth 4 -name "*.app" -type d | head -1)
+          echo "Found app: $APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -r castle-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: castle-ios-ipa
+          path: client/castle-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

@@ -6,7 +6,7 @@
 
 iso_name="castle"
 iso_label="CASTLE_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="DOGS <https://github.com/YEAHDOGS/castle-os>"
+iso_publisher="DOGS <https://github.com/YEAHDOGS/castle>"
 iso_application="Castle OS Live ISO"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="castle"

@@ -17,8 +17,8 @@ sudo pacman -Syu --needed archiso qemu-full
 ## 1. Build
 
 ```bash
-git clone https://github.com/YEAHDOGS/castle-os.git
-cd castle-os
+git clone https://github.com/YEAHDOGS/castle.git
+cd castle/os
 
 # offline checks first (no mkarchiso needed — also runs in CI/containers)
 ./build.sh verify

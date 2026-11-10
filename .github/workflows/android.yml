@@ -1,0 +1,81 @@
+# Android: builds a debug APK you can sideload straight onto a phone.
+# Trigger: push to main, or the "Run workflow" button in the Actions tab.
+# The gen/android project is generated in CI (src-tauri/gen is gitignored).
+#
+# Runner-disk note (2026-09-11): GitHub-hosted runners (~14 GB free) ran out
+# of disk building the universal debug bundle for all 4 ABIs. This workflow
+# now builds a SINGLE-ABI (arm64-v8a) debug APK only — no universal AAB —
+# plus a pre-build cleanup step that drops big preinstalled toolchains.
+name: Android APK
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'client/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Free disk space
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc "/usr/local/share/boost" 2>/dev/null || true
+          docker system prune -af >/dev/null 2>&1 || true
+          sudo apt-get clean >/dev/null 2>&1 || true
+          df -h / | tail -1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install platform + NDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+      - name: Rust toolchain + Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - run: npm ci
+
+      - name: Init Android target
+        run: npx tauri android init
+
+      - name: Disk check before build
+        run: df -h / | tail -1
+
+      # Single ABI (arm64-v8a) APK only — every modern phone runs arm64,
+      # and skipping the universal AAB keeps the runner's disk alive.
+      - name: Build debug APK (arm64-v8a)
+        run: npx tauri android build --debug --apk --target aarch64
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: castle-android-apk
+          path: client/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,27 @@
+{
+  "name": "castle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "daemon": "node scripts/daemon.js",
+    "desktop": "node scripts/daemon.js && tauri build --bundles nsis"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.4",
+    "svelte": "^5.57.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.44.0",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-fs": "^2.5.2"
+  }
+}

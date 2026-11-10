@@ -1,0 +1,36 @@
+name: Publish latest APK
+
+# Keeps the "Download here" button on the README evergreen:
+# every green Android APK build refreshes the rolling `latest` release.
+on:
+  workflow_run:
+    workflows: ["Android APK"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: castle-android-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Update rolling latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(ls *.apk | head -1)
+          # Stable filename so the README download link never breaks
+          STABLE="castle-android-latest.apk"
+          cp "$APK" "$STABLE"
+          echo "Publishing $STABLE (from $APK) to latest release"
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --prerelease --title "Latest Android build" \
+              --notes "Rolling build of the Castle Android app. Updated automatically on every green build."
+          gh release upload latest "$STABLE" --clobber

@@ -1,0 +1,53 @@
+# Web demo: builds the Svelte frontend, uploads it as an artifact, and — only when
+# the repo has Cloudflare credentials — deploys it to Cloudflare Pages.
+# No secrets configured? The artifact is still there, plus README setup steps.
+name: Web demo
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - 'client/**'
+      - '.github/workflows/web-demo.yml'
+  workflow_dispatch:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Upload web demo
+        uses: actions/upload-artifact@v4
+        with:
+          name: castle-web-demo
+          path: client/dist
+          retention-days: 7
+
+      # Optional deploy: set these two repo secrets and the demo goes live on push.
+      #   CLOUDFLARE_API_TOKEN  — Pages:Edit token from dash.cloudflare.com
+      #   CLOUDFLARE_ACCOUNT_ID — from the same dashboard
+      # Without them this step just logs and exits 0; the dist/ artifact above
+      # is still uploaded every run.
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "No Cloudflare credentials configured — skipping Pages deploy."
+            exit 0
+          fi
+          npx -y wrangler pages deploy dist --project-name=castle-demo
