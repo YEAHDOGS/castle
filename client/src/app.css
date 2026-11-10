@@ -167,3 +167,30 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
+
+/* ---- Motion everywhere ----
+   Any control that changes look (hover, press, selected, disabled) eases into it, and any
+   panel, card or row that appears fades and rises in, without each component asking.
+   Utility classes still win where a component sets its own transition. */
+@layer base {
+  button, a, input, select, textarea, summary, [role="button"], [role="tab"], [role="switch"] {
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform, filter;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-expo);
+  }
+  main :is(.glass, li) {
+    transition-property: opacity, transform, border-color, background-color;
+    transition-duration: 250ms;
+    transition-timing-function: var(--ease-expo);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  main tr {
+    transition: opacity 250ms var(--ease-expo);
+    @starting-style {
+      opacity: 0;
+    }
+  }
+}

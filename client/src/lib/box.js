@@ -289,6 +289,35 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/box')).json();
   }
 
+  // ---- Security: checks, the activity record, the token, audits ----
+
+  async security() {
+    return (await this.call('/security')).json();
+  }
+
+  async securityLog(limit) {
+    return (await this.call(`/security/log?limit=${limit}`)).json();
+  }
+
+  async securityVerify() {
+    return (await this.call('/security/verify', { method: 'POST' })).json();
+  }
+
+  /** Replaces the box token and keeps this device connected with the new one. */
+  async securityRotate() {
+    const { token } = await (await this.call('/security/token/rotate', { method: 'POST' })).json();
+    this.token = token;
+    writeBox({ url: this.url, token });
+  }
+
+  async securityAudits() {
+    return (await this.call('/security/audits')).json();
+  }
+
+  async securityAudit(id) {
+    return (await this.post('/security/audits/run', { id })).json();
+  }
+
   // ---- Arcade: the games folder on the box (box started with --arcade) ----
 
   async arcadeSystems() {

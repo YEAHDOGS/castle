@@ -138,6 +138,40 @@ web page cannot point the box at a new folder of programs to run.
 Reading Tailscale's state uses `tailscale status --json`, whose layout Tailscale does not
 document as stable. It has not been tried against an installed Tailscale.
 
+## Security
+
+| Call | Does |
+|---|---|
+| `GET /security` | The posture checks, the state of the activity record, refused calls in the last 24 hours, and when the token was made. |
+| `GET /security/log?limit=N` | The newest entries of the activity record, newest first. |
+| `POST /security/verify` | Re-reads the whole record and checks every entry follows from the one before. |
+| `POST /security/token/rotate` | Replaces the box token and returns the new one. Every device holding the old one is refused from then on. |
+| `GET /security/audits` | The audits this box can run, and whether it can run them at all. |
+| `POST /security/audits/run` `{id}` | Runs one audit and returns its table. |
+
+**The activity record.** Every call that changes something is written to
+`.castle/security/activity.log` after it finishes: what it was, its status, and the file
+or item it named. Bodies are never stored whole, so a saved login's password does not land
+there. Each entry carries the SHA-256 of the entry before it, so an edited or removed
+entry breaks the chain from that point and `verify` says where. Limits: someone with
+access to the disk can rewrite the whole file or cut entries off the end, and nothing
+notices until the newest hash is also held somewhere else. That is not built. The file
+grows without limit. Reads are not recorded. Calls with a wrong token are counted every
+time and written at most once a minute.
+
+**The checks** say what the box can tell about itself: whether it listens beyond this
+machine, whether a Tailscale link is up, whether the record is intact, refused calls,
+the token file's permissions (Unix only), and whether the vault's disk is encrypted
+(BitLocker on Windows, a `crypt` layer under the mount on Linux). Three more are listed
+as not built: accounts, Castle's own file encryption, and a copy of the record elsewhere.
+
+**Audits** are the bash scripts in [`../security/audits`](../security/audits), compiled
+into the binary and fed to `bash` on standard input, so there is no script on disk to
+swap. They only read. They need a Linux box; elsewhere the list is returned with
+`available: false`. Without root some columns are blank (process names behind open
+ports, other accounts' crontabs). `bash security/audits/test.sh` runs them all and checks
+the shape of their output.
+
 ## Tests
 
 ```powershell

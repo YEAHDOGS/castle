@@ -15,12 +15,13 @@
 mod arcade;
 mod clones;
 mod network;
+mod security;
 
 use std::{
     collections::BTreeSet,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -66,7 +67,9 @@ const WINDOWS_RESERVED: [&str; 22] = [
 
 struct AppState {
     root: PathBuf,
-    token: String,
+    /// Replaced when the token is rotated from the Security screen.
+    token: RwLock<String>,
+    security: security::Security,
     stars: Mutex<BTreeSet<String>>,
     /// Present only when the daemon was started with --clonewars.
     clones: Option<clones::Clones>,
@@ -858,8 +861,99 @@ async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>
 }
 
 // ---------------------------------------------------------------------------------------
-// Auth
+// Security: the activity record, posture checks, the token, audits
 // ---------------------------------------------------------------------------------------
+
+const DEFAULT_LOG_ENTRIES: usize = 200;
+const MAX_LOG_ENTRIES: usize = 2000;
+/// A call's JSON body is read to record what it acted on; anything larger is refused.
+const MAX_RECORDED_BODY: usize = 1024 * 1024;
+/// Body fields worth recording. Never the whole body: a login's password must not land in the record.
+const RECORDED_FIELDS: [&str; 5] = ["id", "name", "parent", "to", "system"];
+
+async fn security_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState) -> security::SecurityResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || action(&st))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .map(Json)
+        .map_err(|msg| ApiError(StatusCode::CONFLICT, msg))
+}
+
+async fn security_overview(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    security_call(st, |st| {
+        let private_link = st.network.links().private_link();
+        let posture = security::Posture { root: &st.root, listen: &st.listen, loopback: st.loopback, private_link };
+        let token_made = std::fs::metadata(st.root.join(META_DIR).join("token")).and_then(|m| m.modified()).map(millis).unwrap_or(0);
+        Ok(serde_json::json!({
+            "checks": security::checks(&st.security, &posture),
+            "record": st.security.verify(),
+            "deniedLastDay": st.security.denied_last_day(),
+            "startedAt": st.security.started(),
+            "tokenMadeAt": token_made,
+        }))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct LogQuery {
+    limit: Option<usize>,
+}
+
+async fn security_log(State(st): State<Shared>, Query(q): Query<LogQuery>) -> ApiResult<Json<Vec<security::Entry>>> {
+    let limit = q.limit.unwrap_or(DEFAULT_LOG_ENTRIES).min(MAX_LOG_ENTRIES);
+    security_call(st, move |st| Ok(st.security.entries(limit))).await
+}
+
+async fn security_verify(State(st): State<Shared>) -> ApiResult<Json<security::Verdict>> {
+    security_call(st, |st| Ok(st.security.verify())).await
+}
+
+/// Replaces the box token. Every device holding the old one is locked out at once.
+async fn security_rotate(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    security_call(st, |st| {
+        let token = random_hex(32);
+        write_token(&st.root, &token).map_err(|_| "could not save the new token".to_string())?;
+        *st.token.write().map_err(|_| "the token is unavailable".to_string())? = token.clone();
+        Ok(serde_json::json!({ "token": token }))
+    })
+    .await
+}
+
+async fn security_audits() -> ApiResult<Json<security::AuditList>> {
+    tokio::task::spawn_blocking(security::audit_list)
+        .await
+        .map(Json)
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))
+}
+
+async fn security_audit_run(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<security::AuditReport>> {
+    security_call(st, move |_| security::run_audit(&b.id)).await
+}
+
+// ---------------------------------------------------------------------------------------
+// Auth, and the record of what each call did
+// ---------------------------------------------------------------------------------------
+
+/// What a call acted on, taken from its query string or the named fields of its JSON body.
+fn recorded_detail(query: Option<&str>, body: &[u8]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(query) = query.filter(|q| !q.is_empty()) {
+        parts.push(query.to_string());
+    }
+    if let Ok(serde_json::Value::Object(fields)) = serde_json::from_slice(body) {
+        for key in RECORDED_FIELDS {
+            if let Some(serde_json::Value::String(value)) = fields.get(key) {
+                parts.push(format!("{key}={value}"));
+            }
+        }
+    }
+    parts.join(" ")
+}
 
 async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Response {
     let given = req
@@ -869,11 +963,48 @@ async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Re
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("");
     // Constant-time, so response timing does not reveal how much of a guess was right.
-    if given.as_bytes().ct_eq(st.token.as_bytes()).into() {
-        next.run(req).await
-    } else {
-        ApiError(StatusCode::UNAUTHORIZED, "this box needs its token".into()).into_response()
+    let allowed: bool = st.token.read().is_ok_and(|token| given.as_bytes().ct_eq(token.as_bytes()).into());
+    let path = req.uri().path().trim_start_matches("/api/v1").to_string();
+    if !allowed {
+        st.security.note_denied(&path);
+        return ApiError(StatusCode::UNAUTHORIZED, "this box needs its token".into()).into_response();
     }
+    // Reads are not recorded; neither is re-checking the record itself.
+    if req.method() == Method::GET || path == "/security/verify" {
+        return next.run(req).await;
+    }
+
+    let action = path.trim_start_matches('/').replace('/', ".");
+    let query = req.uri().query().map(str::to_string);
+    // An upload's body is the file itself and is streamed, not read here.
+    let (req, body) = if path == "/upload" {
+        (req, Vec::new())
+    } else {
+        let (parts, body) = req.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, MAX_RECORDED_BODY).await else {
+            return ApiError(StatusCode::PAYLOAD_TOO_LARGE, "request too large".into()).into_response();
+        };
+        let copy = bytes.to_vec();
+        (Request::from_parts(parts, Body::from(bytes)), copy)
+    };
+    let response = next.run(req).await;
+    let detail = format!("{} {}", response.status().as_u16(), recorded_detail(query.as_deref(), &body));
+    let recorder = st.clone();
+    let _ = tokio::task::spawn_blocking(move || recorder.security.record(&action, detail.trim())).await;
+    response
+}
+
+fn write_token(root: &Path, token: &str) -> std::io::Result<()> {
+    let path = root.join(META_DIR).join("token");
+    let tmp = root.join(META_DIR).join("tmp").join(format!("token-{}", random_hex(8)));
+    std::fs::create_dir_all(root.join(META_DIR).join("tmp"))?;
+    std::fs::write(&tmp, token)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+    }
+    std::fs::rename(tmp, path)
 }
 
 /// The box token: made once, kept in the vault's private folder, reused on every start.
@@ -886,12 +1017,7 @@ fn load_or_create_token(root: &Path) -> std::io::Result<String> {
         }
     }
     let token = random_hex(32);
-    std::fs::write(&path, &token)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    write_token(root, &token)?;
     Ok(token)
 }
 
@@ -970,6 +1096,12 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/network/provider", get(network_provider))
         .route("/settings", get(settings_get).put(settings_put))
         .route("/box", get(box_info))
+        .route("/security", get(security_overview))
+        .route("/security/log", get(security_log))
+        .route("/security/verify", post(security_verify))
+        .route("/security/token/rotate", post(security_rotate))
+        .route("/security/audits", get(security_audits))
+        .route("/security/audits/run", post(security_audit_run))
         // Uploads are streamed straight to disk, so the usual in-memory body cap is lifted
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
@@ -1026,7 +1158,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => None,
     };
-    let state = Arc::new(AppState { root: root.clone(), token: token.clone(), stars: Mutex::new(stars),
+    let security = security::Security::new(root.join(META_DIR).join("security"))?;
+    security.record("box.start", &format!("castled {} on {addr}", env!("CARGO_PKG_VERSION")));
+    let state = Arc::new(AppState {
+        root: root.clone(),
+        token: RwLock::new(token.clone()),
+        security,
+        stars: Mutex::new(stars),
         clones,
         arcade,
         network: network::Network::new(),

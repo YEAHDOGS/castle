@@ -9,6 +9,7 @@ const GB = 1024 ** 3;
 const MB = 1024 ** 2;
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 const LAUNCH_STEP_MS = 900; // how fast the pretend launch log advances
 const COIN_TICK_MS = 2500;
 const COINS_PER_RUN = 137;
@@ -312,5 +313,111 @@ export class DemoBox {
         wireguardInstalled: false,
       },
     };
+  }
+}
+
+// ---- Security ----
+
+/** Protections Castle does not have yet, shown as such in Security > Not built yet. */
+export const PLANNED_PROTECTIONS = [
+  { title: 'Accounts and strong sign-in', what: 'A separate login for each person, with a passkey or a second step, and a key for each device so one lost phone can be shut out on its own.' },
+  { title: 'Vault encryption', what: 'Castle encrypting files itself, per person, so a stolen disk or another account on the box reads nothing.' },
+  { title: 'Record held on your other devices', what: 'Each Castle device keeps a copy of the newest fingerprint of the others\' activity records, so a rewritten record is noticed.' },
+  { title: 'File fingerprints', what: 'A stored fingerprint of every file, re-checked on a schedule, so a file changed outside Castle is reported with when it was last known good.' },
+  { title: 'Watching other devices', what: 'Seeing every device on the network and what it talks to. This needs Castle to be the router.' },
+  { title: 'Emergency intake', what: 'Receiving a disk image from a machine you suspect is infected, and proving later that the image was not altered. Phoenix already has the sending side.' },
+  { title: 'Windows audits', what: 'The Phoenix listings for Windows machines (startup items, drivers, scheduled tasks, firewall rules), run from Castle against your PCs.' },
+  { title: 'Alerts', what: 'Telling you when a check starts failing or the record breaks, instead of waiting for you to open this screen.' },
+];
+
+const DEMO_HASH_CHARS = 64;
+/** A stable, made-up fingerprint for sample entry `n`. */
+const demoHash = (n) => Array.from({ length: DEMO_HASH_CHARS }, (_, i) => ((n * 7 + i * 13 + ((n * i) % 11)) % 16).toString(16)).join('');
+const DEMO_ACTIVITY = [
+  ['box.start', 'castled 0.1.0 on 127.0.0.1:8787', 26 * HOUR],
+  ['upload', '200 parent=photos&name=harbour.jpg', 25 * HOUR],
+  ['mkdir', '200 name=Taxes 2026 parent=documents', 22 * HOUR],
+  ['rename', '200 id=documents/scan0001.pdf name=passport.pdf', 21 * HOUR],
+  ['access.denied', '/list', 9 * HOUR],
+  ['trash', '204 id=downloads/installer.exe', 5 * HOUR],
+  ['clones.start', '200 id=penguin', 3 * HOUR],
+  ['settings', '200', 2 * HOUR],
+  ['network.speedtest', '200', 40 * 60 * 1000],
+];
+const DEMO_AUDITS = [
+  { id: 'users', label: 'Accounts', about: 'Every account on the box, its groups, and whether it can log in' },
+  { id: 'listening', label: 'Open ports', about: 'What is listening for connections, and whether other machines can reach it' },
+  { id: 'connections', label: 'Connections', about: 'Established connections, split into the outside world and the local network' },
+  { id: 'services', label: 'Running services', about: 'Services running right now' },
+  { id: 'startup', label: 'Starts with the box', about: 'Everything set to start on its own: enabled services, cron, autostart entries' },
+  { id: 'tasks', label: 'Scheduled tasks', about: 'Timers and cron jobs, and what each runs' },
+];
+const DEMO_AUDIT_TABLES = {
+  users: [['USER', 'UID', 'CAN LOG IN', 'GROUPS', 'SHELL'], ['root', '0', 'yes', 'root', '/bin/bash'], ['castle', '1000', 'yes', 'castle,sudo', '/bin/bash'], ['www-data', '33', 'no', 'www-data', '/usr/sbin/nologin']],
+  listening: [['PROTOCOL', 'ADDRESS', 'PORT', 'REACHABLE FROM', 'PROCESS'], ['tcp', '0.0.0.0', '22', 'other machines', 'sshd'], ['tcp', '0.0.0.0', '445', 'other machines', 'smbd'], ['tcp', '127.0.0.1', '8787', 'this box only', 'castled'], ['udp', '0.0.0.0', '51820', 'other machines', '-']],
+  connections: [['GOES TO', 'REMOTE ADDRESS', 'PORT', 'PROCESS'], ['outside world', '203.0.113.10', '443', 'tailscaled'], ['local network', '192.168.1.42', '51234', 'smbd']],
+  services: [['SERVICE', 'STATE', 'WHAT IT IS'], ['castled.service', 'running', 'Castle box daemon'], ['smbd.service', 'running', 'Samba file sharing'], ['ssh.service', 'running', 'OpenSSH server']],
+  startup: [['WHERE', 'NAME', 'RUNS'], ['systemd', 'castled.service', '/usr/local/bin/castled --data /srv/castle'], ['systemd', 'smbd.service', '/usr/sbin/smbd --foreground']],
+  tasks: [['KIND', 'NAME', 'WHEN', 'RUNS'], ['timer (enabled)', 'apt-daily.timer', 'OnCalendar=*-*-* 06,18:00:00', 'apt-daily.service'], ['cron', '/etc/cron.d/castle-backup', '0 3 * * *', '/usr/local/bin/castle-backup']],
+};
+const DEMO_AUDIT_MS = 600;
+
+/** A pretend box's security state: a fixed set of checks, a short record, canned audits. */
+export class DemoSecurity {
+  isDemo = true;
+
+  constructor() {
+    const now = Date.now();
+    this.startedAt = now - DEMO_ACTIVITY[0][2];
+    this.tokenMadeAt = now - 30 * DAY;
+    this.entries = DEMO_ACTIVITY.map(([action, detail, ago], i) => ({ seq: i + 1, at: now - ago, action, detail, prev: demoHash(i), hash: demoHash(i + 1) }));
+  }
+
+  record() {
+    return { intact: true, entries: this.entries.length, head: this.entries.at(-1).hash, brokenAt: null };
+  }
+
+  async security() {
+    return {
+      checks: [
+        { id: 'listen', label: 'Who can reach the box', state: 'ok', detail: 'Only this computer (127.0.0.1:8787)' },
+        { id: 'link', label: 'Private link', state: 'ok', detail: 'Tailscale is connected' },
+        { id: 'record', label: 'Activity record', state: 'ok', detail: `${this.entries.length} entries, every one follows from the one before` },
+        { id: 'denied', label: 'Refused calls', state: 'warn', detail: '1 call with a wrong or missing token in the last 24 hours' },
+        { id: 'token-file', label: 'Token file', state: 'ok', detail: "Only the box's own account can read it." },
+        { id: 'disk', label: 'Disk encryption', state: 'warn', detail: '/dev/sda2 is not encrypted. Anyone holding the disk can read the vault.' },
+        { id: 'accounts', label: 'Accounts', state: 'off', detail: 'One token opens everything. Per-person accounts are not built yet.' },
+        { id: 'vault-encryption', label: 'Vault encryption', state: 'off', detail: "Castle does not encrypt files itself yet; it relies on the disk's encryption." },
+        { id: 'witness', label: 'Record held elsewhere', state: 'off', detail: "The record's newest hash is not copied to another device yet, so a full rewrite would go unnoticed." },
+      ],
+      record: this.record(),
+      deniedLastDay: 1,
+      startedAt: this.startedAt,
+      tokenMadeAt: this.tokenMadeAt,
+    };
+  }
+
+  async securityLog(limit) {
+    return [...this.entries].reverse().slice(0, limit);
+  }
+
+  async securityVerify() {
+    return this.record();
+  }
+
+  async securityRotate() {
+    this.tokenMadeAt = Date.now();
+    const last = this.entries.at(-1);
+    this.entries.push({ seq: last.seq + 1, at: Date.now(), action: 'security.token.rotate', detail: '200', prev: last.hash, hash: demoHash(last.seq + 1) });
+  }
+
+  async securityAudits() {
+    return { available: true, reason: '', audits: DEMO_AUDITS };
+  }
+
+  async securityAudit(id) {
+    await new Promise((done) => setTimeout(done, DEMO_AUDIT_MS));
+    const [columns, ...rows] = DEMO_AUDIT_TABLES[id];
+    return { id, at: Date.now(), columns, rows, limited: false };
   }
 }

@@ -2,7 +2,9 @@
      views (a row of chips on phones, where the rail is hidden), a header that leaves room
      for the section wheel, and a scrolling body. -->
 <script>
+  import { fly } from 'svelte/transition';
   import { shell } from '../lib/shell.svelte.js';
+  import { viewIn } from '../lib/motion.js';
   import Sidebar from './Sidebar.svelte';
   import Avatar from './Avatar.svelte';
 
@@ -56,7 +58,12 @@
     {/if}
 
     <main class="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-      {@render children()}
+      <!-- Every view change in every section animates here, so no section has to remember to. -->
+      {#key active}
+        <div in:fly={viewIn()}>
+          {@render children()}
+        </div>
+      {/key}
     </main>
   </div>
 </div>

@@ -3,13 +3,16 @@
 
 import { store } from './store.svelte.js';
 import { SECTIONS, DEFAULT_SECTION } from './sections.js';
-import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox } from './demo-shell.js';
+import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity } from './demo-shell.js';
 import { prefs } from './prefs.svelte.js';
 
 const SECTION_KEY = 'castle-section';
 const WRONG_PIN = 'Wrong PIN';
 
 function readSection() {
+  // A link can name the section to open, e.g. /demo?section=security.
+  const linked = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('section');
+  if (SECTIONS.some((s) => s.id === linked)) return linked;
   // Settings > Look and feel > Open Castle in: a named section wins over "where I left off".
   const start = prefs.get('look.startSection');
   if (SECTIONS.some((s) => s.id === start)) return start;
@@ -32,6 +35,7 @@ class Shell {
   demoClones = new DemoClones();
   demoNetwork = new DemoNetwork();
   demoBox = new DemoBox();
+  demoSecurity = new DemoSecurity();
 
   /** People on this box. Accounts exist only in the demo until the box grows them. */
   get users() {
@@ -76,6 +80,12 @@ class Shell {
   /** Where Network reads from, by the same rule. */
   get networkSource() {
     if (store.isDemo) return this.demoNetwork;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Where Security reads from, by the same rule. */
+  get securitySource() {
+    if (store.isDemo) return this.demoSecurity;
     return store.boxUrl ? store.adapter : null;
   }
 

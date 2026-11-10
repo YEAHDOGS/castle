@@ -2,6 +2,8 @@
      the Castle mark (top left) switches person. Each section is its own interface. -->
 <script>
   import { onMount } from 'svelte';
+  import { scale } from 'svelte/transition';
+  import { sectionIn } from './lib/motion.js';
   import { store } from './lib/store.svelte.js';
   import { shell } from './lib/shell.svelte.js';
   import StorageSection from './components/sections/StorageSection.svelte';
@@ -9,6 +11,7 @@
   import ArcadeSection from './components/sections/ArcadeSection.svelte';
   import ClonesSection from './components/sections/ClonesSection.svelte';
   import NetworkSection from './components/sections/NetworkSection.svelte';
+  import SecuritySection from './components/sections/SecuritySection.svelte';
   import SettingsSection from './components/sections/SettingsSection.svelte';
   import WheelMenu from './components/WheelMenu.svelte';
   import UserMenu from './components/UserMenu.svelte';
@@ -17,7 +20,7 @@
   import ConnectModal from './components/ConnectModal.svelte';
   import Toasts from './components/Toasts.svelte';
 
-  const SECTION_VIEWS = { storage: StorageSection, ai: AiSection, arcade: ArcadeSection, clones: ClonesSection, network: NetworkSection, settings: SettingsSection };
+  const SECTION_VIEWS = { storage: StorageSection, ai: AiSection, arcade: ArcadeSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
   const Section = $derived(SECTION_VIEWS[shell.section] || StorageSection);
 
   onMount(() => {
@@ -25,8 +28,11 @@
   });
 </script>
 
+<!-- Changing section fades and settles the whole interface in, rather than cutting to it. -->
 {#key shell.section}
-  <Section />
+  <div in:scale={sectionIn()}>
+    <Section />
+  </div>
 {/key}
 
 <WheelMenu />

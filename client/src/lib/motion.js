@@ -47,3 +47,15 @@ export function itemIn(i = 0) {
   if (reducedMotion()) return { duration: 0 };
   return { duration: DUR.UI, delay: stagger(i), easing: expoOut, y: 10, opacity: 0 };
 }
+
+/** A section's view changing (a tab in its rail): the new view rises into place. */
+export function viewIn() {
+  if (reducedMotion()) return { duration: 0 };
+  return { duration: DUR.UI, easing: expoOut, y: 12, opacity: 0 };
+}
+
+/** The whole interface changing section from the wheel. */
+export function sectionIn() {
+  if (reducedMotion()) return { duration: 0 };
+  return { duration: DUR.MOMENT, easing: expoOut, start: 0.985, opacity: 0 };
+}

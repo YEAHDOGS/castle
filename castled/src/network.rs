@@ -94,6 +94,14 @@ pub struct Links {
     wireguard_installed: bool,
 }
 
+impl Links {
+    /// The private way in from outside that is up right now, if any. A WireGuard tunnel
+    /// cannot be read without root, so only Tailscale is reported.
+    pub fn private_link(&self) -> Option<String> {
+        (self.tailscale.state == "Running").then(|| "Tailscale".to_string())
+    }
+}
+
 pub struct Network {
     local: Mutex<Option<(Instant, Local)>>,
     /// Held for the length of a speed test, so two never run at once and skew each other.
