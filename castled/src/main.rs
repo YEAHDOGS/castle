@@ -841,6 +841,21 @@ async fn clones_start(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiRes
     clones_call(st, move |c| c.start(&b.id)).await
 }
 
+/// One picture of a running automation's VM screen.
+async fn clones_screen(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Response> {
+    let bytes = tokio::task::spawn_blocking(move || match st.clones.read().ok().and_then(|slot| slot.clone()) {
+        Some(clones) => clones.screen(&q.path).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --clonewars".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))??;
+    let mut res = Response::new(Body::from(bytes));
+    let headers = res.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(res)
+}
+
 async fn clones_stop(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<clones::AutomationStatus>> {
     clones_call(st, move |c| c.stop(&b.id)).await
 }
@@ -1267,6 +1282,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/delete", post(delete))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
+        .route("/clones/screen", get(clones_screen))
         .route("/arcade/enable", post(arcade_enable))
         .route("/clones/login", post(clones_login))
         .route("/clones/start", post(clones_start))

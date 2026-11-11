@@ -11,6 +11,7 @@
   import { AUTOMATION_SKILLS, PLANNED_AUTOMATIONS, DEMO_MACHINES } from '../../lib/demo-shell.js';
   import SectionFrame from '../SectionFrame.svelte';
   import Notice from '../Notice.svelte';
+  import VmScreen from '../VmScreen.svelte';
 
   const SECOND_MS = 1000;
   const NO_CLONES = 'not started with --clonewars';
@@ -284,6 +285,9 @@
                   aria-live="polite">{a.log.length ? a.log.join('\n') : a.state === 'running' ? 'Running. It was started outside this screen, so there is no launch log here.' : 'Nothing yet. Press Start and the launch appears here line by line.'}</pre>
               </div>
             </div>
+            {#if a.state === 'running' && source.cloneScreen}
+              <VmScreen {source} id={a.id} />
+            {/if}
           </div>
         </article>
       {/each}

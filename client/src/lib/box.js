@@ -276,6 +276,12 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.post('/clones/stop', { id })).json();
   }
 
+  /** @returns {Promise<string>} an object URL of the machine's screen right now; revoke it when replaced */
+  async cloneScreen(id) {
+    const res = await this.call(`/clones/screen?path=${encodeURIComponent(id)}`);
+    return URL.createObjectURL(await res.blob());
+  }
+
   // ---- Network: the box's own connection ----
 
   async network() {

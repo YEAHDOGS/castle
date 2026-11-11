@@ -86,6 +86,7 @@ machine alone.
 |---|---|
 | `GET /clones` | Each automation: state (`stopped`, `launching`, `running`, `failed`), saved account name, whether a password is saved, and the tail of the launch log. The password is never sent back. |
 | `POST /clones/enable` | Turns Clones on in a running box. Takes no folder: the box looks for `clonewars` in `CASTLE_CLONEWARS_DIR`, then beside or above its own program and working folder. Loopback only. |
+| `GET /clones/screen?path=<id>` | One PNG of a running automation's VM screen, taken through the VM's control port (QMP `screendump`). It only looks; nothing is sent into the machine. Needs QEMU 7.1 or newer. |
 | `POST /clones/login` `{id, username, password}` | Saves the login to the project's `.env`. An empty password keeps the saved one. |
 | `POST /clones/start` `{id}` | Launches the VM. If the project is not checked out next to Castle, it is cloned first from the address in `CASTLE_PENGUIN_REPO`. Refused while one is running. |
 | `POST /clones/stop` `{id}` | Sends the VM a power-button shutdown over its QMP port. |

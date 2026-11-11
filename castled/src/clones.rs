@@ -96,6 +96,8 @@ pub struct Clones {
     loopback: bool,
     launches: Mutex<HashMap<&'static str, Launch>>,
     scan: Mutex<Option<Scan>>,
+    /// Held while a screen picture is taken: a VM's control port serves one caller at a time.
+    screen: Mutex<()>,
 }
 
 pub type ClonesResult<T> = Result<T, String>;
@@ -183,7 +185,7 @@ fn strip_ansi(line: &str) -> String {
 
 impl Clones {
     pub fn new(dir: PathBuf, log_dir: PathBuf, loopback: bool) -> Self {
-        Self { dir, log_dir, loopback, launches: Mutex::new(HashMap::new()), scan: Mutex::new(None) }
+        Self { dir, log_dir, loopback, launches: Mutex::new(HashMap::new()), scan: Mutex::new(None), screen: Mutex::new(()) }
     }
 
     fn repo(&self, a: &Automation) -> PathBuf {
@@ -346,6 +348,22 @@ impl Clones {
 
     /// Asks the VM to shut down the way its power button would. Only the VM running this
     /// automation's disk is ever addressed.
+    /// A picture of a running automation's VM screen, as PNG. It only looks: nothing is
+    /// typed, clicked or changed in the machine, and its own window is left alone.
+    pub fn screen(&self, id: &str) -> ClonesResult<Vec<u8>> {
+        let a = find(id)?;
+        let line = self.vm_command_line(a).ok_or_else(|| "this automation's machine is not running".to_string())?;
+        let port = qmp_port(&line).ok_or_else(|| "this VM has no control port".to_string())?;
+        let _one_at_a_time = self.screen.lock();
+        std::fs::create_dir_all(&self.log_dir).map_err(|_| "could not prepare a place for the picture".to_string())?;
+        let file = self.log_dir.join(format!("{}-screen.png", a.id));
+        let taken = screen_dump(port, &file);
+        let bytes = std::fs::read(&file);
+        let _ = std::fs::remove_file(&file);
+        taken?;
+        bytes.map_err(|_| "the machine did not produce a picture".to_string())
+    }
+
     pub fn stop(&self, id: &str) -> ClonesResult<AutomationStatus> {
         self.require_loopback()?;
         let a = find(id)?;
@@ -377,6 +395,34 @@ fn power_off(port: u16) -> ClonesResult<()> {
     reader.read_line(&mut line).map_err(fail)?;
     writer.write_all(b"{\"execute\":\"system_powerdown\"}\n").map_err(fail)?;
     Ok(())
+}
+
+/// QMP handshake, then a request for a PNG of the display, written by QEMU to `file`.
+fn screen_dump(port: u16, file: &Path) -> ClonesResult<()> {
+    const MAX_REPLY_LINES: usize = 20; // events can arrive before the answer; skip a few, not forever
+    let fail = |_| "the VM did not answer its control port".to_string();
+    let stream = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), QMP_TIMEOUT).map_err(fail)?;
+    stream.set_read_timeout(Some(QMP_TIMEOUT)).map_err(fail)?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(fail)?);
+    let mut writer = stream;
+    let mut line = String::new();
+    reader.read_line(&mut line).map_err(fail)?; // greeting
+    writer.write_all(b"{\"execute\":\"qmp_capabilities\"}\n").map_err(fail)?;
+    reader.read_line(&mut line).map_err(fail)?;
+    let request = serde_json::json!({ "execute": "screendump", "arguments": { "filename": file.to_string_lossy(), "format": "png" } });
+    writer.write_all(format!("{request}\n").as_bytes()).map_err(fail)?;
+    for _ in 0..MAX_REPLY_LINES {
+        line.clear();
+        reader.read_line(&mut line).map_err(fail)?;
+        let Ok(reply) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        if reply.get("return").is_some() {
+            return Ok(());
+        }
+        if reply.get("error").is_some() {
+            return Err("the VM could not take a picture of its screen".into());
+        }
+    }
+    Err("the VM did not answer its control port".into())
 }
 
 /// True when `dir` looks like a clonewars folder this module can drive.
