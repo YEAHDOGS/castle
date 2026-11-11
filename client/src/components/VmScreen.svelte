@@ -2,6 +2,7 @@
      machine for a picture of its display about once a second. View only: the machine's own
      window stays where it is and is still the place to click or type. -->
 <script>
+  import { onDestroy } from 'svelte';
   import { Monitor, Maximize2, Minimize2 } from '@lucide/svelte';
 
   /** source: where Clones reads from. id: the automation whose machine to show. */
@@ -15,16 +16,25 @@
   let large = $state(false);
   let seenAt = $state(0);
 
+  // The card re-reads its automation every couple of seconds and hands the same id down
+  // again. These only change when the value really does, so that does not restart the view.
+  const from = $derived(source);
+  const machine = $derived(id);
+  let shown = null; // the object URL on screen; kept across restarts so the picture never blanks
+
+  onDestroy(() => {
+    if (shown) URL.revokeObjectURL(shown);
+  });
+
   $effect(() => {
-    const from = source;
-    const machine = id;
+    const box = from;
+    const which = machine;
     let stopped = false;
     let timer;
-    let shown = null;
 
     async function next() {
       try {
-        const url = await from.cloneScreen(machine);
+        const url = await box.cloneScreen(which);
         // Load the new picture before showing it, so the view never blinks empty between frames.
         // (The load event, not decode(): decode waits for the page to be drawn, which a
         // minimised window never does.)
@@ -52,8 +62,6 @@
     return () => {
       stopped = true;
       clearTimeout(timer);
-      if (shown) URL.revokeObjectURL(shown);
-      frame = null;
     };
   });
 </script>
