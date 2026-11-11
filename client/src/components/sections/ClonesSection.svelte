@@ -286,7 +286,10 @@
               </div>
             </div>
             {#if a.state === 'running' && source.cloneScreen}
-              <VmScreen {source} id={a.id} />
+              <!-- full width of the card, under the login and the log -->
+              <div class="lg:col-span-2">
+                <VmScreen {source} id={a.id} />
+              </div>
             {/if}
           </div>
         </article>
