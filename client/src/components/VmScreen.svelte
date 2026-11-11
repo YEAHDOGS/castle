@@ -25,6 +25,15 @@
     async function next() {
       try {
         const url = await from.cloneScreen(machine);
+        // Load the new picture before showing it, so the view never blinks empty between frames.
+        // (The load event, not decode(): decode waits for the page to be drawn, which a
+        // minimised window never does.)
+        await new Promise((loaded, failed) => {
+          const loading = new Image();
+          loading.onload = loaded;
+          loading.onerror = () => failed(new Error('The machine sent a picture that could not be shown'));
+          loading.src = url;
+        });
         if (stopped) return URL.revokeObjectURL(url);
         if (shown) URL.revokeObjectURL(shown);
         shown = url;
