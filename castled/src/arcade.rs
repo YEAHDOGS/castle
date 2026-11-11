@@ -153,6 +153,36 @@ fn reroot(root: &Path, playlist_path: &str) -> Option<PathBuf> {
     Some(path)
 }
 
+/// The four-character game code of a GameCube or Wii disc image (the "GZQE" of "GZQE7D"),
+/// read from the start of the file. None for anything else.
+fn gamecube_code(rom: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const COMPRESSED_MAGICS: [&[u8; 4]; 2] = [b"RVZ", b"WIA"];
+    const COMPRESSED_HEADER_AT: u64 = 0x58; // where RVZ and WIA keep a copy of the disc's first bytes
+    const GAMECUBE_MAGIC_AT: usize = 0x1c;
+    const GAMECUBE_MAGIC: [u8; 4] = [0xc2, 0x33, 0x9f, 0x3d];
+    const CODE_LEN: usize = 4;
+
+    let extension = rom.extension()?.to_string_lossy().to_ascii_lowercase();
+    if !["rvz", "wia", "iso", "gcm"].contains(&extension.as_str()) {
+        return None;
+    }
+    let mut file = std::fs::File::open(rom).ok()?;
+    let mut head = [0u8; 0x20];
+    file.read_exact(&mut head).ok()?;
+    let code = if COMPRESSED_MAGICS.iter().any(|magic| head.starts_with(*magic)) {
+        let mut inner = [0u8; CODE_LEN];
+        file.seek(SeekFrom::Start(COMPRESSED_HEADER_AT)).ok()?;
+        file.read_exact(&mut inner).ok()?;
+        inner
+    } else if head[GAMECUBE_MAGIC_AT..GAMECUBE_MAGIC_AT + 4] == GAMECUBE_MAGIC {
+        [head[0], head[1], head[2], head[3]]
+    } else {
+        return None;
+    };
+    code.iter().all(u8::is_ascii_alphanumeric).then(|| String::from_utf8_lossy(&code).into_owned())
+}
+
 fn file_size(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.len())
 }
@@ -290,8 +320,12 @@ impl Arcade {
         let mut index = crate::saves::RomIndex::new();
         for system in self.library() {
             for game in &system.games {
+                let game_ref = crate::saves::GameRef { system: system.id.clone(), id: game.id, title: game.title.clone() };
+                // GameCube memory-card saves are named by the game's code, not its file name.
+                if let Some(code) = gamecube_code(&game.rom) {
+                    index.entry(crate::saves::gamecube_key(&code)).or_insert(game_ref.clone());
+                }
                 if let Some(stem) = game.rom.file_stem() {
-                    let game_ref = crate::saves::GameRef { system: system.id.clone(), id: game.id, title: game.title.clone() };
                     index.entry(stem.to_string_lossy().into_owned()).or_insert(game_ref);
                 }
             }

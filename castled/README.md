@@ -127,8 +127,8 @@ listed directly and open in PCSX2 and PPSSPP. Nothing is written to the folder.
 
 Saves are read from RetroArch's `saves/<core>/` and `states/<core>/` folders and from
 `Saves/RetroArch/` on the drive. A save belongs to a game when its name, without the
-extension, is the game file's name; GameCube memory-card files, which are named by game
-code, are listed but not matched yet. Versions live in `<vault>/.castle/saves`: each
+extension, is the game file's name. GameCube memory-card files are named by game code, so
+they are matched by the code read from each GameCube game file. Versions live in `<vault>/.castle/saves`: each
 distinct file once under `objects/<sha256>`, and `journal.jsonl` listing every version in
 order. Restoring is the only call that writes to the games drive. It replaces that one
 save file, and records the file as it was first, so a restore can be undone. Recording is

@@ -50,8 +50,25 @@ pub struct GameRef {
     pub title: String,
 }
 
-/// A game file's name without its extension, and the game it is.
+/// A game file's name without its extension, and the game it is. GameCube games are also
+/// listed under `gamecube_key(code)`, because their memory-card saves are named by code.
 pub type RomIndex = HashMap<String, GameRef>;
+
+/// The index key for a GameCube game code. It starts with a character no file name can
+/// contain, so it can never be mistaken for a game file's name.
+pub fn gamecube_key(code: &str) -> String {
+    format!("/gamecube/{}", code.to_ascii_uppercase())
+}
+
+/// The game code in a GameCube memory-card file name: "7D-GZQE-GZQE.gci" -> "GZQE".
+fn gci_code(name: &str) -> Option<&str> {
+    const CODE_LEN: usize = 4;
+    if !name.to_ascii_lowercase().ends_with(".gci") {
+        return None;
+    }
+    let code = name.split('-').nth(1)?;
+    (code.len() == CODE_LEN && code.bytes().all(|b| b.is_ascii_alphanumeric())).then_some(code)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -207,7 +224,7 @@ impl Saves {
                 SaveFile {
                     recorded: known.is_some_and(|(_, v)| v.size == f.size && v.modified == f.modified),
                     versions: known.map_or(0, |(count, _)| *count),
-                    game: roms.get(&f.stem).cloned(),
+                    game: roms.get(&f.stem).or_else(|| gci_code(&f.name).and_then(|code| roms.get(&gamecube_key(code)))).cloned(),
                     id: f.id,
                     name: f.name,
                     core: f.core,
@@ -309,6 +326,24 @@ mod tests {
         std::fs::create_dir_all(&core).unwrap();
         std::fs::create_dir_all(games.join("Consoles/RetroArch-Win64/states/mGBA")).unwrap();
         (base.clone(), games, base.join("store"))
+    }
+
+    #[test]
+    fn gamecube_saves_are_tied_to_games_by_code() {
+        assert_eq!(gci_code("7D-GZQE-GZQE.gci"), Some("GZQE"));
+        assert_eq!(gci_code("78-GJUE-Bigjuju_2003a.sav.gci"), Some("GJUE"));
+        assert_eq!(gci_code("Zelda (USA).srm"), None);
+        assert_eq!(gci_code("no-code.gci"), None);
+
+        let (base, games, store) = fixture("gci");
+        let card = games.join("Consoles/RetroArch-Win64/saves/dolphin-emu/User/GC/USA/Card A");
+        std::fs::create_dir_all(&card).unwrap();
+        std::fs::write(card.join("7D-GZQE-GZQE.gci"), b"save").unwrap();
+        let roms: RomIndex = [(gamecube_key("GZQE"), GameRef { system: "gc".into(), id: 3, title: "Robots (USA)".into() })].into();
+        let listed = Saves::new(store).list(&games, &roms);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].game.as_ref().map(|g| g.title.as_str()), Some("Robots (USA)"));
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]
