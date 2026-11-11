@@ -84,6 +84,9 @@ function demoGames(spec, systemIndex) {
 }
 
 /** The demo arcade, answering the same calls a box does. */
+const DEMO_SAVED_GAMES = 3; // games per system that have sample saves
+const DEMO_MAX_VERSIONS = 4;
+
 export class DemoArcade {
   isDemo = true;
 
@@ -116,6 +119,54 @@ export class DemoArcade {
   async arcadePlay(system, game) {
     const found = (await this.arcadeGames(system))[game];
     return { started: found?.title || '', demo: true };
+  }
+
+  /** Sample saves: the first few games of each system, some with a save state as well. */
+  demoSaves() {
+    if (this.saves) return this.saves;
+    const now = Date.now();
+    this.saves = [];
+    this.versions = new Map();
+    this.library.forEach(({ spec, games }, s) => {
+      games.slice(0, DEMO_SAVED_GAMES).forEach((game, g) => {
+        const kinds = g % 2 ? ['battery', 'state'] : ['battery'];
+        for (const kind of kinds) {
+          const name = `${game.title}.${kind === 'battery' ? 'srm' : 'state'}`;
+          const id = `Consoles/RetroArch-Win64/${kind === 'battery' ? 'saves' : 'states'}/${spec.emulator}/${name}`;
+          const count = 1 + ((s + g) % DEMO_MAX_VERSIONS);
+          const size = kind === 'battery' ? 32 * 1024 : 2 * MB;
+          const versions = Array.from({ length: count }, (_, v) => ({ seq: this.versions.size * 10 + v, at: now - (v * 3 + g + 1) * DAY, save: id, hash: demoHash(s * 100 + g * 10 + v), size, modified: now - (v * 3 + g + 1) * DAY - HOUR }));
+          this.versions.set(id, versions);
+          this.saves.push({ id, name, core: spec.emulator, kind, game: { system: spec.name, id: game.id, title: game.title }, size, modified: versions[0].modified, versions: count, recorded: true });
+        }
+      });
+    });
+    this.saves.sort((a, b) => b.modified - a.modified);
+    return this.saves;
+  }
+
+  async arcadeSaves() {
+    return this.demoSaves();
+  }
+
+  async arcadeSavesRecord() {
+    return { checked: this.demoSaves().length, added: 0 };
+  }
+
+  async arcadeSaveHistory(id) {
+    this.demoSaves();
+    return this.versions.get(id) || [];
+  }
+
+  async arcadeSaveRestore(id, hash) {
+    const versions = this.versions.get(id) || [];
+    const chosen = versions.find((v) => v.hash === hash);
+    if (!chosen) throw new Error('that version was never recorded for this save');
+    versions.unshift({ ...chosen, seq: chosen.seq + 1000, at: Date.now(), modified: Date.now() });
+    const save = this.saves.find((s) => s.id === id);
+    save.versions = versions.length;
+    save.modified = Date.now();
+    return { restored: true };
   }
 }
 

@@ -280,6 +280,25 @@ impl Arcade {
             .collect()
     }
 
+    /// The games folder itself.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Every game by its file name without the extension, which is how emulators name saves.
+    pub fn rom_index(&self) -> crate::saves::RomIndex {
+        let mut index = crate::saves::RomIndex::new();
+        for system in self.library() {
+            for game in &system.games {
+                if let Some(stem) = game.rom.file_stem() {
+                    let game_ref = crate::saves::GameRef { system: system.id.clone(), id: game.id, title: game.title.clone() };
+                    index.entry(stem.to_string_lossy().into_owned()).or_insert(game_ref);
+                }
+            }
+        }
+        index
+    }
+
     pub fn games(&self, system: &str) -> ArcadeResult<Vec<Game>> {
         Ok(self.system(system)?.games)
     }

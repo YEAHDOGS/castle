@@ -1,8 +1,10 @@
-<!-- ArcadeSection: the game library. Systems in the rail, box art in a grid, one click to
-     open a game's card and play it. On a box, this reads the games folder as it is:
+<!-- ArcadeSection: the game library and its save data. The rail has Consoles (a group that
+     opens and closes, one row per system) and Saves. A game's card shows its saves; Saves
+     lists every save file with every version recorded, and can put an old one back.
+     Box art in a grid, one click to open a game's card and play it. On a box, this reads the games folder as it is:
      RetroArch's playlists are the library and its thumbnails are the art. -->
 <script>
-  import { Gamepad2, Search, Play, X, HardDrive, Power } from '@lucide/svelte';
+  import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
   import { SvelteMap } from 'svelte/reactivity';
@@ -15,6 +17,10 @@
   import Notice from '../Notice.svelte';
 
   const NO_ARCADE = 'not started with --arcade';
+  const CONSOLES = '@consoles'; // rail ids that are not systems
+  const SAVES = '@saves';
+  const KIND_LABEL = { battery: 'IN-GAME SAVE', state: 'SAVE STATE' };
+  const HASH_SHOWN = 10;
   const ART_MARGIN = '300px'; // start loading art a little before a card scrolls into view
   const STAGGER_CAP = 24; // cards past this many appear without the entry stagger
   // Settings > Arcade > Box art size: how many cards fit across at each screen width.
@@ -31,6 +37,14 @@
   let loading = $state(true);
   let problem = $state(''); // why the library cannot be shown, when it cannot
   let openGame = $state(null);
+  let consolesOpen = $state(true);
+  let mode = $state('games'); // 'games' | 'saves'
+  let saves = $state([]);
+  let savesProblem = $state('');
+  let recording = $state(false);
+  let openSave = $state(null); // the save whose versions are shown
+  let versions = $state([]);
+  let restoring = $state('');
   let snap = $state(null); // in-game screenshot for the open card
   const art = new SvelteMap(); // `${system}:${game}` -> image URL, or null once known to be missing
 
@@ -41,7 +55,86 @@
   );
   const totalGames = $derived(systems.reduce((sum, s) => sum + s.games, 0));
   const totalBytes = $derived(systems.reduce((sum, s) => sum + s.bytes, 0));
-  const railItems = $derived(systems.map((s) => ({ id: s.id, label: s.short, count: s.games })));
+  const railItems = $derived([
+    { id: CONSOLES, label: 'Consoles', icon: Gamepad2, count: systems.length, expanded: consolesOpen },
+    ...(consolesOpen ? systems.map((s) => ({ id: s.id, label: s.short, count: s.games, indent: true })) : []),
+    { id: SAVES, label: 'Saves', icon: Save, count: saves.length },
+  ]);
+  const gameSaves = $derived(openGame ? saves.filter((s) => s.game && s.game.system === systemId && s.game.id === openGame.id) : []);
+  const unrecorded = $derived(saves.filter((s) => !s.recorded).length);
+
+  const when = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+  function pickRail(id) {
+    if (id === CONSOLES) {
+      consolesOpen = !consolesOpen;
+    } else if (id === SAVES) {
+      showSaves();
+    } else {
+      mode = 'games';
+      pickSystem(id);
+    }
+  }
+
+  async function loadSaves(from = source) {
+    try {
+      saves = await from.arcadeSaves();
+      savesProblem = '';
+    } catch (err) {
+      saves = [];
+      savesProblem = err?.message || 'Saves could not be read';
+    }
+  }
+
+  /** Records whatever changed, then lists. Recording only reads the games drive. */
+  async function recordSaves() {
+    recording = true;
+    try {
+      const result = await source.arcadeSavesRecord();
+      if (result.added) store.toast(`${result.added} new ${result.added === 1 ? 'version' : 'versions'} recorded`);
+      await loadSaves();
+      if (openSave) versions = await source.arcadeSaveHistory(openSave.id);
+    } catch (err) {
+      store.toast(err?.message || 'Saves could not be recorded');
+    } finally {
+      recording = false;
+    }
+  }
+
+  async function showSaves(save = null) {
+    mode = 'saves';
+    openGame = null;
+    openSave = null;
+    versions = [];
+    await recordSaves();
+    if (save) await pickSave(saves.find((s) => s.id === save.id) || save);
+  }
+
+  async function pickSave(save) {
+    openSave = save;
+    try {
+      versions = await source.arcadeSaveHistory(save.id);
+    } catch (err) {
+      versions = [];
+      store.toast(err?.message || 'That save\'s history could not be read');
+    }
+  }
+
+  async function putBack(version) {
+    const question = `Put this version of ${openSave.name} back? It replaces the save file on the games drive. The save as it is now is recorded first, so you can undo this.`;
+    if (!window.confirm(question)) return;
+    restoring = version.hash;
+    try {
+      await source.arcadeSaveRestore(openSave.id, version.hash);
+      store.toast(source.isDemo ? 'Demo: nothing was written' : 'That version is back in place');
+      await loadSaves();
+      await pickSave(saves.find((s) => s.id === openSave.id) || openSave);
+    } catch (err) {
+      store.toast(err?.message || 'That version could not be put back');
+    } finally {
+      restoring = '';
+    }
+  }
 
   /** "Sky Runner (USA) (En,Fr)" -> { name: "Sky Runner", tags: "USA · En,Fr" } */
   function splitTitle(title) {
@@ -133,7 +226,12 @@
 
   $effect(() => {
     const from = source; // the only thing this effect should re-run for
-    untrack(() => loadSystems(from));
+    untrack(() => {
+      mode = 'games';
+      openSave = null;
+      saves = [];
+      loadSystems(from).then(() => from && loadSaves(from));
+    });
   });
 </script>
 
@@ -144,11 +242,19 @@
   subtitle={systems.length ? `${totalGames} games · ${systems.length} systems · ${fmtSize(totalBytes)}` : 'Your game library'}
   tag={store.isDemo ? 'SAMPLE DATA' : ''}
   items={railItems}
-  active={systemId}
-  onselect={(id) => pickSystem(id)}
+  active={mode === 'saves' ? SAVES : systemId}
+  onselect={pickRail}
 >
   {#snippet actions()}
-    {#if games.length}
+    {#if mode === 'saves'}
+      <button
+        disabled={recording}
+        onclick={recordSaves}
+        class="expo t-hover micro flex h-10 items-center gap-2 border border-hairline px-3 font-bold text-white transition-colors hover:border-chiral/60 disabled:opacity-50"
+      >
+        <RefreshCw class="h-3.5 w-3.5 {recording ? 'animate-spin' : ''}" /> <span class="hidden sm:inline">{recording ? 'RECORDING' : 'RECORD NOW'}</span>
+      </button>
+    {:else if games.length}
       <div class="group relative hidden w-56 sm:block">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint group-focus-within:text-chiral" strokeWidth={1.75} />
         <input
@@ -185,6 +291,87 @@
     <Notice icon={Gamepad2} title="LIBRARY UNAVAILABLE">{problem}</Notice>
   {:else if !systems.length}
     <Notice icon={Gamepad2} title="NO GAMES FOUND">The games folder has no RetroArch playlists or game files yet.</Notice>
+  {:else if mode === 'saves'}
+    <div class="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h2 class="text-[15px] font-semibold text-white">Save data</h2>
+      <p class="micro text-text-faint">
+        {saves.length} {saves.length === 1 ? 'SAVE' : 'SAVES'} · {saves.reduce((sum, s) => sum + s.versions, 0)} VERSIONS RECORDED
+        {#if unrecorded}· <span class="text-chiral">{unrecorded} NOT RECORDED YET</span>{/if}
+      </p>
+    </div>
+    {#if savesProblem}
+      <p class="text-[13px] text-chiral">{savesProblem}</p>
+    {/if}
+    <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <div class="glass overflow-x-auto p-4">
+        <table class="w-full text-left text-[13px]">
+          <thead class="micro text-text-faint">
+            <tr><th class="pb-2 pr-3 font-normal">GAME</th><th class="pb-2 pr-3 font-normal">KIND</th><th class="pb-2 pr-3 font-normal">CORE</th><th class="pb-2 pr-3 font-normal">LAST CHANGED</th><th class="pb-2 pr-3 text-right font-normal">SIZE</th><th class="pb-2 text-right font-normal">VERSIONS</th></tr>
+          </thead>
+          <tbody>
+            {#each saves as save (save.id)}
+              <tr
+                class="expo t-hover cursor-pointer border-t border-hairline-faint align-top transition-colors hover:bg-white/[0.04] {openSave?.id === save.id ? 'bg-white/[0.05]' : ''}"
+                onclick={() => pickSave(save)}
+              >
+                <td class="max-w-[20rem] py-2 pr-3">
+                  <button class="block w-full truncate text-left {save.game ? 'text-white' : 'text-text-dim'}" title={save.name}>
+                    {save.game ? splitTitle(save.game.title).name : save.name}
+                  </button>
+                  {#if !save.game}<span class="micro text-text-faint">NOT MATCHED TO A GAME</span>{/if}
+                </td>
+                <td class="micro whitespace-nowrap py-2 pr-3 {save.kind === 'state' ? 'text-bridge' : 'text-chiral'}">{KIND_LABEL[save.kind]}</td>
+                <td class="py-2 pr-3 text-text-dim">{save.core}</td>
+                <td class="whitespace-nowrap py-2 pr-3 text-text-dim">{when(save.modified)}</td>
+                <td class="py-2 pr-3 text-right tabular-nums text-text-dim">{fmtSize(save.size)}</td>
+                <td class="py-2 text-right tabular-nums {save.recorded ? 'text-white' : 'text-chiral'}">{save.versions}{save.recorded ? '' : ' +1'}</td>
+              </tr>
+            {:else}
+              <tr><td colspan="6" class="py-6 text-center text-text-dim">No save files found on the games drive yet. Play something and save.</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="glass h-fit p-4">
+        {#if openSave}
+          <p class="micro flex items-center gap-2 text-text-faint"><History class="h-3.5 w-3.5" /> VERSIONS</p>
+          <h3 class="mt-1 break-words text-[15px] font-bold text-white">{openSave.game ? splitTitle(openSave.game.title).name : openSave.name}</h3>
+          <p class="micro mt-0.5 text-text-faint">{KIND_LABEL[openSave.kind]} · {openSave.core}</p>
+          <ol class="mt-3">
+            {#each versions as version, i (version.seq)}
+              <li class="flex items-center gap-3 border-t border-hairline-faint py-2.5">
+                <div class="min-w-0 flex-1">
+                  <p class="text-[13px] text-white">{when(version.modified)}</p>
+                  <p class="micro mt-0.5 truncate text-text-faint" title={version.hash}>{fmtSize(version.size)} · {version.hash.slice(0, HASH_SHOWN)}</p>
+                </div>
+                {#if i === 0 && openSave.recorded}
+                  <span class="micro text-live">CURRENT</span>
+                {:else}
+                  <button
+                    disabled={!!restoring}
+                    onclick={() => putBack(version)}
+                    class="expo t-hover micro flex h-8 items-center gap-1.5 border border-hairline px-2.5 font-bold text-white transition-colors hover:border-chiral/60 disabled:opacity-50"
+                  >
+                    <RotateCcw class="h-3.5 w-3.5 {restoring === version.hash ? 'animate-spin' : ''}" /> PUT BACK
+                  </button>
+                {/if}
+              </li>
+            {:else}
+              <li class="border-t border-hairline-faint py-3 text-[13px] text-text-dim">Not recorded yet. Press Record now.</li>
+            {/each}
+          </ol>
+        {:else}
+          <p class="micro flex items-center gap-2 text-text-faint"><History class="h-3.5 w-3.5" /> VERSIONS</p>
+          <p class="mt-2 text-[13px] leading-relaxed text-text-dim">Pick a save to see every version Castle has recorded and put an older one back.</p>
+        {/if}
+      </div>
+    </div>
+    <p class="mt-4 max-w-3xl text-[12px] leading-relaxed text-text-dim">
+      Each core keeps its own saves, so the same game can appear once per core. Castle copies every version into your vault and never
+      changes one it has recorded. Recording only reads the games drive. Put back is the one action that writes to it: it replaces that
+      single save file, after recording what was there.
+    </p>
   {:else}
     <div class="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <h2 class="text-[15px] font-semibold text-white">{system?.name}</h2>
@@ -269,6 +456,23 @@
           <div><dt>PLAYS IN</dt><dd class="mt-0.5 text-white">{system?.emulator}</dd></div>
           <div><dt>SIZE</dt><dd class="mt-0.5 text-white">{fmtSize(openGame.size)}</dd></div>
         </dl>
+        <div>
+          <p class="micro mb-1 flex items-center gap-2 text-text-faint"><Save class="h-3.5 w-3.5" /> SAVE DATA</p>
+          {#each gameSaves as save (save.id)}
+            <button
+              class="expo t-hover flex w-full items-center gap-3 border-t border-hairline-faint py-2 text-left transition-colors hover:bg-white/[0.04]"
+              onclick={() => showSaves(save)}
+            >
+              <span class="min-w-0 flex-1">
+                <span class="micro block {save.kind === 'state' ? 'text-bridge' : 'text-chiral'}">{KIND_LABEL[save.kind]} · {save.core}</span>
+                <span class="block truncate text-[13px] text-text-dim">{when(save.modified)} · {fmtSize(save.size)}</span>
+              </span>
+              <span class="micro shrink-0 text-text-faint">{save.versions} {save.versions === 1 ? 'VERSION' : 'VERSIONS'}</span>
+            </button>
+          {:else}
+            <p class="border-t border-hairline-faint pt-2 text-[13px] text-text-dim">No save for this game yet.</p>
+          {/each}
+        </div>
         <div class="mt-auto pt-2">
           {#if !openGame.present}
             <p class="text-[13px] text-text-dim">This game is in the playlist but its file is not on the drive.</p>

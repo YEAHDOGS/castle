@@ -346,6 +346,26 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/arcade')).json();
   }
 
+  // ---- Arcade save data: every save file, its game, and every version recorded ----
+
+  async arcadeSaves() {
+    return (await this.call('/arcade/saves')).json();
+  }
+
+  /** Records every save that changed since it was last recorded. Reads the drive only. */
+  async arcadeSavesRecord() {
+    return (await this.call('/arcade/saves/record', { method: 'POST' })).json();
+  }
+
+  async arcadeSaveHistory(id) {
+    return (await this.call(`/arcade/saves/history?path=${encodeURIComponent(id)}`)).json();
+  }
+
+  /** Puts a recorded version back in place of the save file on the games drive. */
+  async arcadeSaveRestore(id, hash) {
+    return (await this.post('/arcade/saves/restore', { id, hash })).json();
+  }
+
   /** Turns Arcade on in a running box. The box looks for a Games folder on its drives. */
   async arcadeEnable() {
     return (await this.call('/arcade/enable', { method: 'POST' })).json();

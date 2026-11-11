@@ -116,6 +116,24 @@ listed directly and open in PCSX2 and PPSSPP. Nothing is written to the folder.
 | `POST /arcade/enable` | Turns Arcade on in a running box. Takes no folder: the box looks in `CASTLE_ARCADE_DIR`, then for `Games` at the top of each drive or mounted disk. Loopback only. |
 | `POST /arcade/play` `{system, game}` | Opens the game in its emulator on this machine. Loopback only. |
 
+### Save data
+
+| Call | Does |
+|---|---|
+| `GET /arcade/saves` | Every save file on the games drive, newest first: its core, kind (`battery` for the game's own save, `state` for a save state), the game it belongs to, and how many versions are recorded. |
+| `POST /arcade/saves/record` | Records every save that changed since it was last recorded. Reads the drive; writes only to the vault. |
+| `GET /arcade/saves/history?path=<save id>` | Every recorded version of one save, newest first. |
+| `POST /arcade/saves/restore` `{id, hash}` | Puts a recorded version back in place of the save file. Loopback only. |
+
+Saves are read from RetroArch's `saves/<core>/` and `states/<core>/` folders and from
+`Saves/RetroArch/` on the drive. A save belongs to a game when its name, without the
+extension, is the game file's name; GameCube memory-card files, which are named by game
+code, are listed but not matched yet. Versions live in `<vault>/.castle/saves`: each
+distinct file once under `objects/<sha256>`, and `journal.jsonl` listing every version in
+order. Restoring is the only call that writes to the games drive. It replaces that one
+save file, and records the file as it was first, so a restore can be undone. Recording is
+not automatic yet: it happens when the Saves view is opened or Record now is pressed.
+
 ## Network
 
 What the box can see of its own connection. It is not the router yet, so this is the

@@ -233,8 +233,7 @@ fi
 # this checkout, and Arcade uses the first Games folder (Consoles + Roms) found on a drive.
 CLONEWARS="$(config_value clonewars)"
 [[ -n "$CLONEWARS" ]] || CLONEWARS="$ROOT/clonewars"
-ARCADE="$(config_value arcade)"
-[[ -n "$ARCADE" ]] || ARCADE="$(find_games_folder)"
+ARCADE_SET="$(config_value arcade)" # looked for afresh each time the box starts when unset
 URL="http://127.0.0.1:$PORT"
 DEV_URL="http://localhost:$DEV_PORT"
 
@@ -283,6 +282,9 @@ start_box() {
     [[ -f "$WEB_DIR/index.html" ]] && box_args+=(--web "$(native "$WEB_DIR")")
     # A folder that is not there right now (an unplugged drive) is left out, so the box still starts.
     if [[ -n "$CLONEWARS" && -d "$CLONEWARS" ]]; then box_args+=(--clonewars "$(native "$CLONEWARS")"); else say 'Clones: off (no clonewars folder).'; fi
+    # A drive plugged in since the last start is picked up when the box restarts.
+    local ARCADE="$ARCADE_SET"
+    [[ -n "$ARCADE" ]] || ARCADE="$(find_games_folder)"
     if [[ -n "$ARCADE" && -d "$ARCADE" ]]; then
         box_args+=(--arcade "$(native "$ARCADE")")
     else

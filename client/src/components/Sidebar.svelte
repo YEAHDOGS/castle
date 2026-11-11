@@ -5,6 +5,7 @@
 <script>
   import dogsLogo from '../assets/dogs-logo.svg';
   import { fly } from 'svelte/transition';
+  import { ChevronDown } from '@lucide/svelte';
   import { shell } from '../lib/shell.svelte.js';
   import { sectionById } from '../lib/sections.js';
   import { itemIn } from '../lib/motion.js';
@@ -12,7 +13,8 @@
   import PeopleList from './PeopleList.svelte';
 
   /**
-   * items: [{ id, label, icon, count? }] -- the section's views
+   * items: [{ id, label, icon, count?, expanded?, indent? }] -- the section's views.
+   *   expanded (true/false) marks a group heading that opens and closes; indent marks its children.
    * active: id of the current view; onselect(id) is called when one is picked
    * footer: optional snippet shown above the badge
    */
@@ -52,9 +54,10 @@
       <button
         in:fly={itemIn(i)}
         class="expo t-hover relative flex w-full items-center gap-3 px-2 py-2.5 transition-all lg:px-3
-          {isActive ? 'text-white' : 'text-text-dim hover:text-white'}"
+          {item.indent ? 'lg:pl-10' : ''} {isActive ? 'text-white' : 'text-text-dim hover:text-white'}"
         onclick={() => onselect(item.id)}
         aria-current={isActive ? 'page' : undefined}
+        aria-expanded={item.expanded ?? undefined}
         title={item.label}
       >
         {#if isActive}
@@ -68,6 +71,9 @@
         <span class="relative hidden min-w-0 flex-1 truncate text-left text-[13px] font-medium tracking-wide lg:block">{item.label}</span>
         {#if item.count != null}
           <span class="micro relative hidden text-text-faint lg:block">{item.count}</span>
+        {/if}
+        {#if item.expanded != null}
+          <ChevronDown class="expo t-ui relative hidden h-4 w-4 shrink-0 text-text-faint transition-transform lg:block {item.expanded ? '' : '-rotate-90'}" strokeWidth={1.75} />
         {/if}
       </button>
     {/each}

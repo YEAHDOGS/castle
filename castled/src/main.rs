@@ -15,6 +15,7 @@
 mod arcade;
 mod clones;
 mod network;
+mod saves;
 mod security;
 mod system;
 
@@ -78,6 +79,7 @@ struct AppState {
     arcade: RwLock<Option<Arc<arcade::Arcade>>>,
     network: network::Network,
     system: system::System,
+    saves: saves::Saves,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -686,6 +688,48 @@ where
 }
 
 // ---------------------------------------------------------------------------------------
+// Arcade save data
+// ---------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct RestoreBody {
+    id: String,
+    hash: String,
+}
+
+/// Runs a save-data action against the games folder, off the async threads.
+async fn saves_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState, &arcade::Arcade) -> saves::SavesResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || match st.arcade.read().ok().and_then(|slot| slot.clone()) {
+        Some(arcade) => action(&st, &arcade).map(Json).map_err(|msg| ApiError(StatusCode::CONFLICT, msg)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --arcade".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn saves_list(State(st): State<Shared>) -> ApiResult<Json<Vec<saves::SaveFile>>> {
+    saves_call(st, |st, arcade| Ok(st.saves.list(arcade.root(), &arcade.rom_index()))).await
+}
+
+async fn saves_record(State(st): State<Shared>) -> ApiResult<Json<saves::Recorded>> {
+    saves_call(st, |st, arcade| st.saves.record(arcade.root())).await
+}
+
+async fn saves_history(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Json<Vec<saves::Version>>> {
+    saves_call(st, move |st, _| Ok(st.saves.history(&q.path))).await
+}
+
+/// Writes to the games drive, so like launching a game it works from this computer only.
+async fn saves_restore(State(st): State<Shared>, Json(b): Json<RestoreBody>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    saves_call(st, move |st, arcade| st.saves.restore(arcade.root(), &b.id, &b.hash).map(|()| serde_json::json!({ "restored": true }))).await
+}
+
+// ---------------------------------------------------------------------------------------
 // Turning Clones and Arcade on while the box runs
 // ---------------------------------------------------------------------------------------
 //
@@ -960,7 +1004,7 @@ const MAX_LOG_ENTRIES: usize = 2000;
 /// A call's JSON body is read to record what it acted on; anything larger is refused.
 const MAX_RECORDED_BODY: usize = 1024 * 1024;
 /// Body fields worth recording. Never the whole body: a login's password must not land in the record.
-const RECORDED_FIELDS: [&str; 5] = ["id", "name", "parent", "to", "system"];
+const RECORDED_FIELDS: [&str; 6] = ["id", "name", "parent", "to", "system", "hash"];
 
 async fn security_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
 where
@@ -1211,6 +1255,10 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/arcade/games", get(arcade_games))
         .route("/arcade/art", get(arcade_art))
         .route("/arcade/play", post(arcade_play))
+        .route("/arcade/saves", get(saves_list))
+        .route("/arcade/saves/record", post(saves_record))
+        .route("/arcade/saves/history", get(saves_history))
+        .route("/arcade/saves/restore", post(saves_restore))
         .route("/network", get(network_reading))
         .route("/network/speedtest", post(network_speedtest))
         .route("/network/provider", get(network_provider))
@@ -1290,6 +1338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         arcade: RwLock::new(arcade.map(Arc::new)),
         network: network::Network::new(),
         system: system::System::new(),
+        saves: saves::Saves::new(root.join(META_DIR).join("saves")),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
