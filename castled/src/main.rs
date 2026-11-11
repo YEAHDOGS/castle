@@ -770,6 +770,26 @@ fn arcade_candidates() -> Vec<PathBuf> {
     found
 }
 
+/// The real location of a folder that programs will be started from.
+///
+/// On Windows, resolving a path yields the long form that starts with `\\?\`, which the
+/// system accepts but many programs do not: RetroArch started with its own path, core and
+/// game in that form sits there with no window. So the ordinary `C:\...` form is handed on.
+fn program_folder(dir: &Path) -> std::io::Result<PathBuf> {
+    let resolved = dir.canonicalize()?;
+    Ok(plain_path(&resolved))
+}
+
+fn plain_path(path: &Path) -> PathBuf {
+    const LONG_FORM: &str = r"\\?\";
+    let text = path.to_string_lossy();
+    match text.strip_prefix(LONG_FORM) {
+        // Only a drive path can drop the prefix; a network path in this form cannot.
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
+}
+
 fn local_only(st: &AppState) -> ApiResult<()> {
     if st.loopback {
         Ok(())
@@ -783,7 +803,7 @@ async fn clones_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::V
     tokio::task::spawn_blocking(move || {
         let dir = clonewars_candidates()
             .into_iter()
-            .filter_map(|dir| dir.canonicalize().ok())
+            .filter_map(|dir| program_folder(&dir).ok())
             .find(|dir| clones::looks_like_clonewars(dir))
             .ok_or_else(|| ApiError(StatusCode::CONFLICT, "No clonewars folder was found near the box. Start the box with --clonewars and its path.".into()))?;
         let clones = clones::Clones::new(dir, st.root.join(META_DIR).join("clones"), st.loopback);
@@ -799,7 +819,7 @@ async fn arcade_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::V
     tokio::task::spawn_blocking(move || {
         let dir = arcade_candidates()
             .into_iter()
-            .filter_map(|dir| dir.canonicalize().ok())
+            .filter_map(|dir| program_folder(&dir).ok())
             .find(|dir| arcade::looks_like_arcade(dir))
             .ok_or_else(|| ApiError(StatusCode::CONFLICT, "No games folder was found. Plug in the drive that has Games (with Consoles and Roms inside) and try again.".into()))?;
         *st.arcade.write().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))? = Some(Arc::new(arcade::Arcade::new(dir, st.loopback)));
@@ -1309,7 +1329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let clones = match &cfg.clonewars {
         Some(dir) => {
-            let dir = dir.canonicalize().map_err(|_| format!("--clonewars folder not found: {}", dir.display()))?;
+            let dir = program_folder(dir).map_err(|_| format!("--clonewars folder not found: {}", dir.display()))?;
             if !clones::looks_like_clonewars(&dir) {
                 return Err(format!("--clonewars is not a clonewars folder: {}", dir.display()).into());
             }
@@ -1319,7 +1339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let arcade = match &cfg.arcade {
         Some(dir) => {
-            let dir = dir.canonicalize().map_err(|_| format!("--arcade folder not found: {}", dir.display()))?;
+            let dir = program_folder(dir).map_err(|_| format!("--arcade folder not found: {}", dir.display()))?;
             if !arcade::looks_like_arcade(&dir) {
                 return Err(format!("--arcade needs a folder with Consoles/ and Roms/ in it: {}", dir.display()).into());
             }
@@ -1367,6 +1387,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folders_for_programs_lose_the_windows_long_form() {
+        assert_eq!(plain_path(Path::new(r"\\?\E:\Games")), PathBuf::from(r"E:\Games"));
+        assert_eq!(plain_path(Path::new(r"E:\Games")), PathBuf::from(r"E:\Games"));
+        assert_eq!(plain_path(Path::new("/srv/games")), PathBuf::from("/srv/games"));
+        // A network path in the long form has no drive letter and is left as it is.
+        assert_eq!(plain_path(Path::new(r"\\?\UNC\box\share")), PathBuf::from(r"\\?\UNC\box\share"));
+    }
 
     #[test]
     fn names_that_could_escape_or_hide_are_refused() {
