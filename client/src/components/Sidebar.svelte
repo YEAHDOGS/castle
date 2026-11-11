@@ -1,5 +1,6 @@
 <!-- Sidebar: the left rail every section shares. Top: the Castle mark, which opens the
-     people menu. Middle: the current section's own navigation. Bottom: an optional slot
+     people menu. Middle: the current section's own navigation, or, in a section with no
+     views of its own (Home), the people on this box, so the rail is never empty. Bottom: an optional slot
      (Storage puts its meter there) and the DOGS badge. -->
 <script>
   import dogsLogo from '../assets/dogs-logo.svg';
@@ -8,6 +9,7 @@
   import { sectionById } from '../lib/sections.js';
   import { itemIn } from '../lib/motion.js';
   import Avatar from './Avatar.svelte';
+  import PeopleList from './PeopleList.svelte';
 
   /**
    * items: [{ id, label, icon, count? }] -- the section's views
@@ -37,6 +39,13 @@
 
   <!-- the section's views -->
   <nav class="relative flex-1 space-y-1 overflow-y-auto px-2 py-2 lg:px-3" aria-label={`${section.label} views`}>
+    {#if !items.length}
+      <!-- wide rail only: the narrow one has no room for names or a PIN box -->
+      <div class="hidden lg:block">
+        <p class="micro px-2 pb-2 pt-1 text-text-faint">WHO IS USING CASTLE</p>
+        <PeopleList />
+      </div>
+    {/if}
     {#each items as item, i (item.id)}
       {@const Icon = item.icon}
       {@const isActive = active === item.id}
