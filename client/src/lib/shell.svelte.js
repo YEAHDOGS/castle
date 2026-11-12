@@ -56,6 +56,13 @@ class Shell {
     }
   }
 
+  /** Back to Home from anywhere, closing whichever shell menu is open. */
+  goHome() {
+    this.wheelOpen = false;
+    this.userMenuOpen = false;
+    this.setSection(DEFAULT_SECTION);
+  }
+
   /** Live or demo. People differ between the two, so the switch lands on the first one. */
   async setDemo(on) {
     this.userId = null;

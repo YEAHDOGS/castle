@@ -1,7 +1,7 @@
 <!-- Sidebar: the left rail every section shares. Top: the Castle mark, which opens the
      people menu. Middle: the current section's own navigation, or, in a section with no
      views of its own (Home), the people on this box, so the rail is never empty. Bottom: an optional slot
-     (Storage puts its meter there) and the DOGS badge. -->
+     (Storage puts its meter there) and the DOGS head, which goes back to Home. -->
 <script>
   import dogsLogo from '../assets/dogs-logo.svg';
   import { fly } from 'svelte/transition';
@@ -83,14 +83,13 @@
     {@render footer()}
   {/if}
 
-  <a
-    href="https://wearedogs.net"
-    target="_blank"
-    rel="noreferrer"
-    class="expo t-hover block border-t border-hairline-faint px-6 py-3 opacity-70 transition-opacity hover:opacity-100"
-    aria-label="DOGS"
-    title="DOGS"
+  <!-- The DOGS head is the way home from anywhere. -->
+  <button
+    class="expo t-hover block w-full border-t border-hairline-faint px-3 py-3 text-left opacity-70 transition-opacity hover:opacity-100 lg:px-6"
+    onclick={() => shell.goHome()}
+    aria-label="Go to Home"
+    title="Home"
   >
-    <img src={dogsLogo} alt="DOGS" class="h-10 w-10" />
-  </a>
+    <img src={dogsLogo} alt="" class="h-10 w-10" />
+  </button>
 </aside>
