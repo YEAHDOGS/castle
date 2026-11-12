@@ -14,9 +14,12 @@
 
 mod arcade;
 mod clones;
+mod drives;
+mod host;
 mod network;
 mod saves;
 mod security;
+mod stream;
 mod system;
 mod wiki;
 
@@ -32,7 +35,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Query, Request, State},
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -83,6 +86,11 @@ struct AppState {
     saves: saves::Saves,
     /// What Wikipedia said about each game, so a game is looked up once.
     game_notes: wiki::Shelf,
+    /// The rest of this computer, for Storage's "../". None when it is not allowed: the box
+    /// can be reached from other machines and was not started with --host-files.
+    host: Option<host::Host>,
+    /// The computer's drives, and when each was plugged in.
+    drives: drives::Drives,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -115,6 +123,11 @@ impl From<std::io::Error> for ApiError {
     fn from(e: std::io::Error) -> Self {
         match e.kind() {
             std::io::ErrorKind::NotFound => Self::not_found(),
+            std::io::ErrorKind::PermissionDenied => {
+                Self(StatusCode::FORBIDDEN, "This computer will not let Castle open that.".into())
+            }
+            std::io::ErrorKind::AlreadyExists => Self::conflict("that name is already taken"),
+            std::io::ErrorKind::DirectoryNotEmpty => Self::conflict("that folder is not empty"),
             // The detail goes to the box's own log, not to whoever is calling.
             _ => {
                 eprintln!("[castled] io error: {e}");
@@ -586,6 +599,26 @@ async fn delete(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<St
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Streams a request body into `tmp`, all of it on disk before this returns. A dropped
+/// connection removes what had arrived.
+async fn receive(body: Body, tmp: &Path) -> ApiResult<()> {
+    let written: ApiResult<()> = async {
+        let mut file = tokio::fs::File::create(tmp).await?;
+        let mut stream = body.into_data_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|_| ApiError::bad("upload interrupted"))?;
+            file.write_all(&chunk).await?;
+        }
+        file.sync_all().await?;
+        Ok(())
+    }
+    .await;
+    if written.is_err() {
+        let _ = tokio::fs::remove_file(tmp).await;
+    }
+    written
+}
+
 async fn upload(
     State(st): State<Shared>,
     Query(q): Query<UploadQuery>,
@@ -601,22 +634,7 @@ async fn upload(
     let tmp_dir = st.root.join(META_DIR).join("tmp");
     tokio::fs::create_dir_all(&tmp_dir).await?;
     let tmp = tmp_dir.join(random_hex(16));
-
-    let written: ApiResult<()> = async {
-        let mut file = tokio::fs::File::create(&tmp).await?;
-        let mut stream = body.into_data_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|_| ApiError::bad("upload interrupted"))?;
-            file.write_all(&chunk).await?;
-        }
-        file.sync_all().await?;
-        Ok(())
-    }
-    .await;
-    if let Err(e) = written {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(e);
-    }
+    receive(body, &tmp).await?;
 
     let name = free_name(&dir, &q.name);
     if let Err(e) = tokio::fs::rename(&tmp, dir.join(&name)).await {
@@ -626,27 +644,16 @@ async fn upload(
     Ok(Json(stat_node(&st, &join_id(&q.parent, &name))?))
 }
 
-async fn file(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Response> {
+async fn file(State(st): State<Shared>, Query(q): Query<PathQuery>, headers: HeaderMap) -> ApiResult<Response> {
     if q.path.is_empty() {
         return Err(ApiError::bad("invalid path"));
     }
     let path = resolve(&st.root, &q.path)?;
-    let meta = std::fs::symlink_metadata(&path)?;
-    if !meta.is_file() {
+    if !std::fs::symlink_metadata(&path)?.is_file() {
         return Err(ApiError::not_found());
     }
-    let handle = tokio::fs::File::open(&path).await?;
     let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
-    let mut res = Response::new(Body::from_stream(tokio_util::io::ReaderStream::new(handle)));
-    let headers = res.headers_mut();
-    headers.insert(header::CONTENT_LENGTH, HeaderValue::from(meta.len()));
-    if let Ok(v) = HeaderValue::from_str(&mime) {
-        headers.insert(header::CONTENT_TYPE, v);
-    }
-    // Vault files are data, never pages: the browser must not run or sniff them.
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_static("attachment"));
-    Ok(res)
+    Ok(stream::file(&path, headers.get(header::RANGE), &mime, stream::Offer::Download).await?)
 }
 
 async fn stats(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
@@ -661,6 +668,137 @@ async fn stats(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
     // "quota" is what the vault holds now plus what the disk still has free.
     let free = fs4::available_space(&root).unwrap_or(0);
     Ok(Json(serde_json::json!({ "used": used, "quota": used + free })))
+}
+
+// ---------------------------------------------------------------------------------------
+// This computer: drives and folders beyond the vault (see host.rs and drives.rs)
+// ---------------------------------------------------------------------------------------
+
+const HOST_OFF: &str = "Opening the rest of this computer is off, because the box can be reached from other machines. Start it with --host-files to allow it.";
+/// How often the box looks for a drive being plugged in or taken out.
+const DRIVE_WATCH: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[derive(Deserialize)]
+struct HostPathBody {
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct HostMkdirBody {
+    parent: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct HostRenameBody {
+    path: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct HostMoveBody {
+    path: String,
+    target: String,
+}
+
+#[derive(Deserialize)]
+struct SpeedBody {
+    path: String,
+    /// False for the test that only reads files already on the drive.
+    #[serde(default = "yes")]
+    write: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// Runs one action on this computer's files, off the async threads, if that is allowed.
+async fn host_call<T, F>(st: Shared, action: F) -> ApiResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState, &host::Host) -> ApiResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || match &st.host {
+        Some(host) => action(&st, host),
+        None => Err(ApiError(StatusCode::FORBIDDEN, HOST_OFF.into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+/// Every drive, the ones seen before, and where the vault is.
+async fn host_drives(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    host_call(st, |st, host| {
+        let report = st.drives.report();
+        Ok(Json(serde_json::json!({
+            "vault": host.vault(),
+            "separator": std::path::MAIN_SEPARATOR.to_string(),
+            "drives": report.drives,
+            "gone": report.gone,
+            "at": report.at,
+        })))
+    })
+    .await
+}
+
+async fn host_list(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Json<Vec<host::HostNode>>> {
+    host_call(st, move |_, host| host.list(&host::parse(&q.path)?).map(Json)).await
+}
+
+async fn host_stat(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Json<host::HostNode>> {
+    host_call(st, move |_, host| host.stat(&host::parse(&q.path)?).map(Json)).await
+}
+
+async fn host_file(State(st): State<Shared>, Query(q): Query<PathQuery>, headers: HeaderMap) -> ApiResult<Response> {
+    let path = host_call(st, move |_, host| host.readable_file(&host::parse(&q.path)?)).await?;
+    let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+    Ok(stream::file(&path, headers.get(header::RANGE), &mime, stream::Offer::Download).await?)
+}
+
+async fn host_mkdir(State(st): State<Shared>, Json(b): Json<HostMkdirBody>) -> ApiResult<Json<host::HostNode>> {
+    host_call(st, move |_, host| host.mkdir(&host::parse(&b.parent)?, &b.name).map(Json)).await
+}
+
+async fn host_rename(State(st): State<Shared>, Json(b): Json<HostRenameBody>) -> ApiResult<Json<host::HostNode>> {
+    host_call(st, move |_, host| host.rename(&host::parse(&b.path)?, &b.name).map(Json)).await
+}
+
+async fn host_move(State(st): State<Shared>, Json(b): Json<HostMoveBody>) -> ApiResult<Json<host::HostNode>> {
+    host_call(st, move |_, host| host.move_to(&host::parse(&b.path)?, &host::parse(&b.target)?).map(Json)).await
+}
+
+async fn host_trash(State(st): State<Shared>, Json(b): Json<HostPathBody>) -> ApiResult<StatusCode> {
+    host_call(st, move |_, host| host.recycle(&host::parse(&b.path)?)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn host_delete(State(st): State<Shared>, Json(b): Json<HostPathBody>) -> ApiResult<StatusCode> {
+    host_call(st, move |_, host| host.delete(&host::parse(&b.path)?)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A file from another device into a folder on this computer. It lands under a hidden
+/// temporary name in that folder and is renamed once whole, like a vault upload.
+async fn host_upload(State(st): State<Shared>, Query(q): Query<UploadQuery>, body: Body) -> ApiResult<Json<host::HostNode>> {
+    let name = q.name.clone();
+    let dir = host_call(st.clone(), move |_, host| host.folder_for_new(&host::parse(&q.parent)?, &q.name)).await?;
+    let tmp = dir.join(format!(".castle-upload-{}.part", random_hex(16)));
+    receive(body, &tmp).await?;
+    host_call(st, move |_, host| {
+        let final_name = free_name(&dir, &name);
+        if let Err(e) = std::fs::rename(&tmp, dir.join(&final_name)) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        host.stat(&dir.join(final_name)).map(Json)
+    })
+    .await
+}
+
+/// Times a drive. The write test puts one file on it and deletes it again.
+async fn host_speedtest(State(st): State<Shared>, Json(b): Json<SpeedBody>) -> ApiResult<Json<drives::SpeedResult>> {
+    host_call(st, move |st, _| st.drives.speed_test(&b.path, b.write).map(Json).map_err(|msg| ApiError::conflict(&msg))).await
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1093,6 +1231,7 @@ async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>
         "loopback": st.loopback,
         "clones": st.clones.read().is_ok_and(|slot| slot.is_some()),
         "arcade": st.arcade.read().is_ok_and(|slot| slot.is_some()),
+        "hostFiles": st.host.is_some(),
         "links": links,
     })))
 }
@@ -1106,7 +1245,7 @@ const MAX_LOG_ENTRIES: usize = 2000;
 /// A call's JSON body is read to record what it acted on; anything larger is refused.
 const MAX_RECORDED_BODY: usize = 1024 * 1024;
 /// Body fields worth recording. Never the whole body: a login's password must not land in the record.
-const RECORDED_FIELDS: [&str; 6] = ["id", "name", "parent", "to", "system", "hash"];
+const RECORDED_FIELDS: [&str; 8] = ["id", "name", "parent", "to", "system", "hash", "path", "target"];
 
 async fn security_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
 where
@@ -1214,7 +1353,7 @@ async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Re
     let action = path.trim_start_matches('/').replace('/', ".");
     let query = req.uri().query().map(str::to_string);
     // An upload's body is the file itself and is streamed, not read here.
-    let (req, body) = if path == "/upload" {
+    let (req, body) = if path == "/upload" || path == "/host/upload" {
         (req, Vec::new())
     } else {
         let (parts, body) = req.into_parts();
@@ -1295,17 +1434,21 @@ struct Config {
     web: Option<PathBuf>,
     clonewars: Option<PathBuf>,
     arcade: Option<PathBuf>,
+    /// Let Storage open the rest of this computer even when the box can be reached from
+    /// other machines. It always can when the box listens on this computer only.
+    host_files: bool,
 }
 
 fn usage() -> ! {
     eprintln!(
         "castled -- the Castle box daemon\n\n\
-         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR]\n\n\
+         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR] [--host-files]\n\n\
          --data  the vault directory            (default {DEFAULT_DATA_DIR}, or CASTLE_DATA_DIR)\n\
          --bind  address to listen on           (default {DEFAULT_BIND}, or CASTLE_BIND)\n\
          --web   built Castle app to serve at / (optional, or CASTLE_WEB_DIR)
          --clonewars  Castle's clonewars folder, to run automations (optional, or CASTLE_CLONEWARS_DIR)
-         --arcade     a games folder (Consoles/ + Roms/) to show in Arcade (optional, or CASTLE_ARCADE_DIR)"
+         --arcade     a games folder (Consoles/ + Roms/) to show in Arcade (optional, or CASTLE_ARCADE_DIR)
+         --host-files let Storage open the whole computer even when other machines can reach the box (or CASTLE_HOST_FILES=1)"
     );
     std::process::exit(2)
 }
@@ -1317,9 +1460,14 @@ fn config() -> Config {
         web: std::env::var("CASTLE_WEB_DIR").ok().map(PathBuf::from),
         clonewars: std::env::var("CASTLE_CLONEWARS_DIR").ok().map(PathBuf::from),
         arcade: std::env::var("CASTLE_ARCADE_DIR").ok().map(PathBuf::from),
+        host_files: std::env::var("CASTLE_HOST_FILES").is_ok_and(|v| v == "1"),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
+        if flag == "--host-files" {
+            cfg.host_files = true;
+            continue;
+        }
         let Some(value) = args.next() else { usage() };
         match flag.as_str() {
             "--data" => cfg.data = value.into(),
@@ -1347,6 +1495,16 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/trash", post(trash))
         .route("/restore", post(restore))
         .route("/delete", post(delete))
+        .route("/host/drives", get(host_drives))
+        .route("/host/list", get(host_list))
+        .route("/host/stat", get(host_stat))
+        .route("/host/file", get(host_file))
+        .route("/host/mkdir", post(host_mkdir))
+        .route("/host/rename", post(host_rename))
+        .route("/host/move", post(host_move))
+        .route("/host/trash", post(host_trash))
+        .route("/host/delete", post(host_delete))
+        .route("/host/speedtest", post(host_speedtest))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
@@ -1385,6 +1543,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         // Uploads are streamed straight to disk, so the usual in-memory body cap is lifted
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
+        .route("/host/upload", put(host_upload).layer(DefaultBodyLimit::disable()))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
 
     let api = Router::new().route("/hello", get(hello)).merge(protected);
@@ -1451,6 +1610,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         system: system::System::new(),
         saves: saves::Saves::new(root.join(META_DIR).join("saves")),
         game_notes: wiki::Shelf::open(root.join(META_DIR).join("arcade").join("about.json")),
+        host: (addr.ip().is_loopback() || cfg.host_files).then(|| host::Host::new(&root)),
+        drives: drives::Drives::open(root.join(META_DIR).join("drives.json"), &root),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
@@ -1467,6 +1628,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(_) => println!("open:  http://{addr}/#connect={token}"),
         None => println!("token: {token}   (paste into the Castle app's Connect screen)"),
     }
+
+    // Watches for drives going in and out, so each one's plug-in time is right even when
+    // no one has Storage open.
+    let watcher = state.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(DRIVE_WATCH);
+        loop {
+            every.tick().await;
+            let state = watcher.clone();
+            let _ = tokio::task::spawn_blocking(move || state.drives.tick()).await;
+        }
+    });
 
     axum::serve(listener, router(state, cfg.web))
         .with_graceful_shutdown(async {

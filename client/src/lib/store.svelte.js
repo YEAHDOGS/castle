@@ -6,8 +6,9 @@ import { startingAdapter, localAdapter, fixedDemoAdapter, connectBox, forgetBox,
 import { SvelteSet } from 'svelte/reactivity';
 import { uid } from './format.js';
 import { prefs as devicePrefs } from './prefs.svelte.js';
+import { HOST_ROOT, COMPUTER_NAME, isHostId, hostTrail, hostParent } from './computer.js';
 
-export const VIEWS = ['drive', 'shared', 'recent', 'starred', 'trash'];
+export const VIEWS = ['drive', 'computer', 'shared', 'recent', 'starred', 'trash'];
 export const SORT_KEYS = ['name', 'size', 'modified'];
 export const SORT_LABELS = { name: 'NAME', size: 'SIZE', modified: 'MODIFIED' };
 
@@ -19,6 +20,7 @@ const GENERIC_ERROR = 'Something went wrong';
 const GUARDED_ACTIONS = [
   'newFolder', 'commitRename', 'trashSelection', 'restoreSelection', 'deleteForeverSelection',
   'toggleStar', 'moveSelection', 'uploadFiles', 'setView', 'openNode', 'goUp', 'goToCrumb', 'setQuery',
+  'climb', 'openHost', 'speedTest',
 ];
 function readPrefs() {
   try {
@@ -59,6 +61,11 @@ class DriveStore {
   dragDepth = $state(0);
   slideDir = $state(1); // folder drill direction for transitions
   columnsProvider = null; // set by FileBrowser: () => visible columns
+  // This computer: { vault, separator, drives, gone, at } from the box, or null when this
+  // backend has no computer to show (a browser-only drive) or the box does not allow it.
+  computer = $state(null);
+  computerOff = $state(''); // why not, in words, when the box said no
+  testing = $state(null); // "<drive path>|write" or "|read" while a speed test runs
 
   get cwd() {
     return this.path[this.path.length - 1];
@@ -66,6 +73,37 @@ class DriveStore {
 
   get isTrash() {
     return this.view === 'trash';
+  }
+
+  /** A view with folders to walk through: My Drive, or This computer. */
+  get browsing() {
+    return this.view === 'drive' || this.view === 'computer';
+  }
+
+  /** On the drive list at the top of This computer. */
+  get atComputerTop() {
+    return this.view === 'computer' && this.cwd.id === HOST_ROOT;
+  }
+
+  /** The "../" tile: at the top of My Drive (up into the computer) and in any computer folder. */
+  get canClimb() {
+    if (this.query) return false;
+    if (this.view === 'drive') return this.path.length === 1 && !!this.computer;
+    return this.view === 'computer' && this.cwd.id !== HOST_ROOT;
+  }
+
+  /** Where "../" leads, by name. */
+  get climbName() {
+    if (this.view === 'drive') {
+      const up = this.computer ? hostTrail(hostParent(this.computer.vault)) : [];
+      return up.length ? up[up.length - 1].name : COMPUTER_NAME;
+    }
+    return this.path.length > 1 ? this.path[this.path.length - 2].name : '';
+  }
+
+  /** "Recycle Bin" on Windows, "bin" elsewhere. */
+  get binName() {
+    return this.computer?.separator === '/' ? 'the bin' : 'the Recycle Bin';
   }
 
   /** Boot: restore session prefs, then load the current view. */
@@ -85,6 +123,7 @@ class DriveStore {
       }
     }
     if (await this.connectLocalBox()) return;
+    this.loadComputer();
     try {
       await this.refresh();
     } catch (err) {
@@ -172,7 +211,10 @@ class DriveStore {
     this.path = [{ id: 'root', name: 'My Drive' }];
     this.query = '';
     this.previewId = null;
+    this.computer = null;
+    this.computerOff = '';
     this.clearSelection();
+    this.loadComputer();
   }
 
   savePrefs() {
@@ -229,7 +271,9 @@ class DriveStore {
 
   async refresh() {
     let items;
-    if (this.query.trim()) {
+    if (this.view === 'computer') {
+      items = await this.listComputer();
+    } else if (this.query.trim()) {
       items = await this.adapter.search(this.query);
     } else if (this.view === 'drive') {
       items = await this.adapter.listChildren(this.cwd.id);
@@ -251,12 +295,92 @@ class DriveStore {
     if (this.renamingId && !ids.has(this.renamingId)) this.renamingId = null;
   }
 
+  /** The open computer folder, filtered by the search box and the hidden-files setting. */
+  async listComputer() {
+    if (this.cwd.id === HOST_ROOT) {
+      await this.loadComputer();
+      return [];
+    }
+    let items = await this.adapter.listChildren(this.cwd.id);
+    if (!devicePrefs.get('storage.showHidden')) items = items.filter((n) => !n.hidden);
+    const q = this.query.trim().toLowerCase();
+    return q ? items.filter((n) => n.name.toLowerCase().includes(q)) : items;
+  }
+
+  /**
+   * Asks the box about the computer's drives. Says so when a drive has just been plugged in.
+   * Leaves `computer` null when this backend has none or the box does not allow it.
+   */
+  async loadComputer() {
+    if (!this.adapter.hostDrives) {
+      this.computer = null;
+      return;
+    }
+    const adapter = this.adapter;
+    try {
+      const next = await adapter.hostDrives();
+      if (adapter !== this.adapter) return; // switched box while asking
+      const before = this.computer ? new Set(this.computer.drives.map((d) => d.key)) : null;
+      if (before) {
+        for (const drive of next.drives) {
+          if (drive.removable && !before.has(drive.key)) this.toast(`${drive.name} plugged in`);
+        }
+      }
+      this.computer = next;
+      this.computerOff = '';
+    } catch (err) {
+      if (adapter !== this.adapter) return;
+      this.computer = null;
+      this.computerOff = err?.message || GENERIC_ERROR;
+    }
+  }
+
+  /** "../": from the top of My Drive into the folder the vault is in, then up and up. */
+  async climb() {
+    if (!this.canClimb) return;
+    if (this.view === 'drive') {
+      await this.openHost(hostParent(this.computer.vault), -1);
+      return;
+    }
+    this.slideDir = -1;
+    this.path = this.path.slice(0, -1);
+    this.clearSelection();
+    await this.refresh();
+  }
+
+  /** Opens a folder on the computer by its path; '' opens the drive list. */
+  async openHost(path, dir = 1) {
+    this.view = 'computer';
+    this.query = '';
+    this.slideDir = dir;
+    this.path = hostTrail(path);
+    this.clearSelection();
+    await this.refresh();
+  }
+
+  /** Times a drive. `write` false reads only, for a drive that cannot be written. */
+  async speedTest(drive, write = true) {
+    if (this.testing) return;
+    this.testing = `${drive.path}|${write ? 'write' : 'read'}`;
+    try {
+      const result = await this.adapter.hostSpeedTest(drive.path, write);
+      const read = `read ${result.readMbps} MB/s`;
+      this.toast(result.writeMbps != null ? `${drive.name}: write ${result.writeMbps} MB/s, ${read}` : `${drive.name}: ${read}`);
+      await this.loadComputer();
+    } finally {
+      this.testing = null;
+    }
+  }
+
   // ---------- navigation ----------
   async setView(v) {
-    if (this.view === v) return;
+    if (this.view === v && !(v === 'computer' && !this.atComputerTop)) return;
     this.view = v;
     this.slideDir = 1;
     if (v === 'drive') this.path = [{ id: 'root', name: 'My Drive' }];
+    if (v === 'computer') this.path = hostTrail('');
+    // Recent, Starred and the rest add new files to My Drive, never to a computer folder.
+    else if (isHostId(this.cwd.id)) this.path = [{ id: 'root', name: 'My Drive' }];
     this.query = '';
     this.clearSelection();
     await this.refresh();
@@ -265,7 +389,7 @@ class DriveStore {
   async openNode(node) {
     if (!node) return;
     if (node.kind === 'folder') {
-      this.view = 'drive';
+      this.view = isHostId(node.id) ? 'computer' : 'drive';
       this.query = '';
       this.slideDir = 1;
       this.path = [...this.path, { id: node.id, name: node.name }];
@@ -277,7 +401,11 @@ class DriveStore {
   }
 
   async goUp() {
-    if (this.view !== 'drive' || this.path.length <= 1 || this.query) return;
+    if (!this.browsing || this.query) return;
+    if (this.path.length <= 1) {
+      if (this.canClimb) await this.climb(); // Backspace at the top of My Drive is "../" too
+      return;
+    }
     this.slideDir = -1;
     this.path = this.path.slice(0, -1);
     this.clearSelection();
@@ -285,7 +413,7 @@ class DriveStore {
   }
 
   async goToCrumb(i) {
-    if (this.view !== 'drive') return;
+    if (!this.browsing) return;
     this.slideDir = -1;
     this.path = this.path.slice(0, i + 1);
     this.query = '';
@@ -393,6 +521,7 @@ class DriveStore {
 
   // ---------- mutations (all instant-feeling) ----------
   async newFolder() {
+    if (this.atComputerTop) return this.toast('Open a drive first');
     const node = await this.adapter.createFolder('New folder', this.cwd.id);
     this.query = '';
     await this.refresh();
@@ -437,7 +566,8 @@ class DriveStore {
     this.clearSelection();
     this.menu = null;
     await this.refresh();
-    this.toast(ids.length > 1 ? `${ids.length} moved to Trash` : 'Moved to Trash');
+    const where = isHostId(ids[0]) ? this.binName : 'Trash';
+    this.toast(ids.length > 1 ? `${ids.length} moved to ${where}` : `Moved to ${where}`);
   }
 
   async restoreSelection() {
@@ -482,6 +612,7 @@ class DriveStore {
   async uploadFiles(fileList) {
     const files = [...fileList];
     if (!files.length) return;
+    if (this.atComputerTop) return this.toast('Open a drive first');
     const made = await this.adapter.upload(files, this.cwd.id);
     await this.refresh();
     this.toast(made.length > 1 ? `${made.length} uploaded` : 'Uploaded');

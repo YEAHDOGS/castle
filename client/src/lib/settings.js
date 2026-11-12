@@ -44,6 +44,7 @@ export const SETTINGS = [
   { id: 'storage.versions', group: 'storage', where: 'box', type: 'number', default: 10, min: 0, max: 100, unit: 'versions', label: 'Keep old versions', help: 'How many earlier versions of a changed file to keep. 0 keeps none.' },
   { id: 'storage.quotaGb', group: 'storage', where: 'box', type: 'number', default: 0, min: 0, max: 100000, unit: 'GB', label: 'Space per person', help: 'The most each person may store. 0 means no limit.' },
   { id: 'storage.confirmDelete', group: 'storage', where: 'device', type: 'toggle', default: true, live: true, label: 'Ask before deleting for good', help: 'Shows a confirmation before a file is removed from the trash permanently.' },
+  { id: 'storage.showHidden', group: 'storage', where: 'device', type: 'toggle', default: false, live: true, label: 'Show hidden files on the computer', help: 'Files the system hides (and names starting with a dot) appear, faded, when you browse This computer.' },
   { id: 'storage.fileView', group: 'storage', where: 'device', type: 'choice', default: 'grid', live: true, label: 'Show files as', help: 'The layout Storage opens in.', options: [choice('grid', 'Grid'), choice('list', 'List')] },
 
   // ---- arcade ----

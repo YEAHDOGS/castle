@@ -14,6 +14,7 @@ const DAY = 864e5;
 const KB = 1024;
 const MB = 1024 ** 2;
 const GB = 1024 ** 3;
+const MIN_MS = 6e4;
 const FIRST_PERSON_ID = 'alex'; // gets the full set below; everyone else gets personalNodes
 const PHOTO_ROLL_COUNT = 36; // enough to scroll the grid and test range selection
 const PHOTO_TINTS = [
@@ -135,4 +136,95 @@ function personalNodes(person) {
     file('pic1', 'park.jpg', `${tag}-pics`, { mime: 'image/jpeg', size: 2.9 * MB, modified: now - 6 * DAY, thumb: svgThumb('PARK.JPG', PHOTO_TINTS[5][0], PHOTO_TINTS[5][1]) }),
     file('old', 'old-draft.txt', ROOT, { mime: 'text/plain', size: 12, trashed: true, text: 'Never mind.\n' }),
   ];
+}
+
+// ---- This computer: the machine the demo box pretends to run on ----
+
+const DEMO_VAULT = 'C:\\Castle';
+const DEMO_SERIALS = { c: '38FC6224', e: '5A1E09C3', f: 'C0FFEE42', d: '7D1B0A11', g: '0BADF00D' };
+
+/**
+ * A computer with a system drive, a USB stick, an SD card and a disc in the drive, plus a
+ * stick that was plugged in last week. Its folders are nodes with "host:" ids, so the same
+ * browser opens them.
+ */
+export function demoComputer() {
+  const now = Date.now();
+  const at = (path) => `host:${path}`;
+  const parentOf = (path) => {
+    const cut = path.replace(/\\$/, '').lastIndexOf('\\');
+    const up = path.slice(0, cut);
+    return at(/^[A-Z]:$/.test(up) ? `${up}\\` : up);
+  };
+  const item = (path, extra = {}) => ({
+    id: at(path), name: path.split('\\').pop(), parentId: parentOf(path), kind: 'file',
+    mime: 'application/octet-stream', size: 0, modified: now - 4 * DAY,
+    starred: false, trashed: false, shared: false, hidden: false, link: false, readOnly: false, ...extra,
+  });
+  const dir = (path, extra = {}) => item(path, { kind: 'folder', mime: '', ...extra });
+  const pic = (path, tint, extra = {}) =>
+    item(path, { mime: 'image/jpeg', size: 4.1 * MB, thumb: svgThumb(path.split('\\').pop().toUpperCase(), tint[0], tint[1]), ...extra });
+  const shots = (folder, prefix, count, tint0) =>
+    Array.from({ length: count }, (_, i) => pic(`${folder}\\${prefix}${String(i + 1).padStart(4, '0')}.JPG`, PHOTO_TINTS[(i + tint0) % PHOTO_TINTS.length], { modified: now - (i + 1) * HOUR }));
+
+  const nodes = [
+    // C: the system drive, with the vault on it
+    dir('C:\\Castle', { modified: now - 1 * HOUR }),
+    dir('C:\\Program Files', { modified: now - 20 * DAY }),
+    dir('C:\\Users', { modified: now - 9 * DAY }),
+    dir('C:\\Windows', { modified: now - 2 * DAY }),
+    dir('C:\\$Recycle.Bin', { hidden: true }),
+    item('C:\\pagefile.sys', { size: 12 * GB, hidden: true, modified: now - 1 * HOUR }),
+    dir('C:\\Program Files\\Castle', { modified: now - 3 * DAY }),
+    item('C:\\Program Files\\Castle\\castled.exe', { mime: 'application/x-msdownload', size: 9.6 * MB }),
+    dir('C:\\Users\\alex', { modified: now - 1 * DAY }),
+    dir('C:\\Users\\alex\\Desktop', { modified: now - 3 * HOUR }),
+    dir('C:\\Users\\alex\\Documents', { modified: now - 2 * DAY }),
+    dir('C:\\Users\\alex\\Downloads', { modified: now - 5 * HOUR }),
+    dir('C:\\Users\\alex\\Pictures', { modified: now - 6 * DAY }),
+    dir('C:\\Users\\alex\\.ssh', { hidden: true }),
+    item('C:\\Users\\alex\\NTUSER.DAT', { size: 3 * MB, hidden: true }),
+    item('C:\\Users\\alex\\Desktop\\todo.txt', { mime: 'text/plain', size: 61, modified: now - 3 * HOUR, text: '- back up the camera card\n- test the new USB stick\n- dog food\n' }),
+    item('C:\\Users\\alex\\Documents\\lease-2026.pdf', { mime: 'application/pdf', size: 1.1 * MB, modified: now - 30 * DAY }),
+    item('C:\\Users\\alex\\Downloads\\installer.msi', { mime: 'application/x-msi', size: 84 * MB, modified: now - 5 * HOUR }),
+    item('C:\\Users\\alex\\Downloads\\holiday.mp4', { mime: 'video/mp4', size: 1.4 * GB, modified: now - 2 * DAY }),
+    pic('C:\\Users\\alex\\Pictures\\wallpaper.jpg', PHOTO_TINTS[2]),
+    dir('C:\\Windows\\System32', { modified: now - 2 * DAY }),
+    item('C:\\Windows\\explorer.exe', { mime: 'application/x-msdownload', size: 5.2 * MB, readOnly: true }),
+
+    // E: a USB stick
+    dir('E:\\Music', { modified: now - 3 * DAY }),
+    dir('E:\\Backups', { modified: now - 8 * DAY }),
+    item('E:\\Music\\mixtape.mp3', { mime: 'audio/mpeg', size: 7.4 * MB }),
+    item('E:\\Backups\\phone-2026-10.zip', { mime: 'application/zip', size: 5.9 * GB, modified: now - 8 * DAY }),
+    item('E:\\README.txt', { mime: 'text/plain', size: 44, text: 'If found, please return this stick to Alex.\n' }),
+
+    // F: a camera's SD card
+    dir('F:\\DCIM', { modified: now - 2 * HOUR }),
+    dir('F:\\DCIM\\100CANON', { modified: now - 2 * HOUR }),
+    ...shots('F:\\DCIM\\100CANON', 'IMG_', 14, 0),
+
+    // D: a DVD
+    dir('D:\\VIDEO_TS', { modified: now - 900 * DAY, readOnly: true }),
+    item('D:\\VIDEO_TS\\VTS_01_1.VOB', { mime: 'video/mpeg', size: 1 * GB, modified: now - 900 * DAY, readOnly: true }),
+    item('D:\\autorun.inf', { mime: 'text/plain', size: 52, modified: now - 900 * DAY, readOnly: true, text: '[autorun]\nlabel=SUMMER FILMS\n' }),
+  ];
+
+  const drive = (letter, extra) => ({
+    key: `${DEMO_SERIALS[letter.toLowerCase()]}|${extra.fileSystem}|${extra.total}`,
+    path: `${letter}:\\`, label: '', media: true, readOnly: false, vault: false, removable: false,
+    serial: DEMO_SERIALS[letter.toLowerCase()], firstSeen: now - 200 * DAY, pluggedIn: now - 6 * DAY, lastTest: null, ...extra,
+  });
+  const drives = [
+    drive('C', { name: 'Local Disk (C:)', kind: 'fixed', fileSystem: 'NTFS', total: 1000 * GB, free: 412 * GB, bus: 'NVMe', model: 'Samsung SSD 990 PRO 1TB', vault: true }),
+    drive('D', { name: 'SUMMER FILMS (D:)', label: 'SUMMER FILMS', kind: 'optical', removable: true, readOnly: true, fileSystem: 'UDF', total: 4.4 * GB, free: 0, bus: 'SATA', model: 'HL-DT-ST DVDRAM GH24NSD1', firstSeen: now - 40 * HOUR, pluggedIn: now - 40 * MIN_MS }),
+    drive('E', { name: 'KINGSTON (E:)', label: 'KINGSTON', kind: 'removable', removable: true, fileSystem: 'exFAT', total: 64 * GB, free: 51 * GB, bus: 'USB', model: 'Kingston DataTraveler 3.0', firstSeen: now - 61 * DAY, pluggedIn: now - 2 * HOUR,
+      lastTest: { at: now - 9 * DAY, mode: 'write', writeMbps: 38.2, readMbps: 131.4, bytes: 256 * MB } }),
+    drive('F', { name: 'EOS_DIGITAL (F:)', label: 'EOS_DIGITAL', kind: 'removable', removable: true, fileSystem: 'FAT32', total: 32 * GB, free: 9.5 * GB, bus: 'SD', model: 'Generic SD/MMC', firstSeen: now - 12 * MIN_MS, pluggedIn: now - 12 * MIN_MS }),
+  ];
+  const gone = [
+    { name: 'BACKUP_2TB (G:)', path: 'G:\\', kind: 'external', total: 2000 * GB, firstSeen: now - 300 * DAY, lastSeen: now - 7 * DAY,
+      lastTest: { at: now - 7 * DAY, mode: 'write', writeMbps: 118.6, readMbps: 162.9, bytes: 256 * MB } },
+  ];
+  return { vault: DEMO_VAULT, separator: '\\', drives, gone, nodes };
 }

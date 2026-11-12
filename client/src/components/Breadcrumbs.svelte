@@ -4,7 +4,7 @@
   import { store } from '../lib/store.svelte.js';
 </script>
 
-{#if store.view === 'drive' && !store.query}
+{#if store.browsing && !store.query}
   <nav class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-hairline-faint px-4 py-2.5 md:px-6" aria-label="Breadcrumb">
     {#each store.path as crumb, i (crumb.id)}
       {@const last = i === store.path.length - 1}
@@ -27,6 +27,6 @@
   </div>
 {:else}
   <div class="micro shrink-0 border-b border-hairline-faint px-4 py-2.5 text-text-dim md:px-6">
-    {{ drive: 'MY DRIVE', shared: 'SHARED', recent: 'RECENT', starred: 'STARRED', trash: 'TRASH' }[store.view]}
+    {{ drive: 'MY DRIVE', computer: 'THIS COMPUTER', shared: 'SHARED', recent: 'RECENT', starred: 'STARRED', trash: 'TRASH' }[store.view]}
   </div>
 {/if}

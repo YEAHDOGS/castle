@@ -2,6 +2,9 @@
 // The Tauri shell swaps in a native adapter later; the UI only talks to this contract.
 
 import { uid } from './format.js';
+import { isHostId } from './computer.js';
+
+const HOST_TEST_MS = 1600; // how long the demo's drive speed test pretends to take
 
 /**
  * Node: { id, name, kind: 'folder'|'file', parentId, mime, size, modified,
@@ -82,6 +85,12 @@ export class LocalStorageAdapter extends StorageAdapter {
     this.objectUrls = new Map();
     this.nodes = new Map();
     this.fixed = !!options.nodes;
+    // The demo's pretend computer: drives, and folders on them as nodes with "host:" ids.
+    if (options.computer) {
+      this.computer = options.computer;
+      this.hostDrives = async () => structuredClone({ ...this.computer, nodes: undefined, at: Date.now() });
+      this.hostSpeedTest = (path, write = true) => this.#fakeSpeedTest(path, write);
+    }
     if (this.fixed) {
       for (const node of options.nodes) this.nodes.set(node.id, node);
       return;
@@ -112,12 +121,35 @@ export class LocalStorageAdapter extends StorageAdapter {
     return [...this.nodes.values()].filter((n) => n.parentId === parentId && !n.trashed);
   }
 
+  /** Vault nodes only: the computer's files are not in Recent, Starred, search or the meter. */
+  #vault() {
+    return [...this.nodes.values()].filter((n) => !isHostId(n.id));
+  }
+
+  async #fakeSpeedTest(path, write) {
+    const drive = this.computer.drives.find((d) => d.path === path);
+    if (!drive) throw new Error('That drive is not plugged in.');
+    if (write && drive.readOnly) throw new Error('This drive cannot be written to. Run the read-only test instead.');
+    await new Promise((resolve) => setTimeout(resolve, HOST_TEST_MS));
+    const base = { fixed: 2400, external: 410, removable: 92, optical: 21 }[drive.kind] || 100;
+    const wobble = () => 0.9 + Math.random() * 0.2;
+    const result = {
+      at: Date.now(),
+      mode: write ? 'write' : 'read',
+      writeMbps: write ? Math.round(base * 0.55 * wobble() * 10) / 10 : null,
+      readMbps: Math.round(base * wobble() * 10) / 10,
+      bytes: 256 * 1024 * 1024,
+    };
+    drive.lastTest = result;
+    return result;
+  }
+
   async listChildren(parentId) { return this.#kids(parentId); }
   async get(id) { return this.nodes.get(id) || null; }
-  async all() { return [...this.nodes.values()]; }
+  async all() { return this.#vault(); }
 
   async createFolder(name, parentId) {
-    const node = { id: uid(), name, kind: 'folder', parentId, mime: '', size: 0, modified: Date.now(), starred: false, trashed: false, shared: false };
+    const node = { id: this.#newId(parentId, name), name, kind: 'folder', parentId, mime: '', size: 0, modified: Date.now(), starred: false, trashed: false, shared: false };
     this.nodes.set(node.id, node);
     this.#save();
     return node;
@@ -133,6 +165,7 @@ export class LocalStorageAdapter extends StorageAdapter {
   }
 
   async toggleStar(id) {
+    if (isHostId(id)) throw new Error('Stars are for files in My Drive');
     const node = this.nodes.get(id);
     if (!node) return null;
     node.starred = !node.starred;
@@ -141,6 +174,8 @@ export class LocalStorageAdapter extends StorageAdapter {
   }
 
   async trash(id) {
+    // The demo computer has no Recycle Bin to look in: a file sent there is just gone.
+    if (isHostId(id)) return this.deleteForever(id);
     const node = this.nodes.get(id);
     if (!node) return;
     // trashing a folder trashes its subtree
@@ -193,7 +228,7 @@ export class LocalStorageAdapter extends StorageAdapter {
     const made = [];
     for (const file of files) {
       const node = {
-        id: uid(), name: file.name || 'untitled', kind: 'file', parentId,
+        id: this.#newId(parentId, file.name || 'untitled'), name: file.name || 'untitled', kind: 'file', parentId,
         mime: file.type || 'application/octet-stream', size: file.size || 0,
         modified: Date.now(), starred: false, trashed: false, shared: false,
       };
@@ -226,14 +261,24 @@ export class LocalStorageAdapter extends StorageAdapter {
     return true;
   }
 
+  /** A computer item's id is its path; a vault item's is random. */
+  #newId(parentId, name) {
+    if (!isHostId(parentId)) return uid();
+    const sep = parentId.includes('/') ? '/' : '\\';
+    const base = parentId.endsWith(sep) ? parentId : parentId + sep;
+    let id = base + name;
+    for (let n = 2; this.nodes.has(id); n++) id = `${base}${name} (${n})`;
+    return id;
+  }
+
   async search(q) {
     const s = q.trim().toLowerCase();
     if (!s) return [];
-    return [...this.nodes.values()].filter((n) => !n.trashed && n.name.toLowerCase().includes(s));
+    return this.#vault().filter((n) => !n.trashed && n.name.toLowerCase().includes(s));
   }
 
   async recent(limit = 15) {
-    return [...this.nodes.values()]
+    return this.#vault()
       .filter((n) => !n.trashed && n.kind === 'file')
       .sort((a, b) => b.modified - a.modified)
       .slice(0, limit);
@@ -241,7 +286,7 @@ export class LocalStorageAdapter extends StorageAdapter {
 
   async stats() {
     let used = 0;
-    for (const n of this.nodes.values()) if (!n.trashed && n.kind === 'file') used += n.size || 0;
+    for (const n of this.#vault()) if (!n.trashed && n.kind === 'file') used += n.size || 0;
     return { used, quota: this.fixed ? FIXED_QUOTA : QUOTA };
   }
 }

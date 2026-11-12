@@ -5,7 +5,8 @@
 // Samba or any other file-sharing protocol on the device.
 
 import { StorageAdapter, LocalStorageAdapter } from './adapter.js';
-import { isDemoRoute, demoNodes } from './demo.js';
+import { isDemoRoute, demoNodes, demoComputer } from './demo.js';
+import { HOST_ROOT, isHostId, hostPath, hostId } from './computer.js';
 
 const BOX_KEY = 'castle-box-v1';
 const API_BASE = '/api/v1';
@@ -17,6 +18,9 @@ const TEXT_MAX_BYTES = 20000; // text files up to this size get an inline previe
 const TEXT_MIMES = ['application/json'];
 const UNREACHABLE = "Can't reach the box";
 const LOCAL_HOSTS = ['127.0.0.1', 'localhost']; // a connect link may only name a box on this computer
+// A folder on the computer can hold thousands of pictures: only this many get a thumbnail.
+const HOST_PREVIEWS_PER_FOLDER = 48;
+const NO_STARS = 'Stars are for files in My Drive';
 
 /** @returns {{ url: string, token: string } | null} the remembered box, if any */
 export function readBox() {
@@ -130,21 +134,46 @@ export class HttpAdapter extends StorageAdapter {
     return node;
   }
 
+  /** Computer item from the box -> UI node: ids carry "host:", drives sit in This computer. */
+  toHostNode(raw) {
+    const node = {
+      ...raw,
+      id: hostId(raw.id),
+      parentId: raw.parentId ? hostId(raw.parentId) : HOST_ROOT,
+      starred: false,
+      trashed: false,
+      shared: false,
+    };
+    const key = `${node.id}:${node.modified}`;
+    if (this.thumbs.has(key)) node.thumb = this.thumbs.get(key);
+    if (this.texts.has(key)) node.text = this.texts.get(key);
+    return node;
+  }
+
+  /** Where the bytes of a vault file or a computer file are fetched from. */
+  fileUrl(id) {
+    return isHostId(id) ? `/host/file?path=${encodeURIComponent(hostPath(id))}` : `/file?path=${encodeURIComponent(id)}`;
+  }
+
   /** Fetches thumbnails and text previews for small files, so the grid and preview work. */
   async attachPreviews(nodes) {
+    let hostBudget = HOST_PREVIEWS_PER_FOLDER;
     await Promise.all(
       nodes.map(async (node) => {
         if (node.kind !== 'file' || node.trashed) return;
         const key = `${node.id}:${node.modified}`;
         const mime = node.mime || '';
+        const isText = mime.startsWith('text/') || TEXT_MIMES.includes(mime);
+        const wantsThumb = mime.startsWith('image/') && node.size <= THUMB_MAX_BYTES && !this.thumbs.has(key);
+        const wantsText = isText && node.size <= TEXT_MAX_BYTES && !this.texts.has(key);
+        if (isHostId(node.id) && (wantsThumb || wantsText) && hostBudget-- <= 0) return;
         try {
-          if (mime.startsWith('image/') && node.size <= THUMB_MAX_BYTES && !this.thumbs.has(key)) {
-            const blob = await (await this.call(`/file?path=${encodeURIComponent(node.id)}`)).blob();
+          if (wantsThumb) {
+            const blob = await (await this.call(this.fileUrl(node.id))).blob();
             this.thumbs.set(key, URL.createObjectURL(blob));
           }
-          const isText = mime.startsWith('text/') || TEXT_MIMES.includes(mime);
-          if (isText && node.size <= TEXT_MAX_BYTES && !this.texts.has(key)) {
-            this.texts.set(key, await (await this.call(`/file?path=${encodeURIComponent(node.id)}`)).text());
+          if (wantsText) {
+            this.texts.set(key, await (await this.call(this.fileUrl(node.id))).text());
           }
         } catch {
           return; // a missing preview is not worth failing the whole listing
@@ -157,6 +186,10 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async listChildren(parentId) {
+    if (isHostId(parentId)) {
+      const res = await this.call(`/host/list?path=${encodeURIComponent(hostPath(parentId))}`);
+      return this.attachPreviews((await res.json()).map((n) => this.toHostNode(n)));
+    }
     const res = await this.call(`/list?path=${encodeURIComponent(toBoxId(parentId))}`);
     return this.attachPreviews((await res.json()).map((n) => this.toNode(n)));
   }
@@ -167,6 +200,7 @@ export class HttpAdapter extends StorageAdapter {
 
   async get(id) {
     try {
+      if (isHostId(id)) return this.toHostNode(await (await this.call(`/host/stat?path=${encodeURIComponent(hostPath(id))}`)).json());
       return this.toNode(await (await this.call(`/stat?path=${encodeURIComponent(id)}`)).json());
     } catch {
       return null;
@@ -174,19 +208,24 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async createFolder(name, parentId) {
+    if (isHostId(parentId)) return this.toHostNode(await (await this.post('/host/mkdir', { parent: hostPath(parentId), name })).json());
     return this.toNode(await (await this.post('/mkdir', { parent: toBoxId(parentId), name })).json());
   }
 
   async rename(id, name) {
+    if (isHostId(id)) return this.toHostNode(await (await this.post('/host/rename', { path: hostPath(id), name })).json());
     return this.toNode(await (await this.post('/rename', { id, name })).json());
   }
 
   async toggleStar(id) {
+    if (isHostId(id)) throw new Error(NO_STARS);
     return this.toNode(await (await this.post('/star', { id })).json());
   }
 
+  /** A vault file goes to Castle's Trash; a computer file to the Recycle Bin. */
   async trash(id) {
-    await this.post('/trash', { id });
+    if (isHostId(id)) await this.post('/host/trash', { path: hostPath(id) });
+    else await this.post('/trash', { id });
   }
 
   async restore(id) {
@@ -194,20 +233,26 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async deleteForever(id) {
-    await this.post('/delete', { id });
+    if (isHostId(id)) await this.post('/host/delete', { path: hostPath(id) });
+    else await this.post('/delete', { id });
   }
 
   async move(id, targetFolderId) {
+    if (isHostId(id) !== isHostId(targetFolderId)) throw new Error('Moving between My Drive and the computer is not here yet');
+    if (isHostId(id)) return this.toHostNode(await (await this.post('/host/move', { path: hostPath(id), target: hostPath(targetFolderId) })).json());
     return this.toNode(await (await this.post('/move', { id, target: toBoxId(targetFolderId) })).json());
   }
 
   /** Sends each file straight from disk to the box; the box never overwrites, it renames. */
   async upload(files, parentId) {
     const made = [];
+    const host = isHostId(parentId);
     for (const file of files) {
-      const query = `parent=${encodeURIComponent(toBoxId(parentId))}&name=${encodeURIComponent(file.name || 'untitled')}`;
-      const res = await this.call(`/upload?${query}`, { method: 'PUT', body: file });
-      made.push(this.toNode(await res.json()));
+      const parent = host ? hostPath(parentId) : toBoxId(parentId);
+      const query = `parent=${encodeURIComponent(parent)}&name=${encodeURIComponent(file.name || 'untitled')}`;
+      const res = await this.call(`${host ? '/host/upload' : '/upload'}?${query}`, { method: 'PUT', body: file });
+      const raw = await res.json();
+      made.push(host ? this.toHostNode(raw) : this.toNode(raw));
     }
     return made;
   }
@@ -221,7 +266,7 @@ export class HttpAdapter extends StorageAdapter {
    * so very large downloads need a streaming path before this is the final version.
    */
   download(node) {
-    this.call(`/file?path=${encodeURIComponent(node.id)}`)
+    this.call(this.fileUrl(node.id))
       .then((res) => res.blob())
       .then((blob) => {
         const href = URL.createObjectURL(blob);
@@ -252,6 +297,18 @@ export class HttpAdapter extends StorageAdapter {
 
   async stats() {
     return (await this.call('/stats')).json();
+  }
+
+  // ---- This computer: drives and folders beyond the vault ----
+
+  /** { vault, separator, drives, gone, at }. Fails when the box does not allow it. */
+  async hostDrives() {
+    return (await this.call('/host/drives')).json();
+  }
+
+  /** Times a drive. `write` false only reads files already on it. */
+  async hostSpeedTest(path, write = true) {
+    return (await this.post('/host/speedtest', { path, write })).json();
   }
 
   // ---- Clones: automations in Clonewars VMs (box started with --clonewars) ----
@@ -487,7 +544,8 @@ export async function localBox() {
 
 /** The fixed sample drive behind /demo: same files every visit, nothing saved. */
 export function fixedDemoAdapter(person = null) {
-  const adapter = new LocalStorageAdapter({ nodes: demoNodes(person) });
+  const computer = demoComputer();
+  const adapter = new LocalStorageAdapter({ nodes: [...demoNodes(person), ...computer.nodes], computer });
   adapter.isDemo = true;
   return adapter;
 }

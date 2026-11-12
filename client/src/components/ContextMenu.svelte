@@ -3,6 +3,7 @@
   import { FolderOpen, PenLine, Star, StarOff, Download, Trash2, RotateCcw, XOctagon } from '@lucide/svelte';
   import { scale, fade } from 'svelte/transition';
   import { store } from '../lib/store.svelte.js';
+  import { isHostId } from '../lib/computer.js';
   import { pop, reducedMotion } from '../lib/motion.js';
 
   const menu = $derived(store.menu);
@@ -28,6 +29,17 @@
         { label: 'Restore', icon: RotateCcw, fn: () => store.restoreSelection() },
         { label: 'Delete forever', icon: XOctagon, danger: true, fn: () => store.deleteForeverSelection() },
       ];
+    }
+    // A file on the computer: no stars, and a delete goes to the system's bin.
+    if (isHostId(node.id)) {
+      const rows = [
+        { label: node.kind === 'folder' ? 'Open' : 'Preview', icon: FolderOpen, fn: () => store.openNode(node) },
+        { label: 'Rename', hint: 'F2', icon: PenLine, fn: () => store.startRename(node.id) },
+      ];
+      if (node.kind === 'file') rows.push({ label: 'Download', icon: Download, fn: () => store.download(node.id) });
+      rows.push({ label: `Move to ${store.binName.replace(/^the /, '')}`, hint: 'DEL', icon: Trash2, danger: true, fn: () => store.trashSelection() });
+      rows.push({ label: 'Delete forever', icon: XOctagon, danger: true, fn: () => store.deleteForeverSelection() });
+      return rows;
     }
     const base = [
       { label: node.kind === 'folder' ? 'Open' : 'Preview', icon: FolderOpen, fn: () => store.openNode(node) },

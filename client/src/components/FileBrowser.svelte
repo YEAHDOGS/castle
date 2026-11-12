@@ -1,7 +1,7 @@
 <!-- FileBrowser: grid/list, selection, inline rename, drag-drop upload.
      Keyed by view+folder so folder drill-ins play a directional view-swap. -->
 <script>
-  import { Folder, File, FileText, Image as ImageIcon, Music, Film, Archive, Star, CloudOff } from '@lucide/svelte';
+  import { Folder, File, FileText, Image as ImageIcon, Music, Film, Archive, Star, CloudOff, CornerLeftUp, Link2 } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { store } from '../lib/store.svelte.js';
@@ -60,7 +60,51 @@
   function commitRename(node, value) {
     store.commitRename(node.id, value);
   }
+
+  function climb(e) {
+    e.stopPropagation();
+    store.climb();
+  }
 </script>
+
+<!-- "../": one folder up. At the top of My Drive it leads out into the computer. -->
+{#snippet climbTile()}
+  <button
+    type="button"
+    data-climb
+    onclick={climb}
+    ondblclick={(e) => e.stopPropagation()}
+    class="expo t-hover group relative cursor-pointer border border-dashed border-bridge/40 bg-bridge/[0.03] text-left transition-all hover:border-bridge/80 hover:bg-bridge/[0.07]"
+    aria-label={`Up to ${store.climbName}`}
+    title={`Up to ${store.climbName}`}
+  >
+    <div class="relative grid aspect-[16/10] place-items-center overflow-hidden border-b border-dashed border-bridge/25 bg-black/40">
+      <div class="flex items-center gap-2 text-bridge">
+        <CornerLeftUp class="expo t-hover h-9 w-9 transition-transform group-hover:-translate-y-1" strokeWidth={1.25} />
+        <span class="font-mono text-[26px] font-bold tracking-wider">../</span>
+      </div>
+    </div>
+    <div class="px-3 py-2.5">
+      <p class="truncate font-mono text-[13px] font-medium text-white">../</p>
+      <p class="micro mt-1 truncate text-bridge/80">UP TO {store.climbName.toUpperCase()}</p>
+    </div>
+  </button>
+{/snippet}
+
+{#snippet climbRow()}
+  <button
+    type="button"
+    data-climb
+    onclick={climb}
+    ondblclick={(e) => e.stopPropagation()}
+    class="expo t-hover flex w-full items-center gap-3 border-b border-dashed border-bridge/30 px-3 py-2.5 text-left transition-colors hover:bg-bridge/[0.06]"
+    aria-label={`Up to ${store.climbName}`}
+  >
+    <CornerLeftUp class="h-[18px] w-[18px] shrink-0 text-bridge" strokeWidth={1.75} />
+    <span class="font-mono text-[13px] text-white">../</span>
+    <span class="micro truncate text-bridge/80">UP TO {store.climbName.toUpperCase()}</span>
+  </button>
+{/snippet}
 
 <div
   bind:this={root}
@@ -80,6 +124,11 @@
   {#key viewKey}
     <div in:fly={viewSwap(store.slideDir)}>
       {#if store.items.length === 0}
+        {#if store.canClimb}
+          <div class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            {@render climbTile()}
+          </div>
+        {/if}
         <div class="wiregrid flex h-[50dvh] flex-col items-center justify-center gap-3">
           <CloudOff class="h-8 w-8 text-text-faint" strokeWidth={1.25} />
           <p class="micro text-text-faint">EMPTY SECTOR</p>
@@ -87,6 +136,9 @@
         </div>
       {:else if store.viewMode === 'grid'}
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {#if store.canClimb}
+            {@render climbTile()}
+          {/if}
           {#each store.items as node, i (node.id)}
             {@const Icon = iconFor(node)}
             {@const selected = store.selected.has(node.id)}
@@ -106,7 +158,7 @@
               oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); store.openMenu(e.clientX, e.clientY, node.id); }}
               class="expo t-hover group relative cursor-pointer border bg-white/[0.02] transition-all
                 {selected ? 'border-chiral/70 bg-chiral-dim/40' : 'border-hairline hover:border-white/20 hover:bg-white/[0.04]'}
-                {focused ? 'hud-focus' : ''}"
+                {focused ? 'hud-focus' : ''} {node.hidden ? 'opacity-55' : ''}"
               style={selected ? 'box-shadow: 0 0 18px rgba(255,106,0,.18)' : ''}
             >
               <!-- thumb -->
@@ -126,6 +178,9 @@
                 {/if}
                 {#if node.shared}
                   <span class="micro absolute left-2 top-2 bg-black/60 px-1.5 py-0.5 text-bridge">LINKED</span>
+                {/if}
+                {#if node.link}
+                  <span class="micro absolute left-2 top-2 flex items-center gap-1 bg-black/60 px-1.5 py-0.5 text-bridge"><Link2 class="h-3 w-3" />LINK</span>
                 {/if}
               </div>
               <!-- label -->
@@ -158,6 +213,9 @@
       {:else}
         <!-- list mode -->
         <div class="overflow-hidden border border-hairline">
+          {#if store.canClimb}
+            {@render climbRow()}
+          {/if}
           {#each store.items as node, i (node.id)}
             {@const Icon = iconFor(node)}
             {@const selected = store.selected.has(node.id)}
@@ -175,7 +233,7 @@
               oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); store.openMenu(e.clientX, e.clientY, node.id); }}
               class="expo t-hover flex cursor-pointer items-center gap-3 border-b border-hairline-faint px-3 py-2.5 transition-colors last:border-0
                 {selected ? 'bg-chiral-dim/50' : 'hover:bg-white/[0.03]'}
-                {focused ? 'hud-focus' : ''}"
+                {focused ? 'hud-focus' : ''} {node.hidden ? 'opacity-55' : ''}"
               style={selected ? 'box-shadow: inset 2px 0 0 var(--color-chiral)' : ''}
             >
               <Icon class="h-[18px] w-[18px] shrink-0 {node.kind === 'folder' ? 'text-chiral' : 'text-text-dim'}" strokeWidth={1.75} />
