@@ -439,6 +439,7 @@ export class DemoBox {
       host: 'castle',
       os: 'Debian GNU/Linux 13',
       uptimeSeconds: Math.round((Date.now() - DEMO_BOX_STARTED) / 1000),
+      uptimeMillis: Date.now() - DEMO_BOX_STARTED,
       cores: 4,
       cpuPercent: 22 + 14 * wave,
       memoryUsed: (2.6 + 0.3 * wave) * GB,
