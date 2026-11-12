@@ -1,7 +1,10 @@
 <!-- WheelMenu: the section switcher. A dial centred on the top-right corner of the screen;
      only its lower-left quarter is visible. Sections repeat around the rim so it turns
      forever in either direction. Scroll, drag, arrow keys or click to turn it; the section
-     under the beam is the one Enter (or a click) opens. -->
+     under the beam is the one Enter (or a click) opens.
+
+     The corner button itself does three things: a click opens or closes the dial, scrolling
+     over it opens the dial and turns it, and holding it goes back to Home. -->
 <script>
   import { X } from '@lucide/svelte';
   import { shell } from '../lib/shell.svelte.js';
@@ -18,6 +21,7 @@
   const SCROLL_THRESHOLD = 40; // wheel delta that counts as one notch
   const CONFIRM_DELAY_MS = 260; // lets the dial finish turning before the section changes
   const DRAG_CLICK_DEG = 4; // a drag shorter than this is treated as a click
+  const HOLD_HOME_MS = 550; // how long the corner button is held before it goes Home
   const SLOTS = Array.from({ length: SLOT_COUNT }, (_, k) => ({
     k,
     section: SECTIONS[k % SECTIONS.length],
@@ -71,6 +75,46 @@
     if (Math.abs(scrollSum) < SCROLL_THRESHOLD) return;
     index += Math.sign(scrollSum) * (prefs.get('look.wheelInvert') ? -1 : 1);
     scrollSum = 0;
+  }
+
+  /** Scrolling over the corner button: the dial opens if it is shut, and turns either way. */
+  function onTriggerWheel(e) {
+    if (!shell.wheelOpen) {
+      scrollSum = 0;
+      open();
+    }
+    onWheel(e);
+  }
+
+  // ---- holding the corner button goes Home ----
+  let holding = $state(false);
+  let holdTimer = null;
+  let heldHome = false; // the click that ends a completed hold must not also toggle the dial
+
+  function startHold(e) {
+    if (e.button) return; // primary button or a finger only
+    heldHome = false;
+    holding = true;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      holding = false;
+      heldHome = true;
+      shell.goHome();
+    }, HOLD_HOME_MS);
+  }
+
+  function endHold() {
+    holding = false;
+    clearTimeout(holdTimer);
+  }
+
+  function onTriggerClick() {
+    if (heldHome) {
+      heldHome = false;
+      return;
+    }
+    if (shell.wheelOpen) close();
+    else open();
   }
 
   function onKey(e) {
@@ -128,8 +172,17 @@
 <button
   class="trigger fixed right-3 top-3 z-[70] grid h-10 w-10 place-items-center rounded-full text-chiral"
   class:open={shell.wheelOpen}
-  onclick={() => (shell.wheelOpen ? close() : open())}
-  aria-label={shell.wheelOpen ? 'Close the section wheel' : `Sections. Now in ${current.label}`}
+  class:holding
+  style="--hold: {HOLD_HOME_MS}ms"
+  onclick={onTriggerClick}
+  onwheel={onTriggerWheel}
+  onpointerdown={startHold}
+  onpointerup={endHold}
+  onpointerleave={endHold}
+  onpointercancel={endHold}
+  oncontextmenu={(e) => e.preventDefault()}
+  aria-label={shell.wheelOpen ? 'Close the section wheel' : `Sections. Now in ${current.label}. Scroll to turn the wheel, hold to go Home`}
+  title="Click or scroll for sections · hold for Home"
   aria-expanded={shell.wheelOpen}
   aria-haspopup="dialog"
 >
@@ -194,7 +247,7 @@
         <p class="name">{active.label}</p>
         <p class="tagline">{active.tagline}</p>
       {/key}
-      <p class="micro mt-3 text-text-faint">SCROLL OR DRAG TO TURN · ENTER TO OPEN</p>
+      <p class="micro mt-3 text-text-faint">SCROLL OR DRAG TO TURN · ENTER TO OPEN · HOLD THE CORNER FOR HOME</p>
     </div>
   </div>
 {/if}
@@ -221,6 +274,18 @@
   .trigger.open { color: #fff; }
   .trigger.open::before { animation-duration: 1.6s; }
   @keyframes ring-spin { to { transform: rotate(360deg); } }
+  /* A long press must not select text or raise the phone's own press menu. */
+  .trigger { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  /* Held: the button fills from the rim inwards, and is full at the moment it goes Home. */
+  .trigger.holding {
+    animation: hold-fill var(--hold) linear forwards;
+    border-color: var(--color-chiral);
+  }
+  .trigger.holding::before { animation-duration: 0.9s; }
+  @keyframes hold-fill {
+    from { box-shadow: inset 0 0 0 0 color-mix(in srgb, var(--color-chiral) 45%, transparent); }
+    to { box-shadow: inset 0 0 0 20px color-mix(in srgb, var(--color-chiral) 45%, transparent), 0 0 24px color-mix(in srgb, var(--color-chiral) 60%, transparent); }
+  }
 
   /* ---- overlay ---- */
   .overlay {
