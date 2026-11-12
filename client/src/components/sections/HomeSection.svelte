@@ -114,6 +114,11 @@
         const stats = await store.adapter.stats();
         return `${fmtSize(stats.used)} stored`;
       },
+      ai: async () => {
+        if (store.isDemo || !store.adapter.aiStatus) throw new Error('no box'); // the tile keeps its tagline
+        const ai = await store.adapter.aiStatus();
+        return ai.running ? 'DOGS AI is running' : ai.dir ? 'DOGS AI is stopped' : 'DOGS AI is not installed';
+      },
       clones: async () => {
         const list = await shell.clonesSource.clones();
         const running = list.filter((a) => a.state === 'running').length;

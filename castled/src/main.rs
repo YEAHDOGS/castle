@@ -12,6 +12,7 @@
 //!   * Uploads stream to a temp file and are renamed into place, so a dropped connection
 //!     never leaves half a file where a whole one is expected.
 
+mod ai;
 mod arcade;
 mod clones;
 mod dns;
@@ -102,6 +103,10 @@ struct AppState {
     steam: Arc<steam::SteamCache>,
     /// Where the box's DNS server listens, once it does.
     dns: Mutex<Option<SocketAddr>>,
+    /// DOGS AI's server, which the AI section shows.
+    ai: ai::Ai,
+    /// The content policy sent with every answer (see harden).
+    policy: HeaderValue,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -1159,6 +1164,42 @@ async fn steam_dns_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json
 }
 
 // ---------------------------------------------------------------------------------------
+// AI: DOGS AI's server, run by the box (see ai.rs)
+// ---------------------------------------------------------------------------------------
+
+async fn ai_status(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
+    tokio::task::spawn_blocking(move || st.ai.status()).await.map(Json).map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))
+}
+
+/// Starting and stopping run programs on this computer, so only from this computer.
+async fn ai_start(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
+    local_only(&st)?;
+    tokio::task::spawn_blocking(move || {
+        st.ai.start().map_err(|msg| ApiError::conflict(&msg))?;
+        // Give it a moment to open its port, so the answer says whether it is up.
+        for _ in 0..20 {
+            if st.ai.status().running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        Ok(Json(st.ai.status()))
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn ai_stop(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
+    local_only(&st)?;
+    tokio::task::spawn_blocking(move || {
+        st.ai.stop();
+        Json(st.ai.status())
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))
+}
+
+// ---------------------------------------------------------------------------------------
 // Clones: machines and automations in Clonewars VMs (see clones.rs)
 // ---------------------------------------------------------------------------------------
 
@@ -1732,6 +1773,18 @@ async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Re
 /// address of this page to anyone.
 const CONTENT_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';     img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self';     object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
+/// The content policy, plus the one thing it lets in from elsewhere: DOGS AI's app, shown in
+/// the AI section from its own server on this computer (or on the box, over the network).
+fn content_policy(listen: SocketAddr) -> HeaderValue {
+    let mut frames = String::from("'self' http://127.0.0.1:* http://localhost:*");
+    if !listen.ip().is_loopback() && !listen.ip().is_unspecified() {
+        frames.push_str(&format!(" http://{}:*", listen.ip()));
+    } else if listen.ip().is_unspecified() {
+        frames.push_str(" http:");
+    }
+    HeaderValue::from_str(&format!("{CONTENT_POLICY}; frame-src {frames}")).unwrap_or_else(|_| HeaderValue::from_static(CONTENT_POLICY))
+}
+
 /// Runs on every request, before anything else.
 ///
 /// A box that listens only on this computer answers only to this computer's names. Without
@@ -1747,7 +1800,7 @@ async fn harden(State(st): State<Shared>, req: Request, next: Next) -> Response 
     }
     let mut res = next.run(req).await;
     let headers = res.headers_mut();
-    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CONTENT_POLICY));
+    headers.insert(header::CONTENT_SECURITY_POLICY, st.policy.clone());
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
@@ -1896,6 +1949,9 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/steam/refresh", post(steam_refresh))
         .route("/steam/enable", post(steam_enable))
         .route("/steam/dns/enable", post(steam_dns_enable))
+        .route("/ai", get(ai_status))
+        .route("/ai/start", post(ai_start))
+        .route("/ai/stop", post(ai_stop))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
@@ -2012,6 +2068,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         theater: theater::Theater::open(root.join(META_DIR).join("theater")),
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),
+        ai: ai::Ai::new(addr, &root.join(META_DIR)),
+        policy: content_policy(addr),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
@@ -2088,6 +2146,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // DOGS AI starts with the box when a copy of it is there and its app is built.
+    let ai_state = state.clone();
+    std::thread::spawn(move || {
+        let status = ai_state.ai.status();
+        if status.dir.is_some() && status.built && status.node && !status.running {
+            if let Err(msg) = ai_state.ai.start() {
+                eprintln!("[castled] {msg}");
+            }
+        }
+    });
+
     // Theater walks its libraries once at start, then every hour, to pick up new files.
     let scanner = state.clone();
     tokio::spawn(async move {
@@ -2099,11 +2168,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    let stopping = state.clone();
     axum::serve(listener, router(state, cfg.web))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await?;
+    // The dogs server goes down with the box.
+    stopping.ai.stop();
     Ok(())
 }
 

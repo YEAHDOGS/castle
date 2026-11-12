@@ -1,0 +1,17 @@
+{
+  "name": "comfy-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server that lets opencode generate/edit images with FLUX.3 Klein through a local ComfyUI.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "3.25.76"
+  }
+}

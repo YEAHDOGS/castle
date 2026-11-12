@@ -1,0 +1,13 @@
+{
+  "name": "dogs-ai-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dogs CLI and HTTP API: local image, video and audio generation through ComfyUI.",
+  "type": "module",
+  "bin": { "dogs": "bin/dogs.mjs" },
+  "scripts": {
+    "start": "node bin/dogs.mjs serve",
+    "test": "node --test test/"
+  },
+  "engines": { "node": ">=22" }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DOGS AI",
+  "version": "../package.json",
+  "identifier": "net.wearedogs.ai",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": {
+        "default-src": "'self' 'unsafe-inline' data:",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* http: https:",
+        "img-src": "'self' http://127.0.0.1:* http://localhost:* http: https: data: blob:",
+        "media-src": "http://127.0.0.1:* http://localhost:* http: https: blob:",
+        "worker-src": "blob:"
+      },
+      "devCsp": {
+        "default-src": "'self' 'unsafe-inline' data:",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* http: https: ws://127.0.0.1:* ws://localhost:*",
+        "img-src": "'self' http://127.0.0.1:* http://localhost:* http: https: data: blob:",
+        "media-src": "http://127.0.0.1:* http://localhost:* http: https: blob:",
+        "worker-src": "blob:"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "GraphicsAndDesign",
+    "shortDescription": "Local image, video and audio generation",
+    "publisher": "DOGS",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}

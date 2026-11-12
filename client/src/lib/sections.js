@@ -5,7 +5,7 @@ import { House, HardDrive, BrainCircuit, Gamepad2, Clapperboard, Boxes, Globe, S
 export const SECTIONS = [
   { id: 'home', label: 'Home', tagline: 'The box at a glance', icon: House },
   { id: 'storage', label: 'Storage', tagline: 'Files, photos and backups', icon: HardDrive },
-  { id: 'ai', label: 'AI', tagline: 'Local models and chat', icon: BrainCircuit },
+  { id: 'ai', label: 'AI', tagline: 'DOGS AI: images, video, audio and chat', icon: BrainCircuit },
   { id: 'arcade', label: 'Arcade', tagline: 'Your game library', icon: Gamepad2 },
   { id: 'theater', label: 'Theater', tagline: 'Films, shows, music and photos', icon: Clapperboard },
   { id: 'clones', label: 'Clones', tagline: 'Virtual machines and automations', icon: Boxes },

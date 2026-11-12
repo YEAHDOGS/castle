@@ -1,0 +1,18 @@
+{
+  "name": "dogs-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local image, video and audio generation: dogs CLI + API, ComfyUI, and the DOGS AI desktop app.",
+  "type": "module",
+  "bin": { "dogs": "server/bin/dogs.mjs" },
+  "scripts": {
+    "serve": "node server/bin/dogs.mjs serve",
+    "app:install": "npm --prefix app install",
+    "web": "npm --prefix app run build && node server/bin/dogs.mjs serve",
+    "desktop": "npm --prefix app run desktop",
+    "desktop:dev": "npm --prefix app run desktop",
+    "dist": "npm --prefix app run desktop:dist",
+    "dist:dir": "npm --prefix app run desktop:dir"
+  },
+  "engines": { "node": ">=22" }
+}

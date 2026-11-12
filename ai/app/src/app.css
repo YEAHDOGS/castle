@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/* Black · void · glass · liquid · licorice.
+   Tokens become Tailwind utilities, e.g. text-neon-red, bg-card/60, border-glass-edge. */
+@theme {
+  --color-neon-red: #ff3344;
+  --color-app: #020203;
+  --color-card: #0b0b0e;
+  --color-card-hover: #121217;
+  --color-muted: #8a8a98;
+  --color-glass-edge: rgb(255 255 255 / 7%);
+}
+
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--color-app);
+  -webkit-tap-highlight-color: transparent;
+}
+
+code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.92em;
+}
+
+/* Frosted glass: blurred, faintly lit from the top edge, almost no tint. */
+@utility glass {
+  background: linear-gradient(180deg, rgb(255 255 255 / 4.5%), rgb(255 255 255 / 1.5%) 40%, rgb(255 255 255 / 0.8%));
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--color-glass-edge);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 10px 40px rgb(0 0 0 / 45%);
+}
+
+/* Modal scrim: starts under the header (see --header-h in Header.svelte), dims and smudges the page behind. */
+@utility scrim {
+  position: fixed;
+  inset: var(--header-h, 57px) 0 0 0;
+  background: rgb(0 0 0 / 60%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Glass for panels over a scrim: same edge and highlight, but dark enough to read on. */
+@utility glass-panel {
+  @apply glass;
+  background-color: rgb(0 0 0 / 85%);
+}
+
+/* Licorice: glossy black with a wet highlight on top and a red glow at the edge. */
+@utility licorice {
+  color: #fff;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 16%) 0%, rgb(255 255 255 / 3%) 46%, transparent 52%),
+    linear-gradient(180deg, #1c1c22 0%, #050507 100%);
+  border: 1px solid rgb(255 51 68 / 45%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%), inset 0 -2px 6px rgb(0 0 0 / 60%), 0 0 18px rgb(255 51 68 / 18%);
+  transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.35s, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover:not(:disabled) {
+    border-color: rgb(255 51 68 / 80%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%), inset 0 -2px 6px rgb(0 0 0 / 60%), 0 0 28px rgb(255 51 68 / 38%);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+}
+
+/* Inputs: dark wells in the glass. */
+@utility well {
+  background: rgb(0 0 0 / 45%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 60%);
+  transition: border-color 0.25s, box-shadow 0.25s;
+
+  &:focus,
+  &:focus-within {
+    border-color: rgb(255 51 68 / 50%);
+    box-shadow: inset 0 1px 3px rgb(0 0 0 / 60%), 0 0 0 3px rgb(255 51 68 / 10%);
+  }
+}
+
+/* In the desktop shell the header is the window's title bar: drag it to move the window. */
+.titlebar {
+  min-height: 56px;
+}
+
+:root[data-shell="tauri"] .titlebar {
+  user-select: none;
+}
+
+/* macOS: room for the traffic lights on the left. Windows/Linux: the header's own window buttons sit flush right. */
+:root[data-shell="tauri"][data-platform="darwin"] .titlebar {
+  padding-left: 88px;
+}
+
+:root[data-shell="tauri"]:not([data-platform="darwin"]) .titlebar {
+  padding-right: 0;
+}
+
+/* In the base layer so utilities like scrollbar-none can override it (unlayered CSS would always win). */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #ff4455, #b8142a);
+    border: 2px solid var(--color-app);
+    border-radius: 4px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d11d33 transparent;
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

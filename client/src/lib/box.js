@@ -506,6 +506,21 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   /** Frees every preview held in memory; call when leaving this box. */
+  // ---- AI: DOGS AI's server, run by the box ----
+
+  /** { running, ours, port, dir, built, installed, node, key, log } */
+  async aiStatus() {
+    return (await this.call('/ai')).json();
+  }
+
+  async aiStart() {
+    return (await this.post('/ai/start', {})).json();
+  }
+
+  async aiStop() {
+    return (await this.post('/ai/stop', {})).json();
+  }
+
   // ---- Steam cache: games kept on the box for every PC in the home ----
 
   /** Where the cache listens, how Steam finds it, the games in it and who is downloading. */

@@ -1,90 +1,145 @@
-<!-- AiSection: local AI on the box. Pick which model is loaded. The model list is sample
-     data until the box reports its own. There is no chat in this build. -->
+<!-- AiSection: AI is DOGS AI. The box runs DOGS AI's server (its code is in this repository
+     under ai/), and this section shows DOGS AI's own app, exactly as it is, in the space below
+     Castle's header: create images, video and audio, chat, characters, the model library.
+
+     The app comes from the dogs server's own address, so it keeps its own look and its own
+     settings. On a box reached over the network, the dogs server needs its key: the header
+     shows it, for DOGS AI's Settings. The demo cannot run models and shows sample ones. -->
 <script>
-  import { BrainCircuit, Check, Download, Cpu } from '@lucide/svelte';
-  import { fly } from 'svelte/transition';
-  import { fmtSize } from '../../lib/format.js';
-  import { itemIn } from '../../lib/motion.js';
-  import { DEMO_MODELS, DEMO_AI_HARDWARE } from '../../lib/demo-shell.js';
+  import { BrainCircuit, Power, ExternalLink, KeyRound, Check, LoaderCircle, RotateCw } from '@lucide/svelte';
+  import { untrack } from 'svelte';
+  import { store } from '../../lib/store.svelte.js';
   import SectionFrame from '../SectionFrame.svelte';
+  import Notice from '../Notice.svelte';
+  import DemoModels from '../ai/DemoModels.svelte';
 
-  const ALL = 'all';
-  const THOUSAND = 1000;
-  const FULL = 100;
-  const FAMILIES = [...new Set(DEMO_MODELS.map((m) => m.family))];
-  const VIEWS = [{ id: ALL, label: 'All models', icon: BrainCircuit }, ...FAMILIES.map((f) => ({ id: f, label: f }))];
-  const STATE_LABEL = { loaded: 'LOADED', ready: 'ON DISK', available: 'NOT DOWNLOADED' };
+  const POLL_MS = 5000;
 
-  let family = $state(ALL);
-  let loadedId = $state(DEMO_MODELS.find((m) => m.state === 'loaded')?.id || null);
+  let status = $state(null);
+  let problem = $state('');
+  let busy = $state(false);
+  let copied = $state(false);
+  let frameKey = $state(0); // bumped to reload the app
 
-  const shown = $derived(family === ALL ? DEMO_MODELS : DEMO_MODELS.filter((m) => m.family === family));
-  const loaded = $derived(DEMO_MODELS.find((m) => m.id === loadedId) || null);
-  const railItems = $derived(VIEWS.map((v) => ({ ...v, count: v.id === ALL ? DEMO_MODELS.length : DEMO_MODELS.filter((m) => m.family === v.id).length })));
-  const vramPercent = (DEMO_AI_HARDWARE.vramUsed / DEMO_AI_HARDWARE.vramTotal) * FULL;
-  const ramPercent = (DEMO_AI_HARDWARE.ramUsed / DEMO_AI_HARDWARE.ramTotal) * FULL;
+  const source = $derived(store.isDemo ? null : store.boxUrl ? store.adapter : null);
+  // The dogs server runs where the box does: same machine name, its own port.
+  const appUrl = $derived(status?.running && store.boxUrl ? `${new URL(store.boxUrl).protocol}//${new URL(store.boxUrl).hostname}:${status.port}/` : null);
 
-  const stateOf = (model) => (model.id === loadedId ? 'loaded' : model.state === 'loaded' ? 'ready' : model.state);
-  const contextLabel = (tokens) => (tokens ? `${Math.round(tokens / THOUSAND)}K CONTEXT` : 'AUDIO IN');
+  async function load(from = source) {
+    if (!from) return;
+    try {
+      const next = await from.aiStatus();
+      if (from !== source) return;
+      status = next;
+      problem = '';
+    } catch (err) {
+      problem = err?.message || 'The box did not say how AI is';
+    }
+  }
+
+  $effect(() => {
+    const from = source;
+    untrack(() => {
+      status = null;
+      load(from);
+    });
+    if (!from) return;
+    const timer = setInterval(() => load(from), POLL_MS);
+    return () => clearInterval(timer);
+  });
+
+  async function start() {
+    busy = true;
+    try {
+      status = await source.aiStart();
+      if (!status.running) store.toast('DOGS AI is starting. It can take a few seconds.');
+    } catch (err) {
+      store.toast(err?.message || 'DOGS AI did not start');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function stop() {
+    busy = true;
+    try {
+      status = await source.aiStop();
+    } catch (err) {
+      store.toast(err?.message || 'DOGS AI did not stop');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function copyKey() {
+    try {
+      await navigator.clipboard.writeText(status.key);
+      copied = true;
+      setTimeout(() => (copied = false), 1600);
+    } catch {
+      store.toast('Copy it by hand: the clipboard is blocked here');
+    }
+  }
 </script>
 
-<SectionFrame
-  title="AI"
-  subtitle={loaded ? `${loaded.name} is loaded` : 'No model loaded'}
-  tag="SAMPLE DATA"
-  items={railItems}
-  active={family}
-  onselect={(id) => (family = id)}
->
-  <!-- what the box has to run models on -->
-  <div class="glass mb-5 grid gap-4 p-4 sm:grid-cols-2">
-    {#each [{ label: DEMO_AI_HARDWARE.gpu, used: DEMO_AI_HARDWARE.vramUsed, total: DEMO_AI_HARDWARE.vramTotal, percent: vramPercent }, { label: 'MEMORY', used: DEMO_AI_HARDWARE.ramUsed, total: DEMO_AI_HARDWARE.ramTotal, percent: ramPercent }] as meter (meter.label)}
-      <div>
-        <div class="micro mb-2 flex items-center justify-between text-text-faint">
-          <span class="flex items-center gap-1.5"><Cpu class="h-3 w-3" /> {meter.label}</span>
-          <span class="text-text-dim">{fmtSize(meter.used)} / {fmtSize(meter.total)}</span>
-        </div>
-        <div class="h-[3px] overflow-hidden rounded-full bg-white/[0.07]">
-          <div class="h-full rounded-full" style="width: {meter.percent}%; background: linear-gradient(90deg, var(--color-chiral), var(--color-bridge));"></div>
-        </div>
-      </div>
-    {/each}
-  </div>
+{#snippet actions()}
+  {#if status?.key}
+    <button class="micro expo t-hover hidden h-9 items-center gap-1.5 border border-hairline px-2.5 text-text-dim hover:text-white md:flex" onclick={copyKey} title="DOGS AI's key, for its Settings when this box is reached over the network">
+      {#if copied}<Check class="h-3.5 w-3.5 text-live" />{:else}<KeyRound class="h-3.5 w-3.5" />{/if}KEY
+    </button>
+  {/if}
+  {#if appUrl}
+    <button class="expo t-hover grid h-9 w-9 place-items-center border border-hairline text-text-dim hover:text-white" onclick={() => frameKey++} aria-label="Reload DOGS AI" title="Reload">
+      <RotateCw class="h-3.5 w-3.5" />
+    </button>
+    <a class="expo t-hover grid h-9 w-9 place-items-center border border-hairline text-text-dim hover:text-white" href={appUrl} target="_blank" rel="noopener noreferrer" aria-label="Open DOGS AI in its own window" title="Open in its own window">
+      <ExternalLink class="h-3.5 w-3.5" />
+    </a>
+    {#if status.ours}
+      <button class="micro expo t-hover hidden h-9 items-center gap-1.5 border border-hairline px-2.5 text-text-dim hover:text-white disabled:opacity-50 sm:flex" onclick={stop} disabled={busy}>
+        <Power class="h-3.5 w-3.5" />STOP
+      </button>
+    {/if}
+  {/if}
+{/snippet}
 
-  <ul class="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-    {#each shown as model, i (model.id)}
-      {@const state = stateOf(model)}
-      <li in:fly={itemIn(i)} class="flex flex-col border bg-white/[0.02] p-4 {state === 'loaded' ? 'border-chiral/60' : 'border-hairline'}">
-        <div class="flex items-start gap-3">
-          <BrainCircuit class="mt-0.5 h-6 w-6 shrink-0 {state === 'loaded' ? 'text-chiral' : 'text-text-faint'}" strokeWidth={1.25} />
-          <div class="min-w-0 flex-1">
-            <h2 class="text-[15px] font-bold text-white">{model.name}</h2>
-            <p class="micro mt-0.5 text-text-faint">{model.family} · {model.params} · {model.quant}</p>
-          </div>
-          <span class="micro shrink-0 {state === 'loaded' ? 'text-live' : 'text-text-faint'}">{STATE_LABEL[state]}</span>
-        </div>
-        <p class="mt-3 flex-1 text-[13px] text-text-dim">{model.note}</p>
-        <div class="mt-4 flex items-center gap-3">
-          <p class="micro flex-1 text-text-faint">{fmtSize(model.size)} · {contextLabel(model.context)}</p>
-          {#if state === 'loaded'}
-            <span class="micro flex items-center gap-1.5 text-chiral"><Check class="h-3.5 w-3.5" strokeWidth={2} /> IN USE</span>
-          {:else if state === 'ready'}
-            <button
-              class="expo t-hover micro h-8 border border-hairline px-3 font-bold text-white transition-colors hover:border-chiral/60"
-              onclick={() => (loadedId = model.id)}
-            >
-              LOAD
-            </button>
-          {:else}
-            <span class="micro flex items-center gap-1.5 text-text-faint"><Download class="h-3.5 w-3.5" /> NOT ON THE BOX</span>
-          {/if}
-        </div>
-      </li>
-    {/each}
-  </ul>
-
-  <p class="mt-5 text-[12px] leading-relaxed text-text-dim">
-    These models are sample data: the box does not report its own yet, and Load only changes this screen. Chat is not part of
-    this build.
-  </p>
-</SectionFrame>
+{#if store.isDemo}
+  <DemoModels />
+{:else}
+  <SectionFrame
+    title="AI"
+    subtitle={appUrl ? `DOGS AI · ${status.installed ? 'ready' : 'runtime not installed'}` : 'DOGS AI'}
+    bare={!!appUrl}
+    {actions}
+  >
+    {#if !source}
+      <Notice icon={BrainCircuit} title="NO BOX CONNECTED">AI is DOGS AI, running on your Castle box. Connect to a box to use it, or switch to Demo.</Notice>
+    {:else if problem && !status}
+      <Notice icon={BrainCircuit} title="AI IS NOT AVAILABLE">{problem}</Notice>
+    {:else if !status}
+      <div class="grid min-h-[40dvh] place-items-center"><LoaderCircle class="h-6 w-6 animate-spin text-text-faint" /></div>
+    {:else if appUrl}
+      {#key frameKey}
+        <iframe src={appUrl} title="DOGS AI" class="block h-full w-full border-0 bg-black" allow="clipboard-read; clipboard-write; fullscreen; autoplay"></iframe>
+      {/key}
+    {:else if !status.dir}
+      <Notice icon={BrainCircuit} title="DOGS AI WAS NOT FOUND">
+        Its code is the <span class="text-white">ai</span> folder of the Castle checkout. Set CASTLE_AI_DIR on the box to use a copy somewhere else.
+      </Notice>
+    {:else if !status.node}
+      <Notice icon={BrainCircuit} title="NODE.JS IS NEEDED">DOGS AI runs on Node.js 22 or newer. Install it on the box from nodejs.org, then start it here.</Notice>
+    {:else if !status.built}
+      <Notice icon={BrainCircuit} title="DOGS AI'S APP IS NOT BUILT">
+        Build it once on the box: <code class="text-white">npm --prefix ai/app install</code> then <code class="text-white">npm --prefix ai/app run build</code>. Castle's start script does this for you.
+      </Notice>
+    {:else}
+      <Notice icon={BrainCircuit} title="DOGS AI IS NOT RUNNING">
+        From {status.dir}.
+        <button class="micro mx-auto mt-4 flex h-10 items-center gap-2 bg-chiral px-5 font-bold text-black hover:brightness-110 disabled:opacity-50" onclick={start} disabled={busy}>
+          <Power class="h-4 w-4" />{busy ? 'STARTING…' : 'START DOGS AI'}
+        </button>
+        {#if status.log}<pre class="micro mt-4 max-h-40 overflow-auto whitespace-pre-wrap border border-hairline bg-black/50 p-2 text-left normal-case tracking-normal text-text-faint">{status.log.slice(-1200)}</pre>{/if}
+      </Notice>
+    {/if}
+  </SectionFrame>
+{/if}

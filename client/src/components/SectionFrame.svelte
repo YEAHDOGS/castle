@@ -13,8 +13,9 @@
    * title, subtitle: header text. tag: small label beside the title (e.g. SAMPLE DATA).
    * items/active/onselect: the section's views, as Sidebar takes them.
    * actions: optional snippet on the right of the header. children: the body.
+   * bare: the body fills the space edge to edge and does not scroll (for an app shown in a frame).
    */
-  let { title, subtitle = '', tag = '', items = [], active = null, onselect = () => {}, actions = null, children } = $props();
+  let { title, subtitle = '', tag = '', items = [], active = null, onselect = () => {}, actions = null, bare = false, children } = $props();
 </script>
 
 <div class="flex h-dvh overflow-hidden bg-void text-white">
@@ -59,10 +60,10 @@
       </nav>
     {/if}
 
-    <main class="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+    <main class="min-h-0 flex-1 {bare ? 'overflow-hidden' : 'overflow-y-auto p-4 md:p-6'}">
       <!-- Every view change in every section animates here, so no section has to remember to. -->
       {#key active}
-        <div in:fly={viewIn()}>
+        <div in:fly={viewIn()} class={bare ? 'h-full' : ''}>
           {@render children()}
         </div>
       {/key}
