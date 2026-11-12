@@ -18,6 +18,7 @@ mod network;
 mod saves;
 mod security;
 mod system;
+mod wiki;
 
 use std::{
     collections::BTreeSet,
@@ -80,6 +81,8 @@ struct AppState {
     network: network::Network,
     system: system::System,
     saves: saves::Saves,
+    /// What Wikipedia said about each game, so a game is looked up once.
+    game_notes: wiki::Shelf,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -910,6 +913,15 @@ struct ArtQuery {
 struct PlayBody {
     system: String,
     game: usize,
+    /// Which disc of a multi-disc game; the first when left out.
+    #[serde(default)]
+    disc: usize,
+}
+
+#[derive(Deserialize)]
+struct AboutQuery {
+    system: String,
+    game: usize,
 }
 
 /// Runs one arcade action off the async threads: these read the drive.
@@ -946,8 +958,33 @@ async fn arcade_art(State(st): State<Shared>, Query(q): Query<ArtQuery>) -> ApiR
 }
 
 async fn arcade_play(State(st): State<Shared>, Json(b): Json<PlayBody>) -> ApiResult<Json<serde_json::Value>> {
-    let title = arcade_call(st, move |a| a.play(&b.system, b.game)).await?;
+    let title = arcade_call(st, move |a| a.play(&b.system, b.game, b.disc)).await?;
     Ok(Json(serde_json::json!({ "started": title })))
+}
+
+/// What a game is, in a paragraph, from Wikipedia. The first time a game is asked about
+/// its title is sent to Wikipedia; the answer is kept, so it is sent once. `about` is null
+/// when Wikipedia has no article that is clearly about this game.
+async fn arcade_about(State(st): State<Shared>, Query(q): Query<AboutQuery>) -> ApiResult<Json<serde_json::Value>> {
+    let (title, short) = arcade_call(st.clone(), move |a| a.naming(&q.system, q.game)).await?;
+    tokio::task::spawn_blocking(move || {
+        let name = arcade::plain_title(&title);
+        let key = format!("{short}|{name}");
+        let about = match st.game_notes.get(&key) {
+            Some(kept) => kept,
+            None => {
+                let http = wiki::client().map_err(|msg| ApiError(StatusCode::BAD_GATEWAY, msg))?;
+                let found = wiki::find(&http, &format!("{name} video game"))
+                    .map_err(|msg| ApiError(StatusCode::BAD_GATEWAY, msg))?
+                    .filter(|article| wiki::is_about(&name, article));
+                st.game_notes.put(&key, found.clone());
+                found
+            }
+        };
+        Ok(Json(serde_json::json!({ "about": about })))
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1327,6 +1364,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/arcade", get(arcade_systems))
         .route("/arcade/games", get(arcade_games))
         .route("/arcade/art", get(arcade_art))
+        .route("/arcade/about", get(arcade_about))
         .route("/arcade/play", post(arcade_play))
         .route("/arcade/saves", get(saves_list))
         .route("/arcade/saves/record", post(saves_record))
@@ -1412,6 +1450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         network: network::Network::new(),
         system: system::System::new(),
         saves: saves::Saves::new(root.join(META_DIR).join("saves")),
+        game_notes: wiki::Shelf::open(root.join(META_DIR).join("arcade").join("about.json")),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),

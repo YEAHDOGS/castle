@@ -89,6 +89,7 @@ export class HttpAdapter extends StorageAdapter {
     this.thumbs = new Map(); // `${id}:${modified}` -> object URL
     this.texts = new Map(); // `${id}:${modified}` -> preview text
     this.art = new Map(); // `${system}:${game}:${kind}` -> object URL of arcade art
+    this.abouts = new Map(); // `${system}:${game}` -> what Wikipedia says about the game, or null
   }
 
   /** One request to the box. Throws an Error whose message is fit to show in a toast. */
@@ -429,8 +430,22 @@ export class HttpAdapter extends StorageAdapter {
     }
   }
 
-  async arcadePlay(system, game) {
-    return (await this.post('/arcade/play', { system, game })).json();
+  /** Starts a game on the box's machine. `disc` picks one disc of a multi-disc game. */
+  async arcadePlay(system, game, disc = 0) {
+    return (await this.post('/arcade/play', { system, game, disc })).json();
+  }
+
+  /**
+   * What a game is, from Wikipedia. The box asks Wikipedia the first time and keeps the answer.
+   * @returns {Promise<{ title: string, extract: string, url: string } | null>} null when nothing fits
+   */
+  async arcadeAbout(system, game) {
+    const key = `${system}:${game}`;
+    if (!this.abouts.has(key)) {
+      const query = `system=${encodeURIComponent(system)}&game=${game}`;
+      this.abouts.set(key, (await (await this.call(`/arcade/about?${query}`)).json()).about);
+    }
+    return this.abouts.get(key);
   }
 
   /** Frees every preview held in memory; call when leaving this box. */

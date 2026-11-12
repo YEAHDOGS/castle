@@ -49,6 +49,7 @@ export const SETTINGS = [
   // ---- arcade ----
   { id: 'arcade.cardSize', group: 'arcade', where: 'device', type: 'choice', default: 'medium', live: true, label: 'Box art size', help: 'How large each game appears in the library.', options: [choice('small', 'Small'), choice('medium', 'Medium'), choice('large', 'Large')] },
   { id: 'arcade.regionTags', group: 'arcade', where: 'device', type: 'toggle', default: true, live: true, label: 'Show region and language', help: 'The small line under a title, such as USA or En,Fr.' },
+  { id: 'arcade.descriptions', group: 'arcade', where: 'device', type: 'toggle', default: true, live: true, label: 'Look up game descriptions', help: 'Opening a game\'s card asks Wikipedia what the game is. The box sends the title once and keeps the answer.' },
   { id: 'arcade.fullscreen', group: 'arcade', where: 'box', type: 'toggle', default: true, label: 'Start games full screen', help: 'Applies to every emulator the box starts.' },
   { id: 'arcade.savesPerPerson', group: 'arcade', where: 'box', type: 'toggle', default: true, label: 'Separate saves per person', help: 'Each person gets their own save files and save states.' },
   { id: 'arcade.saveHistory', group: 'arcade', where: 'box', type: 'toggle', default: true, label: 'Keep a history of saves', help: 'Every save is kept as a version you can go back to.' },

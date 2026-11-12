@@ -2,9 +2,13 @@
      opens and closes, one row per system) and Saves. A game's card shows its saves; Saves
      lists every save file with every version recorded, and can put an old one back.
      Box art in a grid, one click to open a game's card and play it. On a box, this reads the games folder as it is:
-     RetroArch's playlists are the library and its thumbnails are the art. -->
+     RetroArch's playlists are the library and its thumbnails are the art.
+
+     A game on several discs is one card with a disc to choose. In a card, the left and right
+     arrows (on screen or on the keyboard) move through the games; Shuffle deals random ones,
+     from one console or the whole library. -->
 <script>
-  import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw } from '@lucide/svelte';
+  import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw, Dices, ChevronLeft, ChevronRight, Disc3, ExternalLink } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
   import { SvelteMap } from 'svelte/reactivity';
@@ -19,6 +23,8 @@
   const NO_ARCADE = 'not started with --arcade';
   const CONSOLES = '@consoles'; // rail ids that are not systems
   const SAVES = '@saves';
+  const SHUFFLE = '@shuffle';
+  const RECENT_PICKS = 12; // a shuffle does not deal one of the last few games again
   const KIND_LABEL = { battery: 'IN-GAME SAVE', state: 'SAVE STATE' };
   const HASH_SHOWN = 10;
   const ART_MARGIN = '300px'; // start loading art a little before a card scrolls into view
@@ -37,6 +43,12 @@
   let loading = $state(true);
   let problem = $state(''); // why the library cannot be shown, when it cannot
   let openGame = $state(null);
+  let openSystemId = $state(null); // the open card's system: under a library-wide shuffle, not always the one listed
+  let disc = $state(0); // which disc of the open game Play starts
+  let about = $state(null); // null: not asked or nothing found; 'loading'; or { title, extract, url }
+  let deck = $state(null); // null: the card walks the list. { scope, picks, at }: it walks a shuffle
+  let cardDir = $state(1); // which way the card last moved, for its slide
+  const gamesBySystem = new Map(); // system id -> its games, so a library-wide shuffle reads each list once
   let consolesOpen = $state(true);
   let mode = $state('games'); // 'games' | 'saves'
   let saves = $state([]);
@@ -50,6 +62,7 @@
 
   const source = $derived(shell.arcadeSource);
   const system = $derived(systems.find((s) => s.id === systemId) || null);
+  const cardSystem = $derived(systems.find((s) => s.id === openSystemId) || null);
   const shown = $derived(
     query.trim() ? games.filter((g) => g.title.toLowerCase().includes(query.trim().toLowerCase())) : games
   );
@@ -59,8 +72,9 @@
     { id: CONSOLES, label: 'Consoles', icon: Gamepad2, count: systems.length, expanded: consolesOpen },
     ...(consolesOpen ? systems.map((s) => ({ id: s.id, label: s.short, count: s.games, indent: true })) : []),
     { id: SAVES, label: 'Saves', icon: Save, count: saves.length },
+    { id: SHUFFLE, label: 'Shuffle', icon: Dices },
   ]);
-  const gameSaves = $derived(openGame ? saves.filter((s) => s.game && s.game.system === systemId && s.game.id === openGame.id) : []);
+  const gameSaves = $derived(openGame ? saves.filter((s) => s.game && s.game.system === openSystemId && s.game.id === openGame.id) : []);
   const unrecorded = $derived(saves.filter((s) => !s.recorded).length);
 
   const when = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -70,6 +84,8 @@
       consolesOpen = !consolesOpen;
     } else if (id === SAVES) {
       showSaves();
+    } else if (id === SHUFFLE) {
+      shuffle('library');
     } else {
       mode = 'games';
       pickSystem(id);
@@ -166,6 +182,7 @@
     systems = [];
     games = [];
     art.clear();
+    gamesBySystem.clear();
     if (!from) {
       loading = false;
       return;
@@ -179,11 +196,17 @@
     loading = false;
   }
 
+  /** One system's games, read once per visit. */
+  async function gamesOf(id, from = source) {
+    if (!gamesBySystem.has(id)) gamesBySystem.set(id, await from.arcadeGames(id));
+    return gamesBySystem.get(id);
+  }
+
   async function pickSystem(id, from = source) {
     systemId = id;
     query = '';
     try {
-      games = await from.arcadeGames(id);
+      games = await gamesOf(id, from);
     } catch (err) {
       games = [];
       store.toast(err?.message || 'Could not list that system');
@@ -208,17 +231,105 @@
     return { destroy: () => watcher.disconnect() };
   }
 
-  async function open(game) {
+  /** Shows a game's card. Its picture, screenshot and description arrive as they load. */
+  async function show(game, ofSystem) {
     openGame = game;
+    openSystemId = ofSystem;
+    disc = Math.max(0, (game.discs || []).findIndex((d) => d.present));
     snap = null;
-    if (game.hasSnap && !source.isDemo) snap = await source.arcadeArt(systemId, game.id, 'snap');
+    about = null;
+    const from = source;
+    const still = () => openGame === game && openSystemId === ofSystem && source === from;
+    const key = `${ofSystem}:${game.id}`;
+    if (game.hasBoxart && !art.has(key)) from.arcadeArt(ofSystem, game.id, 'boxart').then((url) => art.set(key, url));
+    if (game.hasSnap) from.arcadeArt(ofSystem, game.id, 'snap').then((url) => { if (still()) snap = url; });
+    if (prefs.get('arcade.descriptions') && from.arcadeAbout) {
+      about = 'loading';
+      try {
+        const found = await from.arcadeAbout(ofSystem, game.id);
+        if (still()) about = found;
+      } catch {
+        if (still()) about = null; // no connection, or Wikipedia did not answer: the card just has no description
+      }
+    }
+  }
+
+  /** A click on a game in the grid: its card, with the arrows walking the list as shown. */
+  function open(game) {
+    deck = null;
+    cardDir = 1;
+    show(game, systemId);
+  }
+
+  function closeCard() {
+    openGame = null;
+    deck = null;
+  }
+
+  /** A random game that is on the drive, from this console or from any, not one dealt lately. */
+  async function deal(scope) {
+    const recent = deck ? deck.picks.slice(-RECENT_PICKS).map((p) => `${p.systemId}:${p.game.id}`) : [];
+    for (let attempt = 0; attempt < 30; attempt++) {
+      let ofSystem = systemId;
+      if (scope === 'library') {
+        // A console with more games comes up more often, so every game is as likely as any other.
+        let roll = Math.random() * totalGames;
+        ofSystem = (systems.find((s) => (roll -= s.games) < 0) || systems[0]).id;
+      }
+      const pool = (await gamesOf(ofSystem)).filter((g) => g.present);
+      if (!pool.length) continue;
+      const game = pool[Math.floor(Math.random() * pool.length)];
+      if (!recent.includes(`${ofSystem}:${game.id}`) || attempt > 20) return { systemId: ofSystem, game };
+    }
+    return null;
+  }
+
+  /** Starts a shuffle (or re-deals one with another scope) and shows its first game. */
+  async function shuffle(scope) {
+    if (!systems.length) return;
+    mode = 'games';
+    deck = { scope, picks: [], at: -1 };
+    await step(1);
+  }
+
+  /** The arrows: through the shuffle when one is running, otherwise through the list on screen. */
+  async function step(dir) {
+    cardDir = dir;
+    if (deck) {
+      if (dir < 0) {
+        if (deck.at <= 0) return;
+        deck.at -= 1;
+      } else if (deck.at < deck.picks.length - 1) {
+        deck.at += 1;
+      } else {
+        const pick = await deal(deck.scope);
+        if (!pick || !deck) return;
+        deck.picks.push(pick);
+        deck.at = deck.picks.length - 1;
+      }
+      const pick = deck.picks[deck.at];
+      show(pick.game, pick.systemId);
+      return;
+    }
+    if (!openGame || !shown.length) return;
+    const at = shown.findIndex((g) => g.id === openGame.id);
+    show(shown[(at + dir + shown.length) % shown.length], systemId);
+  }
+
+  function onCardKey(e) {
+    if (!openGame) return;
+    if (e.key === 'Escape') closeCard();
+    else if (e.key === 'ArrowRight') step(1);
+    else if (e.key === 'ArrowLeft') step(-1);
+    else return;
+    e.preventDefault();
   }
 
   async function play(game) {
     try {
-      const res = await source.arcadePlay(systemId, game.id);
-      store.toast(res.demo ? 'Demo: nothing is launched here' : `Starting in ${system.emulator}`);
-      openGame = null;
+      const res = await source.arcadePlay(openSystemId, game.id, disc);
+      store.toast(res.demo ? 'Demo: nothing is launched here' : `Starting in ${cardSystem.emulator}`);
+      closeCard();
     } catch (err) {
       store.toast(err?.message || 'Could not start the game');
     }
@@ -235,7 +346,7 @@
   });
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && openGame) openGame = null; }} />
+<svelte:window onkeydown={onCardKey} />
 
 <SectionFrame
   title="Arcade"
@@ -255,6 +366,13 @@
         <RefreshCw class="h-3.5 w-3.5 {recording ? 'animate-spin' : ''}" /> <span class="hidden sm:inline">{recording ? 'RECORDING' : 'RECORD NOW'}</span>
       </button>
     {:else if games.length}
+      <button
+        onclick={() => shuffle('system')}
+        class="expo t-hover micro flex h-10 items-center gap-2 border border-hairline px-3 font-bold text-white transition-colors hover:border-chiral/60"
+        title="A random game from this console"
+      >
+        <Dices class="h-4 w-4" strokeWidth={1.75} /> <span class="hidden sm:inline">SHUFFLE</span>
+      </button>
       <div class="group relative hidden w-56 sm:block">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint group-focus-within:text-chiral" strokeWidth={1.75} />
         <input
@@ -400,6 +518,9 @@
                     <span class="micro text-text-faint">{system?.short}</span>
                   </div>
                 {/if}
+                {#if game.discs?.length > 1}
+                  <span class="micro absolute left-1.5 top-1.5 flex items-center gap-1 bg-black/75 px-1.5 py-0.5 text-bridge"><Disc3 class="h-3 w-3" /> {game.discs.length} DISCS</span>
+                {/if}
               </div>
               <div class="px-2.5 py-2">
                 <p class="truncate text-[13px] font-medium text-white">{title.name}</p>
@@ -419,77 +540,189 @@
 
 {#if openGame}
   {@const title = splitTitle(openGame.title)}
-  {@const cover = art.get(`${systemId}:${openGame.id}`)}
+  {@const cover = art.get(`${openSystemId}:${openGame.id}`)}
+  {@const discs = openGame.discs || []}
   <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={title.name}>
     <div
       transition:fade={{ duration: reducedMotion() ? 0 : 200 }}
       class="absolute inset-0 bg-black/75"
-      onclick={() => (openGame = null)}
-      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openGame = null; }}
+      onclick={closeCard}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') closeCard(); }}
       role="button"
       tabindex="-1"
       aria-label="Close"
     ></div>
-    <div transition:scale={modalIn()} class="hud-corners scanlines glass relative z-10 flex max-h-[88dvh] w-full max-w-2xl flex-col sm:flex-row">
-      <div class="grid shrink-0 place-items-center bg-black/60 p-5 sm:w-64">
-        {#if cover}
-          <img src={cover} alt="" class="max-h-56 max-w-full object-contain sm:max-h-80" draggable="false" />
-        {:else}
-          <Gamepad2 class="h-14 w-14 text-text-faint" strokeWidth={1} />
-        {/if}
-      </div>
-      <div class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
-        <div class="flex items-start gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="micro text-chiral">{system?.short}</p>
-            <h2 class="mt-1 text-[20px] font-bold leading-tight text-white">{title.name}</h2>
-            {#if title.tags}<p class="micro mt-1 text-text-faint">{title.tags}</p>{/if}
+
+    <!-- the arrows sit at the edges of the screen, clear of the card -->
+    <button
+      class="nav-arrow left-1 sm:left-4"
+      onclick={() => step(-1)}
+      disabled={deck ? deck.at <= 0 : shown.length < 2}
+      aria-label={deck ? 'The game dealt before this one' : 'Previous game'}
+      title="Left arrow"
+    >
+      <ChevronLeft class="h-7 w-7" strokeWidth={1.5} />
+    </button>
+    <button
+      class="nav-arrow right-1 sm:right-4"
+      onclick={() => step(1)}
+      disabled={!deck && shown.length < 2}
+      aria-label={deck ? 'Deal another game' : 'Next game'}
+      title="Right arrow"
+    >
+      {#if deck && deck.at >= deck.picks.length - 1}
+        <Dices class="h-7 w-7" strokeWidth={1.5} />
+      {:else}
+        <ChevronRight class="h-7 w-7" strokeWidth={1.5} />
+      {/if}
+    </button>
+
+    <div transition:scale={modalIn()} class="hud-corners scanlines glass relative z-10 flex max-h-[90dvh] w-full max-w-3xl flex-col">
+      {#if deck}
+        <div class="flex flex-wrap items-center gap-2 border-b border-hairline px-5 py-2.5">
+          <p class="micro flex items-center gap-2 text-chiral"><Dices class="h-3.5 w-3.5" /> SHUFFLE</p>
+          <div class="ml-auto flex items-center border border-hairline" role="group" aria-label="Shuffle from">
+            {#each [{ id: 'system', label: system ? `ONLY ${system.short}` : 'THIS CONSOLE' }, { id: 'library', label: 'WHOLE LIBRARY' }] as choice (choice.id)}
+              <button
+                class="expo t-hover micro px-2.5 py-1.5 transition-colors {deck.scope === choice.id ? 'bg-white/[0.07] text-chiral' : 'text-text-faint hover:text-white'}"
+                onclick={() => shuffle(choice.id)}
+                aria-pressed={deck.scope === choice.id}
+              >
+                {choice.label}
+              </button>
+            {/each}
           </div>
-          <button class="expo t-hover p-1 text-text-dim transition-colors hover:text-white" onclick={() => (openGame = null)} aria-label="Close">
-            <X class="h-5 w-5" strokeWidth={1.75} />
-          </button>
         </div>
-        {#if snap}
-          <img src={snap} alt="In-game screenshot" class="max-h-44 w-full border border-hairline object-contain" draggable="false" />
+      {/if}
+
+      {#key `${openSystemId}:${openGame.id}`}
+        <div in:fly={reducedMotion() ? { duration: 0 } : { x: 36 * cardDir, duration: 220, opacity: 0 }} class="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <div class="grid shrink-0 place-items-center bg-black/60 p-5 sm:w-64">
+            {#if cover}
+              <img src={cover} alt="" class="max-h-56 max-w-full object-contain sm:max-h-80" draggable="false" />
+            {:else}
+              <Gamepad2 class="h-14 w-14 text-text-faint" strokeWidth={1} />
+            {/if}
+          </div>
+          <div class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
+            <div class="flex items-start gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="micro text-chiral">{cardSystem?.short}{discs.length > 1 ? ` · ${discs.length} DISCS` : ''}</p>
+                <h2 class="mt-1 text-[20px] font-bold leading-tight text-white">{title.name}</h2>
+                {#if title.tags}<p class="micro mt-1 text-text-faint">{title.tags}</p>{/if}
+              </div>
+              <button class="expo t-hover p-1 text-text-dim transition-colors hover:text-white" onclick={closeCard} aria-label="Close">
+                <X class="h-5 w-5" strokeWidth={1.75} />
+              </button>
+            </div>
+            {#if snap}
+              <img src={snap} alt="In-game screenshot" class="max-h-56 w-full border border-hairline bg-black/40 object-contain" draggable="false" />
+            {/if}
+            {#if about === 'loading'}
+              <p class="micro text-text-faint">LOOKING THIS GAME UP</p>
+            {:else if about}
+              <div>
+                <p class="about text-[13px] leading-relaxed text-text-dim">{about.extract}</p>
+                <a class="micro mt-1.5 inline-flex items-center gap-1 text-bridge hover:underline" href={about.url} target="_blank" rel="noreferrer">
+                  FROM WIKIPEDIA: {about.title.toUpperCase()} <ExternalLink class="h-3 w-3" />
+                </a>
+              </div>
+            {/if}
+            <dl class="micro grid grid-cols-2 gap-x-4 gap-y-2 text-text-faint">
+              <div><dt>PLAYS IN</dt><dd class="mt-0.5 text-white">{cardSystem?.emulator}</dd></div>
+              <div><dt>SIZE</dt><dd class="mt-0.5 text-white">{fmtSize(openGame.size)}</dd></div>
+            </dl>
+            {#if discs.length > 1}
+              <div>
+                <p class="micro mb-1.5 flex items-center gap-2 text-text-faint"><Disc3 class="h-3.5 w-3.5" /> DISC TO PLAY</p>
+                <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Disc to play">
+                  {#each discs as one, i (i)}
+                    <button
+                      role="radio"
+                      aria-checked={disc === i}
+                      disabled={!one.present}
+                      onclick={() => (disc = i)}
+                      title={one.present ? fmtSize(one.size) : 'This disc is not on the drive'}
+                      class="expo t-hover micro border px-3 py-2 font-bold transition-colors disabled:opacity-40
+                        {disc === i ? 'border-chiral bg-chiral-dim/40 text-chiral' : 'border-hairline text-white hover:border-white/30'}"
+                    >
+                      {one.label.toUpperCase()}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            <div>
+              <p class="micro mb-1 flex items-center gap-2 text-text-faint"><Save class="h-3.5 w-3.5" /> SAVE DATA</p>
+              {#each gameSaves as save (save.id)}
+                <button
+                  class="expo t-hover flex w-full items-center gap-3 border-t border-hairline-faint py-2 text-left transition-colors hover:bg-white/[0.04]"
+                  onclick={() => { if (openSystemId !== systemId) pickSystem(openSystemId); showSaves(save); }}
+                >
+                  <span class="min-w-0 flex-1">
+                    <span class="micro block {save.kind === 'state' ? 'text-bridge' : 'text-chiral'}">{KIND_LABEL[save.kind]} · {save.core}</span>
+                    <span class="block truncate text-[13px] text-text-dim">{when(save.modified)} · {fmtSize(save.size)}</span>
+                  </span>
+                  <span class="micro shrink-0 text-text-faint">{save.versions} {save.versions === 1 ? 'VERSION' : 'VERSIONS'}</span>
+                </button>
+              {:else}
+                <p class="border-t border-hairline-faint pt-2 text-[13px] text-text-dim">No save for this game yet.</p>
+              {/each}
+            </div>
+            <div class="mt-auto pt-2">
+              {#if !openGame.present}
+                <p class="text-[13px] text-text-dim">This game is in the playlist but its file is not on the drive.</p>
+              {:else if cardSystem?.canPlay}
+                <button
+                  class="expo t-hover hud-corners flex h-11 w-full items-center justify-center gap-2 bg-chiral font-bold text-black transition-all hover:brightness-110 active:scale-[0.98]"
+                  onclick={() => play(openGame)}
+                >
+                  <Play class="h-4 w-4 fill-black" strokeWidth={2} />
+                  <span class="micro font-bold">PLAY{discs.length > 1 ? ` ${discs[disc]?.label.toUpperCase()}` : ''}</span>
+                </button>
+                <p class="mt-2 text-[12px] text-text-dim">Opens on the machine the box runs on. Streaming to this screen comes later.</p>
+              {:else}
+                <p class="text-[13px] text-text-dim">{cardSystem?.emulator} is not on this drive, or the box is not on this machine, so this game cannot be started from here.</p>
+              {/if}
+            </div>
+          </div>
+        </div>
+      {/key}
+      <p class="micro border-t border-hairline-faint px-5 py-2 text-text-faint">
+        {#if deck}
+          GAME {deck.at + 1} OF THIS SHUFFLE · <span class="text-text-dim">RIGHT</span> DEALS ANOTHER · <span class="text-text-dim">LEFT</span> GOES BACK
+        {:else}
+          {shown.findIndex((g) => g.id === openGame.id) + 1} OF {shown.length} · <span class="text-text-dim">LEFT</span> AND <span class="text-text-dim">RIGHT</span> MOVE THROUGH THE GAMES
         {/if}
-        <dl class="micro grid grid-cols-2 gap-x-4 gap-y-2 text-text-faint">
-          <div><dt>PLAYS IN</dt><dd class="mt-0.5 text-white">{system?.emulator}</dd></div>
-          <div><dt>SIZE</dt><dd class="mt-0.5 text-white">{fmtSize(openGame.size)}</dd></div>
-        </dl>
-        <div>
-          <p class="micro mb-1 flex items-center gap-2 text-text-faint"><Save class="h-3.5 w-3.5" /> SAVE DATA</p>
-          {#each gameSaves as save (save.id)}
-            <button
-              class="expo t-hover flex w-full items-center gap-3 border-t border-hairline-faint py-2 text-left transition-colors hover:bg-white/[0.04]"
-              onclick={() => showSaves(save)}
-            >
-              <span class="min-w-0 flex-1">
-                <span class="micro block {save.kind === 'state' ? 'text-bridge' : 'text-chiral'}">{KIND_LABEL[save.kind]} · {save.core}</span>
-                <span class="block truncate text-[13px] text-text-dim">{when(save.modified)} · {fmtSize(save.size)}</span>
-              </span>
-              <span class="micro shrink-0 text-text-faint">{save.versions} {save.versions === 1 ? 'VERSION' : 'VERSIONS'}</span>
-            </button>
-          {:else}
-            <p class="border-t border-hairline-faint pt-2 text-[13px] text-text-dim">No save for this game yet.</p>
-          {/each}
-        </div>
-        <div class="mt-auto pt-2">
-          {#if !openGame.present}
-            <p class="text-[13px] text-text-dim">This game is in the playlist but its file is not on the drive.</p>
-          {:else if system?.canPlay}
-            <button
-              class="expo t-hover hud-corners flex h-11 w-full items-center justify-center gap-2 bg-chiral font-bold text-black transition-all hover:brightness-110 active:scale-[0.98]"
-              onclick={() => play(openGame)}
-            >
-              <Play class="h-4 w-4 fill-black" strokeWidth={2} />
-              <span class="micro font-bold">PLAY</span>
-            </button>
-            <p class="mt-2 text-[12px] text-text-dim">Opens on the machine the box runs on. Streaming to this screen comes later.</p>
-          {:else}
-            <p class="text-[13px] text-text-dim">{system?.emulator} is not on this drive, or the box is not on this machine, so this game cannot be started from here.</p>
-          {/if}
-        </div>
-      </div>
+      </p>
     </div>
   </div>
 {/if}
+
+<style>
+  .nav-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 72px;
+    transform: translateY(-50%);
+    color: #fff;
+    background: var(--color-panel-solid);
+    border: 1px solid var(--color-hairline);
+    transition: border-color 150ms var(--ease-expo), color 150ms var(--ease-expo), transform 150ms var(--ease-expo);
+  }
+  .nav-arrow:hover:not(:disabled) { border-color: var(--color-chiral); color: var(--color-chiral); }
+  .nav-arrow:active:not(:disabled) { transform: translateY(-50%) scale(0.94); }
+  .nav-arrow:disabled { opacity: 0.3; }
+  /* A long article opening is cut to a few lines; the link below it has the rest. */
+  .about {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    overflow: hidden;
+  }
+</style>

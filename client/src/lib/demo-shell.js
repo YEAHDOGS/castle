@@ -62,8 +62,8 @@ const DEMO_SYSTEM_SPECS = [
   { short: 'N64', name: 'Nintendo - Nintendo 64', emulator: 'RetroArch', games: 18, each: 19 * MB },
   { short: 'GameCube', name: 'Nintendo - GameCube', emulator: 'RetroArch', games: 14, each: 760 * MB },
   { short: 'GBA', name: 'Nintendo - Game Boy Advance', emulator: 'RetroArch', games: 12, each: 12 * MB },
-  { short: 'PS1', name: 'Sony - PlayStation', emulator: 'RetroArch', games: 7, each: 520 * MB },
-  { short: 'PS2', name: 'Sony - PlayStation 2', emulator: 'PCSX2', games: 8, each: 2.7 * GB, noArt: true },
+  { short: 'PS1', name: 'Sony - PlayStation', emulator: 'RetroArch', games: 7, each: 520 * MB, discs: true },
+  { short: 'PS2', name: 'Sony - PlayStation 2', emulator: 'PCSX2', games: 8, each: 2.7 * GB, noArt: true, discs: true },
   { short: 'PSP', name: 'Sony - PlayStation Portable', emulator: 'PPSSPP', games: 6, each: 1.2 * GB, noArt: true },
 ];
 
@@ -71,17 +71,24 @@ function demoGames(spec, systemIndex) {
   return Array.from({ length: spec.games }, (_, i) => {
     const title = `${TITLE_FIRST[(i * 5 + systemIndex * 3) % TITLE_FIRST.length]} ${TITLE_SECOND[(i * 7 + systemIndex) % TITLE_SECOND.length]}${i >= TITLE_SECOND.length ? ` ${Math.floor(i / TITLE_SECOND.length) + 1}` : ''} (USA)`;
     const tint = SYSTEM_TINTS[(i + systemIndex) % SYSTEM_TINTS.length];
+    const size = Math.round(spec.each * (0.7 + ((i * 37) % 60) / 100));
+    // On disc-based systems every fifth game comes on several discs, shown as one game.
+    const discCount = spec.discs && i % 5 === 1 ? 2 + (i % 3) : 1;
     return {
       id: i,
       title,
-      size: Math.round(spec.each * (0.7 + ((i * 37) % 60) / 100)),
+      size: size * discCount,
       present: true,
       hasBoxart: !spec.noArt && i % 9 !== 8,
       hasSnap: !spec.noArt,
+      discs: Array.from({ length: discCount }, (_, d) => ({ label: discCount > 1 ? `Disc ${d + 1}` : '', size, present: true })),
       art: svgThumb(spec.short, tint[0], tint[1]),
+      snap: svgThumb(`${spec.short} · IN GAME`, tint[1], tint[0]),
     };
   });
 }
+
+const DEMO_GENRES = ['platformer', 'role-playing game', 'racing game', 'puzzle game', 'action-adventure', 'fighting game'];
 
 /** The demo arcade, answering the same calls a box does. */
 const DEMO_SAVED_GAMES = 3; // games per system that have sample saves
@@ -111,14 +118,30 @@ export class DemoArcade {
     return this.library.find((s) => s.spec.name === system)?.games || [];
   }
 
-  async arcadeArt(system, game) {
+  async arcadeArt(system, game, kind = 'boxart') {
     const found = (await this.arcadeGames(system))[game];
+    if (kind === 'snap') return found?.hasSnap ? found.snap : null;
     return found?.hasBoxart ? found.art : null;
   }
 
-  async arcadePlay(system, game) {
+  async arcadePlay(system, game, disc = 0) {
     const found = (await this.arcadeGames(system))[game];
-    return { started: found?.title || '', demo: true };
+    const label = found?.discs?.[disc]?.label;
+    return { started: `${found?.title || ''}${label ? ` (${label})` : ''}`, demo: true };
+  }
+
+  /** A made-up description, so the demo's cards read like a real box's. */
+  async arcadeAbout(system, game) {
+    const spec = this.library.find((s) => s.spec.name === system)?.spec;
+    const found = (await this.arcadeGames(system))[game];
+    if (!found || !spec) return null;
+    const name = found.title.replace(/ \(.*$/, '');
+    const genre = DEMO_GENRES[(game + spec.short.length) % DEMO_GENRES.length];
+    return {
+      title: name,
+      extract: `${name} is a sample ${genre} for the ${spec.short}. This description is sample text: on a real box, Castle asks Wikipedia about a game the first time its card is opened and keeps the answer.`,
+      url: 'https://en.wikipedia.org/wiki/Video_game',
+    };
   }
 
   /** Sample saves: the first few games of each system, some with a save state as well. */
