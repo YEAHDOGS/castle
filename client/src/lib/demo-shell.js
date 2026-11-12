@@ -605,3 +605,182 @@ export class DemoSecurity {
     return { id, at: Date.now(), columns, rows, limited: false };
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// Theater: a made-up library of films, shows, albums, photos and home videos. Every title,
+// name and summary here is invented sample data.
+// ---------------------------------------------------------------------------------------
+
+const DEMO_TINTS = [
+  ['#5a1a2b', '#0e0508'], ['#1a3a5a', '#05080e'], ['#2b5a1a', '#080e05'], ['#5a4a1a', '#0e0b05'],
+  ['#3a1a5a', '#08050e'], ['#1a5a52', '#050e0d'], ['#5a2b1a', '#0e0805'], ['#24245a', '#05050e'],
+];
+const DEMO_FILMS = [
+  { title: 'Night Harbor', year: 2019, genres: ['Thriller', 'Mystery'], minutes: 118, cast: ['Ada Brennan', 'Tomas Ruiz', 'Lena Okafor'], director: 'Mira Holt', overview: 'A harbour pilot finds a ship that should not exist and a crew that will not say where it came from.' },
+  { title: 'The Glass Orchard', year: 2021, genres: ['Drama'], minutes: 104, cast: ['Ruth Calder', 'Ivo Marsh'], director: 'Sanne Vos', overview: 'Three sisters return to the family greenhouse the summer it is sold.' },
+  { title: 'Signal Lost', year: 2016, genres: ['Science fiction'], minutes: 131, cast: ['Kai Moreno', 'Hana Ito', 'Peter Lund'], director: 'Oren Bakr', overview: 'A relay station at the edge of the solar system goes quiet. The repair crew finds out why.' },
+  { title: 'Dust and Neon', year: 2023, genres: ['Action', 'Crime'], minutes: 97, cast: ['Jo Varga', 'Nils Achebe'], director: 'Tess Arden', overview: 'A courier with one night left on her licence takes the job everyone else refused.' },
+  { title: 'Paper Moons', year: 2012, genres: ['Animation', 'Family'], minutes: 88, cast: ['Ellie Park', 'Ben Szabo'], director: 'Uma Reyes', overview: 'A girl who folds paper animals wakes up to find them gone, and a trail of paper footprints.' },
+  { title: 'Northbound', year: 2018, genres: ['Horror'], minutes: 109, cast: ['Greta Lind', 'Sol Mensah'], director: 'Arne Falk', overview: 'The last train of the winter leaves the station with one more passenger than tickets.', adultsOnly: true },
+];
+const DEMO_SHOWS = [
+  { show: 'Kitchen Wars', seasons: [4, 3], genres: ['Reality', 'Food'], overview: 'Twelve home cooks, one kitchen, and a judge who has never said "good".', cast: ['Rosa Quint as Host', 'Dev Malik as Judge'] },
+  { show: 'The Long Road', seasons: [6], genres: ['Drama', 'Western'], overview: 'A family drives cattle across a dry country in the last year anyone will let them.', cast: ['Hal Brody as Amos', 'June Tao as Clara'] },
+];
+const DEMO_ALBUMS = [
+  { artist: 'Low Hum', album: 'Tidal', year: 2024, genre: 'Ambient', tracks: ['Shoreline', 'Undertow', 'Salt', 'Slack Water', 'Riptide', 'Low Tide', 'Pier', 'Lanterns'] },
+  { artist: 'Marrow', album: 'Signals', year: 2020, genre: 'Electronic', tracks: ['Carrier', 'Static Bloom', 'Handshake', 'Long Wave', 'Echo Room', 'Sign Off'] },
+];
+const DEMO_PHOTO_ALBUMS = [['Beach 2026', 12], ['Birthday', 8]];
+const DEMO_VIDEOS = ['First steps', 'Road trip day 1', 'Road trip day 2', 'School play', 'Snow day'];
+const DEMO_PLAY_NOTE = 'Sample library: there is no file to play';
+const POSTER_LINE_CHARS = 11;
+
+/** A made-up poster: the title large and wrapped, over a gradient. Tall for films and shows, square for albums. */
+function posterSvg(title, kicker, [c1, c2], shape) {
+  const w = 400;
+  const h = shape === 'square' ? 400 : 600;
+  const lines = [];
+  for (const word of title.toUpperCase().split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last && (last + ' ' + word).length <= POSTER_LINE_CHARS) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  const size = lines.some((l) => l.length > 9) ? 40 : 50;
+  const top = h * 0.62 - (lines.length - 1) * size * 0.55;
+  const text = lines.map((line, i) => `<text x="30" y="${top + i * size * 1.1}" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="${size}" fill="#fff">${line}</text>`).join('');
+  return (
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+        `<defs><linearGradient id="g" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>` +
+        `<rect width="${w}" height="${h}" fill="url(#g)"/><circle cx="${w * 0.78}" cy="${h * 0.22}" r="${w * 0.42}" fill="#fff" opacity=".06"/>` +
+        `<text x="30" y="${top - size * 1.1}" font-family="monospace" font-size="15" letter-spacing="3" fill="rgba(255,255,255,.7)">${kicker}</text>${text}</svg>`
+    )
+  );
+}
+
+export class DemoTheater {
+  isDemo = true;
+
+  constructor() {
+    const now = Date.now();
+    this.libraries = [
+      { id: 'films', name: 'Films', kind: 'movies', path: 'D:\\Media\\Films', audience: 'everyone', added: now - 90 * DAY, scanned: now - HOUR, count: 0 },
+      { id: 'shows', name: 'Shows', kind: 'shows', path: 'D:\\Media\\Shows', audience: 'family', added: now - 90 * DAY, scanned: now - HOUR, count: 0 },
+      { id: 'music', name: 'Music', kind: 'music', path: 'D:\\Media\\Music', audience: 'everyone', added: now - 90 * DAY, scanned: now - HOUR, count: 0 },
+      { id: 'photos', name: 'Photos', kind: 'photos', path: 'C:\\Users\\alex\\Pictures', audience: 'family', added: now - 30 * DAY, scanned: now - HOUR, count: 0 },
+      { id: 'home', name: 'Home videos', kind: 'videos', path: 'D:\\Media\\Home videos', audience: 'admins', added: now - 30 * DAY, scanned: now - HOUR, count: 0 },
+    ];
+    const base = { show: '', season: 0, episode: 0, artist: '', album: '', track: 0, genre: '', folder: '', size: 0, cover: false, subtitles: [], tags: [], adultsOnly: false, year: 0 };
+    const items = [];
+    DEMO_FILMS.forEach((f, i) => items.push({ ...base, id: `film-${i}`, library: 'films', kind: 'movie', title: f.title, year: f.year, path: `D:\\Media\\Films\\${f.title} (${f.year}).mkv`, size: (4 + i) * GB, modified: now - (i + 1) * 9 * DAY, added: now - (i + 1) * 9 * DAY, adultsOnly: !!f.adultsOnly, subtitles: i % 2 ? [] : [{ label: 'en', file: '' }] }));
+    DEMO_SHOWS.forEach((s, si) =>
+      s.seasons.forEach((count, season) => {
+        for (let e = 1; e <= count; e++) {
+          items.push({ ...base, id: `ep-${si}-${season + 1}-${e}`, library: 'shows', kind: 'episode', title: `Episode ${e}`, show: s.show, season: season + 1, episode: e, path: `D:\\Media\\Shows\\${s.show}\\Season ${season + 1}\\E${e}.mp4`, size: 900 * MB, modified: now - (season * 10 + e) * DAY, added: now - (season * 10 + e) * DAY });
+        }
+      })
+    );
+    DEMO_ALBUMS.forEach((a, ai) =>
+      a.tracks.forEach((title, t) => items.push({ ...base, id: `track-${ai}-${t}`, library: 'music', kind: 'track', title, artist: a.artist, album: a.album, track: t + 1, year: a.year, genre: a.genre, folder: a.album, path: `D:\\Media\\Music\\${a.artist}\\${a.album}\\${t + 1} ${title}.flac`, size: 28 * MB, modified: now - 40 * DAY, added: now - 40 * DAY }))
+    );
+    DEMO_PHOTO_ALBUMS.forEach(([folder, count], pi) => {
+      for (let n = 1; n <= count; n++) items.push({ ...base, id: `photo-${pi}-${n}`, library: 'photos', kind: 'photo', title: `IMG ${String(n).padStart(4, '0')}`, folder, path: `C:\\Users\\alex\\Pictures\\${folder}\\IMG_${n}.jpg`, size: 4 * MB, modified: now - (pi * 20 + n) * HOUR, added: now - (pi * 20 + n) * HOUR });
+    });
+    DEMO_VIDEOS.forEach((title, i) => items.push({ ...base, id: `video-${i}`, library: 'home', kind: 'video', title, folder: '2026', path: `D:\\Media\\Home videos\\2026\\${title}.mp4`, size: 1.2 * GB, modified: now - (i + 2) * DAY, added: now - (i + 2) * DAY }));
+    this.items = items;
+    for (const library of this.libraries) library.count = items.filter((i) => i.library === library.id).length;
+  }
+
+  async theater() {
+    return { libraries: structuredClone(this.libraries), scanning: false, ffmpeg: true, suggestions: [{ path: 'C:\\Users\\alex\\Videos', kind: 'videos', name: 'Videos' }] };
+  }
+
+  async theaterItems(library = null) {
+    return structuredClone(library ? this.items.filter((i) => i.library === library) : this.items);
+  }
+
+  #tint(id) {
+    let n = 0;
+    for (const c of id) n = (n * 31 + c.charCodeAt(0)) % DEMO_TINTS.length;
+    return DEMO_TINTS[n];
+  }
+
+  async theaterArt(id, kind = 'thumb') {
+    const item = this.items.find((i) => i.id === id);
+    if (!item) return null;
+    if (kind === 'poster') {
+      if (item.kind === 'photo' || item.kind === 'video') return null;
+      const title = item.show || item.album || item.title;
+      const kicker = item.kind === 'track' ? item.artist.toUpperCase() : item.kind === 'episode' ? 'A SAMPLE SERIES' : String(item.year);
+      return posterSvg(title, kicker, this.#tint(title), item.kind === 'track' ? 'square' : 'tall');
+    }
+    const [a, b] = this.#tint(item.id);
+    return svgThumb(item.title.toUpperCase(), a, b);
+  }
+
+  async theaterDetails(id) {
+    const item = this.items.find((i) => i.id === id);
+    if (!item) throw new Error('That is no longer in Theater');
+    const probe = item.kind === 'photo' ? null : { seconds: item.kind === 'track' ? 214 + item.track * 7 : item.kind === 'episode' ? 2640 : item.kind === 'video' ? 95 : 0, width: 1920, height: 1080, video: item.kind === 'track' ? '' : 'h264', audio: item.kind === 'track' ? 'flac' : 'aac', bitrate: 8e6 };
+    if (item.kind === 'movie') {
+      const f = DEMO_FILMS.find((x) => x.title === item.title);
+      probe.seconds = f.minutes * 60;
+      return { details: { title: f.title, year: f.year, overview: f.overview, cast: f.cast, director: f.director, genres: f.genres, runtimeMinutes: f.minutes, url: '', source: 'Sample data', posterUrl: null }, episode: null, probe, poster: true };
+    }
+    if (item.kind === 'episode') {
+      const s = DEMO_SHOWS.find((x) => x.show === item.show);
+      return { details: { title: s.show, year: 2022, overview: s.overview, cast: s.cast, director: '', genres: s.genres, runtimeMinutes: 44, url: '', source: 'Sample data' }, episode: { name: `${item.title} of season ${item.season}`, overview: 'An invented episode summary for the sample library.', aired: '2022-03-01', runtimeMinutes: 44 }, probe, poster: true };
+    }
+    if (item.kind === 'track') {
+      return { details: { title: item.album, year: item.year, overview: '', cast: [], director: item.artist, genres: [item.genre], runtimeMinutes: 0, url: '', source: 'Sample data' }, episode: null, probe, poster: true };
+    }
+    return { details: null, episode: null, probe, poster: false };
+  }
+
+  async theaterPlay() {
+    throw new Error(DEMO_PLAY_NOTE);
+  }
+
+  async theaterEdit(changes) {
+    const item = this.items.find((i) => i.id === changes.id);
+    if (!item) throw new Error('That is no longer in Theater');
+    if (changes.tags) item.tags = [...new Set(changes.tags.map((t) => t.trim()).filter(Boolean))];
+    if (changes.adultsOnly != null) item.adultsOnly = changes.adultsOnly;
+    if (changes.title) item.title = changes.title;
+    if (changes.year != null) item.year = changes.year;
+    return structuredClone(item);
+  }
+
+  async theaterScan() {
+    return { started: true };
+  }
+
+  async theaterLibraryAdd(library) {
+    const made = { id: `lib-${this.libraries.length}`, name: library.name || library.path.split('\\').pop(), kind: library.kind, path: library.path, audience: library.audience || 'everyone', added: Date.now(), scanned: Date.now(), count: 0 };
+    this.libraries.push(made);
+    return structuredClone(made);
+  }
+
+  async theaterLibraryUpdate(changes) {
+    const library = this.libraries.find((l) => l.id === changes.id);
+    if (changes.audience) library.audience = changes.audience;
+    if (changes.name) library.name = changes.name;
+    return structuredClone(library);
+  }
+
+  async theaterLibraryRemove(id) {
+    this.libraries = this.libraries.filter((l) => l.id !== id);
+    this.items = this.items.filter((i) => i.library !== id);
+  }
+
+  async theaterSubtitles() {
+    throw new Error('Sample library: add an OpenSubtitles key on a real box to fetch subtitles');
+  }
+
+  async theaterFolders(path) {
+    const tree = { '': ['C:\\', 'D:\\'], 'C:\\': ['Users'], 'C:\\Users': ['alex'], 'C:\\Users\\alex': ['Videos', 'Pictures', 'Music'], 'D:\\': ['Media'], 'D:\\Media': ['Films', 'Shows', 'Music', 'Home videos'] };
+    return (tree[path] || []).map((name) => ({ path: path ? (path.endsWith('\\') ? path + name : `${path}\\${name}`) : name, name: name.replace(/\\$/, '') }));
+  }
+}

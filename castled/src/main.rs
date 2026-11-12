@@ -16,11 +16,14 @@ mod arcade;
 mod clones;
 mod drives;
 mod host;
+mod lookup;
+mod media_tags;
 mod network;
 mod saves;
 mod security;
 mod stream;
 mod system;
+mod theater;
 mod wiki;
 
 use std::{
@@ -34,7 +37,7 @@ use std::{
 use axum::{
     Json, Router,
     body::Body,
-    extract::{DefaultBodyLimit, Query, Request, State},
+    extract::{DefaultBodyLimit, Path as UrlPath, Query, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -91,6 +94,8 @@ struct AppState {
     host: Option<host::Host>,
     /// The computer's drives, and when each was plugged in.
     drives: drives::Drives,
+    /// Films, shows, music, photos and videos from folders on this computer.
+    theater: theater::Theater,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -802,6 +807,176 @@ async fn host_speedtest(State(st): State<Shared>, Json(b): Json<SpeedBody>) -> A
 }
 
 // ---------------------------------------------------------------------------------------
+// Theater: films, shows, music, photos and videos from folders (see theater.rs)
+// ---------------------------------------------------------------------------------------
+
+/// How often every library is walked again, to pick up what was added.
+const THEATER_RESCAN: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// The box setting that holds the OpenSubtitles API key.
+const OPENSUBTITLES_SETTING: &str = "theater.opensubtitlesKey";
+
+#[derive(Deserialize)]
+struct LibraryAddBody {
+    path: String,
+    kind: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default = "everyone")]
+    audience: String,
+}
+
+fn everyone() -> String {
+    "everyone".into()
+}
+
+#[derive(Deserialize)]
+struct LibraryUpdateBody {
+    id: String,
+    name: Option<String>,
+    audience: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ScanBody {
+    #[serde(default)]
+    id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ItemsQuery {
+    library: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DetailsQuery {
+    id: String,
+    /// Ask the internet when nothing is known yet.
+    #[serde(default)]
+    fetch: bool,
+}
+
+#[derive(Deserialize)]
+struct TheaterArtQuery {
+    id: String,
+    /// thumb (from the file) or poster (from the internet)
+    kind: String,
+}
+
+async fn theater_call<T, F>(st: Shared, action: F) -> ApiResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState) -> theater::TheaterResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || action(&st).map_err(|msg| ApiError::conflict(&msg)))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+async fn theater_overview(State(st): State<Shared>) -> ApiResult<Json<theater::Overview>> {
+    theater_call(st, |st| Ok(st.theater.overview())).await.map(Json)
+}
+
+/// A folder on this computer becomes a library, then is walked straight away. Reading any
+/// folder is the same power as Storage's "../", so it is allowed exactly when that is.
+async fn theater_library_add(State(st): State<Shared>, Json(b): Json<LibraryAddBody>) -> ApiResult<Json<theater::Library>> {
+    let path = host_call(st.clone(), move |_, host| {
+        let path = host::parse(&b.path)?;
+        host.stat(&path)?;
+        Ok((path, b.kind, b.name, b.audience))
+    })
+    .await?;
+    let library = theater_call(st.clone(), move |st| st.theater.add_library(&path.0, &path.1, &path.2, &path.3)).await?;
+    let id = library.id.clone();
+    std::thread::spawn(move || st.theater.scan(Some(&id)));
+    Ok(Json(library))
+}
+
+async fn theater_library_update(State(st): State<Shared>, Json(b): Json<LibraryUpdateBody>) -> ApiResult<Json<theater::Library>> {
+    theater_call(st, move |st| st.theater.update_library(&b.id, b.name.as_deref(), b.audience.as_deref())).await.map(Json)
+}
+
+async fn theater_library_remove(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<StatusCode> {
+    theater_call(st, move |st| st.theater.remove_library(&b.id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Starts walking the libraries again; answers at once.
+async fn theater_scan(State(st): State<Shared>, Json(b): Json<ScanBody>) -> ApiResult<Json<serde_json::Value>> {
+    if st.theater.is_scanning() {
+        return Ok(Json(serde_json::json!({ "started": false })));
+    }
+    std::thread::spawn(move || st.theater.scan(b.id.as_deref()));
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+async fn theater_items(State(st): State<Shared>, Query(q): Query<ItemsQuery>) -> ApiResult<Json<Vec<theater::Item>>> {
+    theater_call(st, move |st| Ok(st.theater.items(q.library.as_deref()))).await.map(Json)
+}
+
+async fn theater_details(State(st): State<Shared>, Query(q): Query<DetailsQuery>) -> ApiResult<Json<theater::DetailsAnswer>> {
+    theater_call(st, move |st| st.theater.details(&q.id, q.fetch)).await.map(Json)
+}
+
+async fn theater_art(State(st): State<Shared>, Query(q): Query<TheaterArtQuery>) -> ApiResult<Response> {
+    let (path, mime) = theater_call(st, move |st| match q.kind.as_str() {
+        "poster" => st.theater.poster(&q.id),
+        _ => st.theater.thumb(&q.id),
+    })
+    .await
+    .map_err(|_| ApiError::not_found())?;
+    let mut res = stream::file(&path, None, &mime, stream::Offer::Inline).await?;
+    // Pictures of an item change only when its file does, which changes its address.
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=86400"));
+    Ok(res)
+}
+
+async fn theater_edit(State(st): State<Shared>, Json(b): Json<theater::EditBody>) -> ApiResult<Json<theater::Item>> {
+    theater_call(st, move |st| st.theater.edit(b)).await.map(Json)
+}
+
+async fn theater_play(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<theater::PlayLink>> {
+    theater_call(st, move |st| st.theater.play(&b.id)).await.map(Json)
+}
+
+async fn theater_subtitles(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<serde_json::Value>> {
+    theater_call(st, move |st| {
+        let key = read_settings(&st.root).get(OPENSUBTITLES_SETTING).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        st.theater.fetch_subtitles(&b.id, &key).map(|found| serde_json::json!({ "found": found }))
+    })
+    .await
+    .map(Json)
+}
+
+/// A ticket is the 32 hex characters this box made; anything else is refused before lookup.
+fn valid_ticket(ticket: &str) -> bool {
+    ticket.len() == 32 && ticket.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// What a play link opens, for a video or audio player. Needs no token: the ticket is the
+/// permission, for one file, for a few hours.
+async fn media(State(st): State<Shared>, UrlPath(ticket): UrlPath<String>, headers: HeaderMap) -> ApiResult<Response> {
+    if !valid_ticket(&ticket) {
+        return Err(ApiError::not_found());
+    }
+    let path = st.theater.ticket_file(&ticket).ok_or_else(ApiError::not_found)?;
+    let mime = theater::media_type(&path.to_string_lossy());
+    Ok(stream::file(&path, headers.get(header::RANGE), &mime, stream::Offer::Inline).await?)
+}
+
+async fn media_subtitle(State(st): State<Shared>, UrlPath((ticket, n)): UrlPath<(String, usize)>) -> ApiResult<Response> {
+    if !valid_ticket(&ticket) {
+        return Err(ApiError::not_found());
+    }
+    let text = tokio::task::spawn_blocking(move || st.theater.ticket_subtitle(&ticket, n))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .ok_or_else(ApiError::not_found)?;
+    let mut res = Response::new(Body::from(text));
+    res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/vtt; charset=utf-8"));
+    Ok(res)
+}
+
+// ---------------------------------------------------------------------------------------
 // Clones: machines and automations in Clonewars VMs (see clones.rs)
 // ---------------------------------------------------------------------------------------
 
@@ -1505,6 +1680,17 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/host/trash", post(host_trash))
         .route("/host/delete", post(host_delete))
         .route("/host/speedtest", post(host_speedtest))
+        .route("/theater", get(theater_overview))
+        .route("/theater/library/add", post(theater_library_add))
+        .route("/theater/library/update", post(theater_library_update))
+        .route("/theater/library/remove", post(theater_library_remove))
+        .route("/theater/scan", post(theater_scan))
+        .route("/theater/items", get(theater_items))
+        .route("/theater/details", get(theater_details))
+        .route("/theater/art", get(theater_art))
+        .route("/theater/edit", post(theater_edit))
+        .route("/theater/play", post(theater_play))
+        .route("/theater/subtitles", post(theater_subtitles))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
@@ -1546,12 +1732,18 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/host/upload", put(host_upload).layer(DefaultBodyLimit::disable()))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
 
-    let api = Router::new().route("/hello", get(hello)).merge(protected);
+    // Play links carry their own permission (see theater.rs), so a video player can use them.
+    let api = Router::new()
+        .route("/hello", get(hello))
+        .route("/media/{ticket}", get(media))
+        .route("/media/{ticket}/sub/{n}", get(media_subtitle))
+        .merge(protected);
 
     let cors = CorsLayer::new()
         .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
         .allow_methods([Method::GET, Method::POST, Method::PUT])
-        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::RANGE])
+        .expose_headers([header::CONTENT_RANGE, header::ACCEPT_RANGES, header::CONTENT_LENGTH]);
 
     let app = Router::new().nest("/api/v1", api);
     let app = match web {
@@ -1612,6 +1804,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         game_notes: wiki::Shelf::open(root.join(META_DIR).join("arcade").join("about.json")),
         host: (addr.ip().is_loopback() || cfg.host_files).then(|| host::Host::new(&root)),
         drives: drives::Drives::open(root.join(META_DIR).join("drives.json"), &root),
+        theater: theater::Theater::open(root.join(META_DIR).join("theater")),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
@@ -1638,6 +1831,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             every.tick().await;
             let state = watcher.clone();
             let _ = tokio::task::spawn_blocking(move || state.drives.tick()).await;
+        }
+    });
+
+    // Theater walks its libraries once at start, then every hour, to pick up new files.
+    let scanner = state.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(THEATER_RESCAN);
+        loop {
+            every.tick().await;
+            let state = scanner.clone();
+            let _ = tokio::task::spawn_blocking(move || state.theater.scan(None)).await;
         }
     });
 

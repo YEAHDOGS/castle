@@ -3,7 +3,7 @@
 
 import { store } from './store.svelte.js';
 import { SECTIONS, DEFAULT_SECTION } from './sections.js';
-import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity } from './demo-shell.js';
+import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity, DemoTheater } from './demo-shell.js';
 import { prefs } from './prefs.svelte.js';
 
 const SECTION_KEY = 'castle-section';
@@ -36,6 +36,7 @@ class Shell {
   demoNetwork = new DemoNetwork();
   demoBox = new DemoBox();
   demoSecurity = new DemoSecurity();
+  demoTheater = new DemoTheater();
 
   /** People on this box. Accounts exist only in the demo until the box grows them. */
   get users() {
@@ -90,6 +91,12 @@ class Shell {
   get arcadeSource() {
     if (store.isDemo) return this.demoArcade;
     return store.boxUrl ? store.adapter : null; // boxUrl is reactive; the adapter object is not
+  }
+
+  /** Where Theater reads from, by the same rule. */
+  get theaterSource() {
+    if (store.isDemo) return this.demoTheater;
+    return store.boxUrl ? store.adapter : null;
   }
 
   /** Where Network reads from, by the same rule. */

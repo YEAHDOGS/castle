@@ -6,7 +6,7 @@
 // live:  true when changing it does something today. Settings without it are saved now
 //        and wait for the feature that will read them; the screen says so on each one.
 
-import { Cable, Server, Users, HardDrive, Gamepad2, Boxes, BrainCircuit, Globe, Palette, RefreshCw } from '@lucide/svelte';
+import { Cable, Server, Users, HardDrive, Gamepad2, Clapperboard, Boxes, BrainCircuit, Globe, Palette, RefreshCw } from '@lucide/svelte';
 
 export const SETTING_GROUPS = [
   { id: 'connections', label: 'Connections', icon: Cable, blurb: 'How your devices reach this box when you are away from home.' },
@@ -14,6 +14,7 @@ export const SETTING_GROUPS = [
   { id: 'people', label: 'People and sign-in', icon: Users, blurb: 'Who can use the box and how they unlock it.' },
   { id: 'storage', label: 'Storage', icon: HardDrive, blurb: 'How files, trash and old versions are kept.' },
   { id: 'arcade', label: 'Arcade', icon: Gamepad2, blurb: 'How the game library looks and how games start.' },
+  { id: 'theater', label: 'Theater', icon: Clapperboard, blurb: 'Where film, show and album details come from, and subtitles.' },
   { id: 'clones', label: 'Clones', icon: Boxes, blurb: 'Defaults for virtual machines and automations.' },
   { id: 'ai', label: 'AI', icon: BrainCircuit, blurb: 'Where models run and how long they stay loaded.' },
   { id: 'network', label: 'Network', icon: Globe, blurb: 'DNS, ad blocking and how the connection is measured.' },
@@ -55,6 +56,11 @@ export const SETTINGS = [
   { id: 'arcade.savesPerPerson', group: 'arcade', where: 'box', type: 'toggle', default: true, label: 'Separate saves per person', help: 'Each person gets their own save files and save states.' },
   { id: 'arcade.saveHistory', group: 'arcade', where: 'box', type: 'toggle', default: true, label: 'Keep a history of saves', help: 'Every save is kept as a version you can go back to.' },
 
+  // ---- theater ----
+  { id: 'theater.lookups', group: 'theater', where: 'device', type: 'toggle', default: true, live: true, label: 'Look up details', help: 'Opening a film, show or album asks open sources (Wikipedia and Wikidata, TVmaze, MusicBrainz) for its summary, cast and poster. Only the title is sent, once.' },
+  { id: 'theater.autoplay', group: 'theater', where: 'device', type: 'toggle', default: true, live: true, label: 'Play the next one', help: 'When an episode or a song ends, the next starts.' },
+  { id: 'theater.opensubtitlesKey', group: 'theater', where: 'box', type: 'text', default: '', live: true, label: 'OpenSubtitles API key', help: 'Lets the box find subtitles for a video. The key is free at opensubtitles.com; it is kept on the box.', placeholder: 'paste the key' },
+
   // ---- clones ----
   { id: 'clones.pollSeconds', group: 'clones', where: 'device', type: 'choice', default: 2, live: true, label: 'Refresh status every', help: 'How often this screen asks the box what an automation is doing.', options: [choice(1, '1 s'), choice(2, '2 s'), choice(5, '5 s')] },
   { id: 'clones.memoryGb', group: 'clones', where: 'box', type: 'number', default: 4, min: 1, max: 256, unit: 'GB', label: 'Memory for a new machine', help: 'The default when a machine\'s own profile does not say.' },
@@ -74,7 +80,7 @@ export const SETTINGS = [
 
   // ---- look and feel ----
   { id: 'look.motion', group: 'look', where: 'device', type: 'choice', default: 'full', live: true, label: 'Motion', help: 'Reduced turns off animations and transitions.', options: [choice('full', 'Full'), choice('reduced', 'Reduced')] },
-  { id: 'look.startSection', group: 'look', where: 'device', type: 'choice', default: 'last', live: true, label: 'Open Castle in', help: 'The section shown when the app starts.', options: [choice('last', 'Where I left off'), choice('storage', 'Storage'), choice('ai', 'AI'), choice('arcade', 'Arcade'), choice('clones', 'Clones'), choice('network', 'Network')] },
+  { id: 'look.startSection', group: 'look', where: 'device', type: 'choice', default: 'last', live: true, label: 'Open Castle in', help: 'The section shown when the app starts.', options: [choice('last', 'Where I left off'), choice('storage', 'Storage'), choice('ai', 'AI'), choice('arcade', 'Arcade'), choice('theater', 'Theater'), choice('clones', 'Clones'), choice('network', 'Network')] },
   { id: 'look.wheelInvert', group: 'look', where: 'device', type: 'toggle', default: false, live: true, label: 'Reverse the wheel', help: 'Turns the section wheel the other way when you scroll.' },
 
   // ---- updates and backup ----

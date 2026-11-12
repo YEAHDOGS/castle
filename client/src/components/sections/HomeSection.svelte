@@ -124,6 +124,11 @@
         const games = systems.reduce((sum, system) => sum + (system.games || 0), 0);
         return `${games} games on ${systems.length} systems`;
       },
+      theater: async () => {
+        const { libraries } = await shell.theaterSource.theater();
+        const count = libraries.reduce((sum, library) => sum + (library.count || 0), 0);
+        return libraries.length ? `${count} ${count === 1 ? 'item' : 'items'} in ${libraries.length} ${libraries.length === 1 ? 'library' : 'libraries'}` : 'Add a folder to start';
+      },
       security: async () => {
         const { checks } = await shell.securitySource.security();
         const failing = checks.filter((c) => c.state === 'warn').length;

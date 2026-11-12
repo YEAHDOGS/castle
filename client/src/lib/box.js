@@ -506,9 +506,80 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   /** Frees every preview held in memory; call when leaving this box. */
+  // ---- Theater: films, shows, music, photos and videos from folders on the box ----
+
+  /** { libraries, scanning, ffmpeg, suggestions } */
+  async theater() {
+    return (await this.call('/theater')).json();
+  }
+
+  async theaterItems(library = null) {
+    return (await this.call(`/theater/items${library ? `?library=${encodeURIComponent(library)}` : ''}`)).json();
+  }
+
+  /** What is known about an item. `fetch` asks the internet the first time. */
+  async theaterDetails(id, fetch = false) {
+    return (await this.call(`/theater/details?id=${encodeURIComponent(id)}${fetch ? '&fetch=true' : ''}`)).json();
+  }
+
+  /**
+   * A picture of an item as an address the page can show: 'thumb' (from the file) or
+   * 'poster' (from the internet). Kept for the visit; null when there is none.
+   */
+  async theaterArt(id, kind = 'thumb', version = '') {
+    const key = `theater:${id}:${kind}:${version}`;
+    if (this.art.has(key)) return this.art.get(key);
+    try {
+      const url = URL.createObjectURL(await (await this.call(`/theater/art?id=${encodeURIComponent(id)}&kind=${kind}`)).blob());
+      this.art.set(key, url);
+      return url;
+    } catch {
+      this.art.set(key, null);
+      return null;
+    }
+  }
+
+  /** A link a player can open (the box's own address in front), with its subtitle tracks. */
+  async theaterPlay(id) {
+    const link = await (await this.post('/theater/play', { id })).json();
+    return { ...link, url: this.url + link.url, subtitles: link.subtitles.map((s) => ({ ...s, url: this.url + s.url })) };
+  }
+
+  async theaterEdit(changes) {
+    return (await this.post('/theater/edit', changes)).json();
+  }
+
+  async theaterScan(id = null) {
+    return (await this.post('/theater/scan', id ? { id } : {})).json();
+  }
+
+  async theaterLibraryAdd(library) {
+    return (await this.post('/theater/library/add', library)).json();
+  }
+
+  async theaterLibraryUpdate(changes) {
+    return (await this.post('/theater/library/update', changes)).json();
+  }
+
+  async theaterLibraryRemove(id) {
+    await this.post('/theater/library/remove', { id });
+  }
+
+  /** Asks OpenSubtitles (with the key in Settings) for English subtitles. { found } */
+  async theaterSubtitles(id) {
+    return (await this.post('/theater/subtitles', { id })).json();
+  }
+
+  /** Folders inside a folder on the computer, for choosing a library. */
+  async theaterFolders(path) {
+    if (!path) return (await this.hostDrives()).drives.filter((d) => d.media).map((d) => ({ path: d.path, name: d.name }));
+    const items = await this.listChildren(hostId(path));
+    return items.filter((n) => n.kind === 'folder' && !n.hidden).map((n) => ({ path: hostPath(n.id), name: n.name }));
+  }
+
   dispose() {
     for (const url of this.thumbs.values()) URL.revokeObjectURL(url);
-    for (const url of this.art.values()) URL.revokeObjectURL(url);
+    for (const url of this.art.values()) if (url) URL.revokeObjectURL(url);
     this.thumbs.clear();
     this.texts.clear();
     this.art.clear();

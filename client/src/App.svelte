@@ -10,6 +10,7 @@
   import StorageSection from './components/sections/StorageSection.svelte';
   import AiSection from './components/sections/AiSection.svelte';
   import ArcadeSection from './components/sections/ArcadeSection.svelte';
+  import TheaterSection from './components/sections/TheaterSection.svelte';
   import ClonesSection from './components/sections/ClonesSection.svelte';
   import NetworkSection from './components/sections/NetworkSection.svelte';
   import SecuritySection from './components/sections/SecuritySection.svelte';
@@ -21,7 +22,7 @@
   import ConnectModal from './components/ConnectModal.svelte';
   import Toasts from './components/Toasts.svelte';
 
-  const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
+  const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, theater: TheaterSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
   const Section = $derived(SECTION_VIEWS[shell.section] || StorageSection);
 
   onMount(() => {

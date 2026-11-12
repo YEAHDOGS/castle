@@ -19,7 +19,6 @@ pub enum Offer {
     /// As a download: the browser must not show or run it. For vault and computer files.
     Download,
     /// To be shown in place: a film in a player, a photo in a page.
-    #[allow(dead_code)] // the Theater player is its first user
     Inline,
 }
 

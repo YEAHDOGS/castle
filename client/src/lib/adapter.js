@@ -76,8 +76,9 @@ function seed() {
 
 export class LocalStorageAdapter extends StorageAdapter {
   /**
-   * @param {{ nodes?: object[] }} [options] pass `nodes` for a fixed, memory-only drive
-   *   (the /demo route): it starts from exactly those nodes and saves nothing.
+   * @param {{ nodes?: object[], computer?: object }} [options] pass `nodes` for a fixed, memory-only drive
+   *   (the /demo route): it starts from exactly those nodes and saves nothing. `computer`
+   *   adds the demo's pretend computer (see demoComputer in demo.js).
    */
   constructor(options = {}) {
     super();
