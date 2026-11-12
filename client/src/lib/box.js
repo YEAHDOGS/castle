@@ -506,6 +506,55 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   /** Frees every preview held in memory; call when leaving this box. */
+  // ---- Steam cache: games kept on the box for every PC in the home ----
+
+  /** Where the cache listens, how Steam finds it, the games in it and who is downloading. */
+  async steamCache() {
+    return (await this.call('/steam')).json();
+  }
+
+  /** A game's header picture, kept for the visit; null when there is none yet. */
+  async steamArt(app) {
+    const key = `steam:${app}`;
+    if (this.art.has(key) && this.art.get(key)) return this.art.get(key);
+    try {
+      const url = URL.createObjectURL(await (await this.call(`/steam/art?app=${app}`)).blob());
+      this.art.set(key, url);
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  async steamSearch(q) {
+    return (await this.call(`/steam/search?q=${encodeURIComponent(q)}`)).json();
+  }
+
+  async steamLocal() {
+    return (await this.call('/steam/local')).json();
+  }
+
+  async steamKeep(app, keep = true) {
+    await this.post('/steam/keep', { app, keep });
+  }
+
+  /** Deletes a game's chunks from the cache. { freed } */
+  async steamPurge(app) {
+    return (await this.post('/steam/purge', { app })).json();
+  }
+
+  async steamRefresh() {
+    await this.post('/steam/refresh', {});
+  }
+
+  async steamEnable() {
+    return (await this.post('/steam/enable', {})).json();
+  }
+
+  async steamDnsEnable() {
+    return (await this.post('/steam/dns/enable', {})).json();
+  }
+
   // ---- Theater: films, shows, music, photos and videos from folders on the box ----
 
   /** { libraries, scanning, ffmpeg, suggestions } */

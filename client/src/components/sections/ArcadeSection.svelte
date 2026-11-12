@@ -6,9 +6,11 @@
 
      A game on several discs is one card with a disc to choose. In a card, the left and right
      arrows (on screen or on the keyboard) move through the games; Shuffle deals random ones,
-     from one console or the whole library. -->
+     from one console or the whole library.
+
+     Steam cache keeps Steam games on the box for every PC in the home (see arcade/SteamCache). -->
 <script>
-  import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw, Dices, ChevronLeft, ChevronRight, Disc3, ExternalLink } from '@lucide/svelte';
+  import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw, Dices, ChevronLeft, ChevronRight, Disc3, ExternalLink, HardDriveDownload } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
   import { SvelteMap } from 'svelte/reactivity';
@@ -19,11 +21,13 @@
   import { modalIn, itemIn, reducedMotion } from '../../lib/motion.js';
   import SectionFrame from '../SectionFrame.svelte';
   import Notice from '../Notice.svelte';
+  import SteamCache from '../arcade/SteamCache.svelte';
 
   const NO_ARCADE = 'not started with --arcade';
   const CONSOLES = '@consoles'; // rail ids that are not systems
   const SAVES = '@saves';
   const SHUFFLE = '@shuffle';
+  const STEAM = '@steam';
   const RECENT_PICKS = 12; // a shuffle does not deal one of the last few games again
   const KIND_LABEL = { battery: 'IN-GAME SAVE', state: 'SAVE STATE' };
   const HASH_SHOWN = 10;
@@ -73,6 +77,7 @@
     ...(consolesOpen ? systems.map((s) => ({ id: s.id, label: s.short, count: s.games, indent: true })) : []),
     { id: SAVES, label: 'Saves', icon: Save, count: saves.length },
     { id: SHUFFLE, label: 'Shuffle', icon: Dices },
+    { id: STEAM, label: 'Steam cache', icon: HardDriveDownload },
   ]);
   const gameSaves = $derived(openGame ? saves.filter((s) => s.game && s.game.system === openSystemId && s.game.id === openGame.id) : []);
   const unrecorded = $derived(saves.filter((s) => !s.recorded).length);
@@ -86,6 +91,9 @@
       showSaves();
     } else if (id === SHUFFLE) {
       shuffle('library');
+    } else if (id === STEAM) {
+      mode = 'steam';
+      openGame = null;
     } else {
       mode = 'games';
       pickSystem(id);
@@ -353,7 +361,7 @@
   subtitle={systems.length ? `${totalGames} games · ${systems.length} systems · ${fmtSize(totalBytes)}` : 'Your game library'}
   tag={store.isDemo ? 'SAMPLE DATA' : ''}
   items={railItems}
-  active={mode === 'saves' ? SAVES : systemId}
+  active={mode === 'saves' ? SAVES : mode === 'steam' ? STEAM : systemId}
   onselect={pickRail}
 >
   {#snippet actions()}
@@ -365,7 +373,7 @@
       >
         <RefreshCw class="h-3.5 w-3.5 {recording ? 'animate-spin' : ''}" /> <span class="hidden sm:inline">{recording ? 'RECORDING' : 'RECORD NOW'}</span>
       </button>
-    {:else if games.length}
+    {:else if games.length && mode !== 'steam'}
       <button
         onclick={() => shuffle('system')}
         class="expo t-hover micro flex h-10 items-center gap-2 border border-hairline px-3 font-bold text-white transition-colors hover:border-chiral/60"
@@ -391,6 +399,9 @@
       Arcade shows the games folder on a Castle box. Connect to one from Storage, or open the
       <a class="text-bridge underline" href="/demo">demo</a> to see it with sample games.
     </Notice>
+  {:else if mode === 'steam'}
+    <!-- the Steam cache works whether or not this box has a games folder -->
+    <SteamCache {source} />
   {:else if loading}
     <p class="micro text-text-faint">READING THE LIBRARY</p>
   {:else if problem.includes(NO_ARCADE)}

@@ -94,7 +94,90 @@ const DEMO_GENRES = ['platformer', 'role-playing game', 'racing game', 'puzzle g
 const DEMO_SAVED_GAMES = 3; // games per system that have sample saves
 const DEMO_MAX_VERSIONS = 4;
 
+// ---------------------------------------------------------------------------------------
+// Steam cache: a pretend cache with made-up games (every name here is invented)
+// ---------------------------------------------------------------------------------------
+
+const STEAM_TINTS = [['#1b2838', '#0a0f16'], ['#3a2a14', '#0e0905'], ['#143a2e', '#05100c'], ['#3a1430', '#0e050c'], ['#24304a', '#070a12']];
+const DEMO_STEAM_GAMES = [
+  { app: 912340, name: 'Skyforge Tactics', full: 38.2 * GB, cached: 38.2 * GB, state: 'cached', dev: 'North Wind Games', genres: ['Strategy'], released: 'Mar 4, 2024', desc: 'Command an airship fleet across a broken sky. Turn-based battles, a campaign of 40 missions.' },
+  { app: 734560, name: 'Harbor Lights', full: 6.4 * GB, cached: 6.4 * GB, state: 'update', dev: 'Lantern House', genres: ['Adventure', 'Indie'], released: 'Oct 19, 2022', desc: 'Run a lighthouse on a stormy coast and keep the ships off the rocks, one night at a time.' },
+  { app: 556120, name: 'Iron Valley Racing', full: 61.0 * GB, cached: 23.5 * GB, state: 'partial', dev: 'Gearbox Bay', genres: ['Racing', 'Sports'], released: 'Jun 1, 2025', desc: 'Off-road racing through a mountain valley that changes with the seasons.' },
+  { app: 401230, name: 'Pocket Kingdom', full: 2.1 * GB, cached: 0, state: 'empty', dev: 'Tiny Crown', genres: ['Simulation'], released: 'Jan 12, 2021', desc: 'Build a kingdom the size of a garden. Your citizens are very small and very opinionated.' },
+];
+
+class DemoSteam {
+  constructor() {
+    const now = Date.now();
+    this.games = DEMO_STEAM_GAMES.map((g, i) => ({
+      app: g.app, name: g.name, header: true, cached: g.cached, full: g.full, state: g.state,
+      updated: now - (i * 11 + 3) * DAY, buildid: String(1880000 + i * 3721), lastServed: g.cached ? now - (i + 1) * 5 * HOUR : 0,
+      kept: i !== 2, installedHere: i < 2, saved: g.cached * (2 - i * 0.5 > 0 ? 2 - i * 0.5 : 0),
+      depots: [{ depot: g.app + 1, cached: g.cached, chunks: Math.round(g.cached / MB), manifests: 1, current: String(7200000000000000000 + i), upToDate: g.state !== 'update', size: g.full }],
+      description: g.desc, developers: [g.dev], genres: g.genres, released: g.released,
+    }));
+    this.installed = [
+      { app: 912340, name: 'Skyforge Tactics', size: 38.2 * GB, updated: now - 3 * DAY, buildid: '1880000', depots: {}, library: 'C:\\Program Files (x86)\\Steam' },
+      { app: 734560, name: 'Harbor Lights', size: 6.4 * GB, updated: now - 14 * DAY, buildid: '1883721', depots: {}, library: 'C:\\Program Files (x86)\\Steam' },
+      { app: 288880, name: 'Moonwell', size: 11.7 * GB, updated: now - 40 * DAY, buildid: '991203', depots: {}, library: 'D:\\SteamLibrary' },
+    ];
+  }
+
+  async overview() {
+    const sum = (key) => this.games.reduce((total, g) => total + g[key], 0);
+    return {
+      listening: '0.0.0.0:80', dns: '0.0.0.0:53', boxAddress: '192.168.1.50', cacheDir: 'D:\\SteamCache',
+      steamPointsHere: true, resolved: ['192.168.1.50'], canTurnOn: true, installedHere: this.installed.length,
+      totals: { bytes: sum('cached'), chunks: Math.round(sum('cached') / MB), hits: 81234, misses: 52011, saved: sum('saved'), free: 1.2 * 1024 * GB },
+      apps: structuredClone(this.games),
+      downloading: [{ client: '192.168.1.31', app: 556120, name: 'Iron Valley Racing', bytes: 1.6 * GB, hitPercent: 38, mbps: 92.4 }],
+    };
+  }
+
+  async art(app) {
+    const game = this.games.find((g) => g.app === app) || { name: `App ${app}` };
+    const [a, b] = STEAM_TINTS[app % STEAM_TINTS.length];
+    return svgThumb(game.name.toUpperCase(), a, b);
+  }
+
+  async search(q) {
+    const words = ['Lantern', 'Atlas', 'Frontier', 'Echo', 'Granite'];
+    return words.map((w, i) => ({ app: 600000 + i * 10, name: `${q.trim() || 'Game'}: ${w} Edition`, image: '' }));
+  }
+
+  async local() {
+    return structuredClone(this.installed);
+  }
+
+  async keep(app, keep) {
+    const game = this.games.find((g) => g.app === app);
+    if (game) game.kept = keep;
+    else if (keep) {
+      const found = this.installed.find((g) => g.app === app);
+      this.games.push({ app, name: found?.name || `App ${app}`, header: false, cached: 0, full: found?.size || 0, state: 'empty', updated: Date.now(), buildid: '', lastServed: 0, kept: true, installedHere: !!found, saved: 0, depots: [], description: '', developers: [], genres: [], released: '' });
+    }
+  }
+
+  async purge(app) {
+    const game = this.games.find((g) => g.app === app);
+    const freed = game?.cached || 0;
+    this.games = this.games.filter((g) => g.app !== app);
+    return { freed };
+  }
+}
+
 export class DemoArcade {
+  steam = new DemoSteam();
+  steamCache() { return this.steam.overview(); }
+  steamArt(app) { return this.steam.art(app); }
+  steamSearch(q) { return this.steam.search(q); }
+  steamLocal() { return this.steam.local(); }
+  steamKeep(app, keep = true) { return this.steam.keep(app, keep); }
+  steamPurge(app) { return this.steam.purge(app); }
+  async steamRefresh() {}
+  async steamEnable() { throw new Error('Demo: the cache is already on'); }
+  async steamDnsEnable() { throw new Error('Demo: nothing to turn on'); }
+
   isDemo = true;
 
   constructor() {

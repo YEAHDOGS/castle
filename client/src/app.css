@@ -129,12 +129,16 @@ body {
   border-color: rgba(0, 215, 255, 0.7) !important;
 }
 
-/* ---- mono microcopy ---- */
-.micro {
-  font-family: var(--font-mono2);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+/* ---- mono microcopy ----
+   In the components layer, so a utility on the same element wins: `micro normal-case` keeps
+   a path or a file's text as it is written. */
+@layer components {
+  .micro {
+    font-family: var(--font-mono2);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
 }
 
 /* ---- scrollbars: thin, quiet ---- */

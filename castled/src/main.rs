@@ -14,6 +14,7 @@
 
 mod arcade;
 mod clones;
+mod dns;
 mod drives;
 mod host;
 mod lookup;
@@ -21,6 +22,7 @@ mod media_tags;
 mod network;
 mod saves;
 mod security;
+mod steam;
 mod stream;
 mod system;
 mod theater;
@@ -96,6 +98,10 @@ struct AppState {
     drives: drives::Drives,
     /// Films, shows, music, photos and videos from folders on this computer.
     theater: theater::Theater,
+    /// Steam games kept for every PC in the home.
+    steam: Arc<steam::SteamCache>,
+    /// Where the box's DNS server listens, once it does.
+    dns: Mutex<Option<SocketAddr>>,
     /// What the daemon was started with, for the app's Settings screen.
     listen: String,
     loopback: bool,
@@ -977,6 +983,182 @@ async fn media_subtitle(State(st): State<Shared>, UrlPath((ticket, n)): UrlPath<
 }
 
 // ---------------------------------------------------------------------------------------
+// Steam cache: games downloaded once, shared over the home network (see steam.rs, dns.rs)
+// ---------------------------------------------------------------------------------------
+
+/// Where the cache listens when turned on from the app: every address, port 80, which is
+/// where Steam looks for it.
+const STEAM_CACHE_DEFAULT: &str = "0.0.0.0:80";
+const DNS_DEFAULT: &str = "0.0.0.0:53";
+/// Box settings that remember the cache and DNS were turned on, for the next start.
+const STEAM_CACHE_SETTING: &str = "steam.cacheAddress";
+const DNS_SETTING: &str = "steam.dnsAddress";
+/// How often game details are matched and refreshed in the background.
+const STEAM_REFRESH: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+#[derive(Deserialize)]
+struct AppQuery {
+    app: u32,
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+}
+
+#[derive(Deserialize)]
+struct KeepBody {
+    app: u32,
+    #[serde(default = "yes")]
+    keep: bool,
+}
+
+#[derive(Deserialize)]
+struct AppBody {
+    app: u32,
+}
+
+/// This computer's address in the home: the one it would use to reach the internet. No
+/// packet is sent to find it.
+fn home_address() -> Option<std::net::Ipv4Addr> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("1.1.1.1:53").ok()?;
+    match socket.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(ip) if !ip.is_unspecified() => Some(ip),
+        _ => None,
+    }
+}
+
+/// Starts the cache's own listener, for Steam clients in the home. No token: Steam cannot
+/// send one, and the cache answers only Steam content requests.
+async fn start_steam_cache(st: &Shared, addr: SocketAddr) -> Result<(), String> {
+    if st.steam.listening.lock().map(|l| l.is_some()).unwrap_or(false) {
+        return Ok(());
+    }
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| format!("The Steam cache could not listen on {addr}: {e}. Another program may be using that port."))?;
+    *st.steam.listening.lock().map_err(|_| "The cache is unavailable".to_string())? = Some(addr);
+    let app = steam::router(st.steam.clone()).into_make_service_with_connect_info::<SocketAddr>();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    println!("steam cache: listening on http://{addr}");
+    Ok(())
+}
+
+async fn start_dns(st: &Shared, addr: SocketAddr) -> Result<(), String> {
+    if st.dns.lock().map(|d| d.is_some()).unwrap_or(false) {
+        return Ok(());
+    }
+    let ip = home_address().ok_or("This computer's address in the home could not be found.")?;
+    let upstream: SocketAddr = std::env::var("CASTLE_DNS_UPSTREAM").unwrap_or_else(|_| dns::DEFAULT_UPSTREAM.into()).parse().map_err(|_| "CASTLE_DNS_UPSTREAM is not an address".to_string())?;
+    // Bind first, so a port already taken is reported now rather than lost in a task.
+    drop(tokio::net::UdpSocket::bind(addr).await.map_err(|e| format!("The DNS server could not listen on {addr}: {e}. Port 53 is often taken, or needs administrator rights."))?);
+    *st.dns.lock().map_err(|_| "DNS is unavailable".to_string())? = Some(addr);
+    tokio::spawn(async move {
+        if let Err(e) = dns::run(addr, ip, upstream).await {
+            eprintln!("[castled] dns stopped: {e}");
+        }
+    });
+    println!("dns: listening on {addr}, sending Steam to {ip}");
+    Ok(())
+}
+
+fn remember_setting(root: &Path, key: &str, value: &str) {
+    let mut saved = read_settings(root);
+    saved.insert(key.into(), serde_json::Value::String(value.into()));
+    let tmp = settings_file(root).with_extension("json.tmp");
+    if std::fs::write(&tmp, serde_json::to_vec_pretty(&saved).unwrap_or_default()).is_ok() {
+        let _ = std::fs::rename(tmp, settings_file(root));
+    }
+}
+
+async fn steam_overview(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    let (resolved, points_here) = steam::steam_points_here().await;
+    let state = st.clone();
+    let (apps, downloading, totals, local) = tokio::task::spawn_blocking(move || {
+        let local = steam::local_games();
+        (state.steam.apps(&local), state.steam.downloading(), state.steam.totals(), local.len())
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?;
+    Ok(Json(serde_json::json!({
+        "listening": st.steam.listening.lock().ok().and_then(|l| l.map(|a| a.to_string())),
+        "dns": st.dns.lock().ok().and_then(|d| d.map(|a| a.to_string())),
+        "boxAddress": home_address().map(|ip| ip.to_string()),
+        "cacheDir": plain_path(st.steam.dir()).to_string_lossy(),
+        "steamPointsHere": points_here,
+        "resolved": resolved,
+        "totals": totals,
+        "apps": apps,
+        "downloading": downloading,
+        "installedHere": local,
+        "canTurnOn": st.loopback,
+    })))
+}
+
+async fn steam_art(State(st): State<Shared>, Query(q): Query<AppQuery>) -> ApiResult<Response> {
+    let path = st.steam.art(q.app).ok_or_else(ApiError::not_found)?;
+    let mut res = stream::file(&path, None, "image/jpeg", stream::Offer::Inline).await?;
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=86400"));
+    Ok(res)
+}
+
+async fn steam_search(Query(q): Query<SearchQuery>) -> ApiResult<Json<Vec<steam::Found>>> {
+    let query = q.q.trim().chars().take(100).collect::<String>();
+    if query.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    tokio::task::spawn_blocking(move || steam::search(&query))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .map(Json)
+        .map_err(|msg| ApiError(StatusCode::BAD_GATEWAY, msg))
+}
+
+async fn steam_local() -> ApiResult<Json<Vec<steam::LocalGame>>> {
+    tokio::task::spawn_blocking(steam::local_games).await.map(Json).map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))
+}
+
+/// Chooses a game to keep (or stops keeping it), then fetches its details in the background.
+async fn steam_keep(State(st): State<Shared>, Json(b): Json<KeepBody>) -> ApiResult<StatusCode> {
+    st.steam.keep(b.app, b.keep);
+    let state = st.clone();
+    std::thread::spawn(move || state.steam.refresh(&steam::local_games()));
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn steam_purge(State(st): State<Shared>, Json(b): Json<AppBody>) -> ApiResult<Json<serde_json::Value>> {
+    let freed = tokio::task::spawn_blocking(move || st.steam.purge(b.app, &steam::local_games()))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .map_err(|msg| ApiError::conflict(&msg))?;
+    Ok(Json(serde_json::json!({ "freed": freed })))
+}
+
+async fn steam_refresh(State(st): State<Shared>) -> ApiResult<StatusCode> {
+    std::thread::spawn(move || st.steam.refresh(&steam::local_games()));
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Turns the cache on from the app. It listens to the whole home network, so only from
+/// this computer; it is remembered for the next start.
+async fn steam_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    let addr: SocketAddr = STEAM_CACHE_DEFAULT.parse().map_err(|_| ApiError::bad("bad address"))?;
+    start_steam_cache(&st, addr).await.map_err(|msg| ApiError::conflict(&msg))?;
+    remember_setting(&st.root, STEAM_CACHE_SETTING, STEAM_CACHE_DEFAULT);
+    Ok(Json(serde_json::json!({ "listening": addr.to_string() })))
+}
+
+async fn steam_dns_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    let addr: SocketAddr = DNS_DEFAULT.parse().map_err(|_| ApiError::bad("bad address"))?;
+    start_dns(&st, addr).await.map_err(|msg| ApiError::conflict(&msg))?;
+    remember_setting(&st.root, DNS_SETTING, DNS_DEFAULT);
+    Ok(Json(serde_json::json!({ "dns": addr.to_string() })))
+}
+
+// ---------------------------------------------------------------------------------------
 // Clones: machines and automations in Clonewars VMs (see clones.rs)
 // ---------------------------------------------------------------------------------------
 
@@ -1612,18 +1794,26 @@ struct Config {
     /// Let Storage open the rest of this computer even when the box can be reached from
     /// other machines. It always can when the box listens on this computer only.
     host_files: bool,
+    /// Where the Steam cache listens for Steam clients in the home, and where it keeps games.
+    steam_cache: Option<String>,
+    steam_cache_dir: Option<PathBuf>,
+    /// Where the DNS server that sends Steam to the cache listens.
+    dns: Option<String>,
 }
 
 fn usage() -> ! {
     eprintln!(
         "castled -- the Castle box daemon\n\n\
-         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR] [--host-files]\n\n\
+         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR] [--host-files]\n                [--steam-cache ADDR:PORT] [--steam-cache-dir DIR] [--dns ADDR:PORT]\n\n\
          --data  the vault directory            (default {DEFAULT_DATA_DIR}, or CASTLE_DATA_DIR)\n\
          --bind  address to listen on           (default {DEFAULT_BIND}, or CASTLE_BIND)\n\
          --web   built Castle app to serve at / (optional, or CASTLE_WEB_DIR)
          --clonewars  Castle's clonewars folder, to run automations (optional, or CASTLE_CLONEWARS_DIR)
          --arcade     a games folder (Consoles/ + Roms/) to show in Arcade (optional, or CASTLE_ARCADE_DIR)
-         --host-files let Storage open the whole computer even when other machines can reach the box (or CASTLE_HOST_FILES=1)"
+         --host-files let Storage open the whole computer even when other machines can reach the box (or CASTLE_HOST_FILES=1)
+         --steam-cache      where the Steam cache listens, e.g. 0.0.0.0:80 (or CASTLE_STEAM_CACHE)
+         --steam-cache-dir  where it keeps games (default: the vault's private folder, or CASTLE_STEAM_CACHE_DIR)
+         --dns              run a DNS server that sends Steam to the cache, e.g. 0.0.0.0:53 (or CASTLE_DNS)"
     );
     std::process::exit(2)
 }
@@ -1636,6 +1826,9 @@ fn config() -> Config {
         clonewars: std::env::var("CASTLE_CLONEWARS_DIR").ok().map(PathBuf::from),
         arcade: std::env::var("CASTLE_ARCADE_DIR").ok().map(PathBuf::from),
         host_files: std::env::var("CASTLE_HOST_FILES").is_ok_and(|v| v == "1"),
+        steam_cache: std::env::var("CASTLE_STEAM_CACHE").ok(),
+        steam_cache_dir: std::env::var("CASTLE_STEAM_CACHE_DIR").ok().map(PathBuf::from),
+        dns: std::env::var("CASTLE_DNS").ok(),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -1650,6 +1843,9 @@ fn config() -> Config {
             "--web" => cfg.web = Some(value.into()),
             "--clonewars" => cfg.clonewars = Some(value.into()),
             "--arcade" => cfg.arcade = Some(value.into()),
+            "--steam-cache" => cfg.steam_cache = Some(value),
+            "--steam-cache-dir" => cfg.steam_cache_dir = Some(value.into()),
+            "--dns" => cfg.dns = Some(value),
             _ => usage(),
         }
     }
@@ -1691,6 +1887,15 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/theater/edit", post(theater_edit))
         .route("/theater/play", post(theater_play))
         .route("/theater/subtitles", post(theater_subtitles))
+        .route("/steam", get(steam_overview))
+        .route("/steam/art", get(steam_art))
+        .route("/steam/search", get(steam_search))
+        .route("/steam/local", get(steam_local))
+        .route("/steam/keep", post(steam_keep))
+        .route("/steam/purge", post(steam_purge))
+        .route("/steam/refresh", post(steam_refresh))
+        .route("/steam/enable", post(steam_enable))
+        .route("/steam/dns/enable", post(steam_dns_enable))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
@@ -1805,6 +2010,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         host: (addr.ip().is_loopback() || cfg.host_files).then(|| host::Host::new(&root)),
         drives: drives::Drives::open(root.join(META_DIR).join("drives.json"), &root),
         theater: theater::Theater::open(root.join(META_DIR).join("theater")),
+        steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
+        dns: Mutex::new(None),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
@@ -1831,6 +2038,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             every.tick().await;
             let state = watcher.clone();
             let _ = tokio::task::spawn_blocking(move || state.drives.tick()).await;
+        }
+    });
+
+    // The Steam cache and its DNS server, when asked for on the command line or turned on
+    // from the app before (remembered in the box settings).
+    let saved = read_settings(&root);
+    let remembered = |key: &str| saved.get(key).and_then(|v| v.as_str()).map(str::to_string);
+    if let Some(addr) = cfg.steam_cache.clone().or_else(|| remembered(STEAM_CACHE_SETTING)) {
+        match addr.parse::<SocketAddr>() {
+            Ok(addr) => {
+                if let Err(msg) = start_steam_cache(&state, addr).await {
+                    eprintln!("[castled] {msg}");
+                }
+            }
+            Err(_) => eprintln!("[castled] bad --steam-cache address: {addr}"),
+        }
+    }
+    if let Some(addr) = cfg.dns.clone().or_else(|| remembered(DNS_SETTING)) {
+        match addr.parse::<SocketAddr>() {
+            Ok(addr) => {
+                if let Err(msg) = start_dns(&state, addr).await {
+                    eprintln!("[castled] {msg}");
+                }
+            }
+            Err(_) => eprintln!("[castled] bad --dns address: {addr}"),
+        }
+    }
+    let counter = state.clone();
+    std::thread::spawn(move || counter.steam.recount());
+    let steam_keeper = state.clone();
+    tokio::spawn(async move {
+        let mut save = tokio::time::interval(std::time::Duration::from_secs(15));
+        let mut last_refresh: Option<std::time::Instant> = None;
+        loop {
+            save.tick().await;
+            let state = steam_keeper.clone();
+            let refresh = last_refresh.is_none_or(|at| at.elapsed() >= STEAM_REFRESH);
+            if refresh {
+                last_refresh = Some(std::time::Instant::now());
+            }
+            let _ = tokio::task::spawn_blocking(move || {
+                state.steam.save_if_due();
+                if refresh {
+                    state.steam.refresh(&steam::local_games());
+                }
+            })
+            .await;
         }
     });
 
