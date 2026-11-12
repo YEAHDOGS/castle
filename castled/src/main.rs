@@ -661,15 +661,14 @@ async fn stats(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Clones: fixed automations in Clonewars VMs (see clones.rs)
+// Clones: machines and automations in Clonewars VMs (see clones.rs)
 // ---------------------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-struct LoginBody {
+struct BotIdBody {
     id: String,
-    username: String,
     #[serde(default)]
-    password: String,
+    bot: String,
 }
 
 /// Runs one clones action off the async threads: these read files, scan processes and
@@ -829,16 +828,50 @@ async fn arcade_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::V
     .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
 }
 
-async fn clones_list(State(st): State<Shared>) -> ApiResult<Json<Vec<clones::AutomationStatus>>> {
+type ClonesJson = ApiResult<Json<serde_json::Value>>;
+
+async fn clones_list(State(st): State<Shared>) -> ApiResult<Json<Vec<serde_json::Value>>> {
     clones_call(st, |c| Ok(c.list())).await
 }
 
-async fn clones_login(State(st): State<Shared>, Json(b): Json<LoginBody>) -> ApiResult<Json<clones::AutomationStatus>> {
-    clones_call(st, move |c| c.save_login(&b.id, &b.username, &b.password)).await
+async fn clones_automation_save(State(st): State<Shared>, Json(b): Json<clones::AutomationDef>) -> ClonesJson {
+    clones_call(st, move |c| c.save_automation(b)).await
 }
 
-async fn clones_start(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<clones::AutomationStatus>> {
-    clones_call(st, move |c| c.start(&b.id)).await
+async fn clones_automation_delete(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<Vec<serde_json::Value>>> {
+    clones_call(st, move |c| c.delete_automation(&b.id)).await
+}
+
+async fn clones_bot_save(State(st): State<Shared>, Json(b): Json<clones::BotBody>) -> ClonesJson {
+    clones_call(st, move |c| c.save_bot(b)).await
+}
+
+async fn clones_bot_delete(State(st): State<Shared>, Json(b): Json<BotIdBody>) -> ClonesJson {
+    clones_call(st, move |c| c.delete_bot(&b.id, &b.bot)).await
+}
+
+async fn clones_start(State(st): State<Shared>, Json(b): Json<BotIdBody>) -> ClonesJson {
+    clones_call(st, move |c| c.start(&b.id, &b.bot)).await
+}
+
+async fn clones_stop(State(st): State<Shared>, Json(b): Json<BotIdBody>) -> ClonesJson {
+    clones_call(st, move |c| c.stop(&b.id, &b.bot)).await
+}
+
+async fn clones_machines(State(st): State<Shared>) -> ClonesJson {
+    clones_call(st, |c| Ok(c.machines())).await
+}
+
+async fn clones_machine_start(State(st): State<Shared>, Json(b): Json<clones::MachineBody>) -> ClonesJson {
+    clones_call(st, move |c| c.start_machine(b)).await
+}
+
+async fn clones_machine_stop(State(st): State<Shared>, Json(b): Json<IdBody>) -> ClonesJson {
+    clones_call(st, move |c| c.stop_machine(&b.id)).await
+}
+
+async fn clones_machine_delete(State(st): State<Shared>, Json(b): Json<IdBody>) -> ClonesJson {
+    clones_call(st, move |c| c.delete_machine(&b.id)).await
 }
 
 /// One picture of a running automation's VM screen.
@@ -856,9 +889,6 @@ async fn clones_screen(State(st): State<Shared>, Query(q): Query<PathQuery>) -> 
     Ok(res)
 }
 
-async fn clones_stop(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<clones::AutomationStatus>> {
-    clones_call(st, move |c| c.stop(&b.id)).await
-}
 
 // ---------------------------------------------------------------------------------------
 // Arcade: read-only game library from a games folder (see arcade.rs)
@@ -1284,7 +1314,14 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
         .route("/arcade/enable", post(arcade_enable))
-        .route("/clones/login", post(clones_login))
+        .route("/clones/automation/save", post(clones_automation_save))
+        .route("/clones/automation/delete", post(clones_automation_delete))
+        .route("/clones/bot/save", post(clones_bot_save))
+        .route("/clones/bot/delete", post(clones_bot_delete))
+        .route("/clones/machines", get(clones_machines))
+        .route("/clones/machine/start", post(clones_machine_start))
+        .route("/clones/machine/stop", post(clones_machine_stop))
+        .route("/clones/machine/delete", post(clones_machine_delete))
         .route("/clones/start", post(clones_start))
         .route("/clones/stop", post(clones_stop))
         .route("/arcade", get(arcade_systems))

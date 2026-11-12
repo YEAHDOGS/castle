@@ -63,7 +63,8 @@ $Exe = if ($IsWin) { ".exe" } else { "" }
 $Bat = if ($IsWin) { ".bat" } else { "" }
 
 $DataDir = Join-Path $PSScriptRoot "data"
-$CopyDir = Join-Path $DataDir "copy"
+# CASTLE_COPY_DIR gives one launch a payload folder of its own (the Castle app sets it).
+$CopyDir = if ($env:CASTLE_COPY_DIR) { $env:CASTLE_COPY_DIR } else { Join-Path $DataDir "copy" }
 $Sdk = Join-Path $DataDir "android-sdk"
 $CmdlineBin = Join-Path (Join-Path (Join-Path $Sdk "cmdline-tools") "latest") "bin"
 $SdkManager = Join-Path $CmdlineBin "sdkmanager$Bat"

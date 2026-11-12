@@ -185,70 +185,159 @@ const DEMO_LAUNCH_LOG = [
   '[+] The bot is playing Cart Surfer in the VM. F8 pauses, F9 quits.',
 ];
 
-/** A pretend Penguin automation that walks through a launch, then counts coins. */
+const DEMO_TARGETS = [
+  { id: 'debian-x11', name: 'Debian 13 (minimal X11 desktop)', description: 'Light desktop for automations.', family: 'linux', runtime: '', cloud: true, inject: true, built: true, disks: 1 },
+  { id: 'endeavouros', name: 'EndeavourOS Linux', description: 'Friendly Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: true, built: true, disks: 1 },
+  { id: 'cachyos', name: 'CachyOS Linux', description: 'Performance-tuned Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
+  { id: 'ubuntu-cloud', name: 'Ubuntu 24.04 LTS (headless)', description: 'SSH-ready in a minute.', family: 'linux', runtime: '', cloud: true, inject: false, built: false, disks: 0 },
+  { id: 'win11-pro', name: 'Windows 11 Pro', description: 'Unattended install.', family: 'windows', runtime: '', cloud: false, inject: false, built: true, disks: 1 },
+  { id: 'android-avd', name: 'Android 15 (Google emulator)', description: 'Play Store image. Installs the APKs you give it.', family: 'android', runtime: 'avd', apk: true, cloud: false, inject: false, built: false, disks: 0 },
+  { id: 'blissos', name: 'BlissOS 16 (Android 13)', description: 'Phone apps on x86.', family: 'android', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
+  { id: 'mac', name: 'macOS Bootstrap (OpenCore)', description: 'Bare-metal bootstrap shim.', family: 'macos', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
+];
+
+const DEMO_FIELDS = [
+  { env: 'PENGUIN_USERNAME', label: 'Username', secret: false },
+  { env: 'PENGUIN_PASSWORD', label: 'Password', secret: true },
+];
+
+/** A pretend box for Clones: one example automation whose bots walk through a launch, a
+    small catalogue, and machines that start and stop at once. Nothing real is started. */
 export class DemoClones {
   isDemo = true;
 
   constructor() {
-    this.state = 'stopped';
-    this.username = '';
-    this.hasPassword = false;
-    this.log = [];
-    this.startedAt = 0;
+    this.automations = [{
+      id: 'penguin', name: 'Penguin AutoSurf', description: 'Signs in to Club Penguin Journey and plays Cart Surfer on a loop for coins.',
+      target: 'debian-x11', source: '../../penguin-autosurf', sourceTrusted: true, repoPresent: true, memoryGb: 4, cores: 8, screen: '1440x900',
+      apt: [], pacman: [], tasks: [], fields: DEMO_FIELDS, restart: false, stopAfterMinutes: 0, temporary: false, builtin: true,
+      bots: [{ id: 'main', name: 'Penguin 1', saved: {}, startedAt: 0, state: 'stopped' }],
+    }];
+    this.machines = DEMO_TARGETS.filter((t) => t.built).map((t) => ({ id: t.id, key: `m:${t.id}`, name: t.name, target: t.id, kind: 'main', state: 'stopped', diskBytes: 6.2 * GB, log: [] }));
+    this.bench = [
+      { at: Date.now() - 2 * HOUR, label: 'Debian 13 (minimal X11 desktop)', target: 'debian-x11', mode: 'existing', firstBoot: false, prepSeconds: 1.4, readySeconds: 11.8, ok: true },
+      { at: Date.now() - 26 * HOUR, label: 'Debian 13 (minimal X11 desktop)', target: 'debian-x11', mode: 'new', firstBoot: true, prepSeconds: 38.2, readySeconds: 214.5, ok: true },
+    ];
   }
 
-  /** Advances the pretend launch by wall-clock time, so polling shows progress. */
-  tick() {
-    if (this.state !== 'launching' && this.state !== 'running') return;
-    const elapsed = Date.now() - this.startedAt;
-    const shown = Math.min(DEMO_LAUNCH_LOG.length, Math.floor(elapsed / LAUNCH_STEP_MS) + 1);
-    this.log = DEMO_LAUNCH_LOG.slice(0, shown);
-    if (shown < DEMO_LAUNCH_LOG.length) return;
-    this.state = 'running';
-    const runs = Math.floor((elapsed - DEMO_LAUNCH_LOG.length * LAUNCH_STEP_MS) / COIN_TICK_MS);
-    for (let run = 1; run <= Math.min(runs, 6); run++) {
-      this.log.push(`cart game ${run} finished: +${COINS_PER_RUN} coins (${run * COINS_PER_RUN} this session)`);
+  /** A bot's state and log by wall-clock time, so polling shows a launch moving along. */
+  botView(a, bot, index) {
+    let log = [];
+    let state = bot.state;
+    if (state !== 'stopped') {
+      const elapsed = Date.now() - bot.startedAt;
+      const shown = Math.min(DEMO_LAUNCH_LOG.length, Math.floor(elapsed / LAUNCH_STEP_MS) + 1);
+      log = DEMO_LAUNCH_LOG.slice(0, shown);
+      state = shown < DEMO_LAUNCH_LOG.length ? 'launching' : 'running';
+      const runs = Math.floor((elapsed - DEMO_LAUNCH_LOG.length * LAUNCH_STEP_MS) / COIN_TICK_MS);
+      for (let run = 1; run <= Math.min(runs, 6); run++) log.push(`cart game ${run} finished: +${COINS_PER_RUN} coins (${run * COINS_PER_RUN} this session)`);
     }
+    const values = a.fields.map((f) => ({ env: f.env, from: bot.saved[f.env] ? 'saved' : 'missing', value: f.secret ? '' : bot.saved[f.env] || '' }));
+    return { id: bot.id, name: bot.name, key: `a:${a.id}:${bot.id}`, state, ready: values.every((v) => v.from !== 'missing'), ownDisk: index > 0 || a.temporary, values, log };
   }
 
-  status() {
-    this.tick();
-    return {
-      id: 'penguin',
-      name: 'Penguin AutoSurf',
-      description: 'Signs in to Club Penguin Journey and plays Cart Surfer on a loop for coins.',
-      target: 'debian-x11',
-      state: this.state,
-      repoPresent: true,
-      username: this.username,
-      hasPassword: this.hasPassword,
-      log: this.log,
-    };
+  view(a) {
+    const bots = a.bots.map((bot, index) => this.botView(a, bot, index));
+    const state = bots.some((b) => b.state === 'running') ? 'running' : bots.some((b) => b.state === 'launching') ? 'launching' : 'stopped';
+    return { ...a, state, bots };
+  }
+
+  find(id) {
+    const a = this.automations.find((x) => x.id === id);
+    if (!a) throw new Error('unknown automation');
+    return a;
   }
 
   async clones() {
-    return [this.status()];
+    return this.automations.map((a) => this.view(a));
   }
 
-  async cloneLogin(_id, username, password) {
-    if (!username.trim()) throw new Error('that name or password cannot be saved');
-    this.username = username.trim();
-    if (password) this.hasPassword = true;
-    return this.status();
+  async cloneAutomationSave(def) {
+    if (!def.name?.trim()) throw new Error('give the automation a name');
+    let a = this.automations.find((x) => x.id === def.id);
+    if (a) Object.assign(a, def, { bots: a.bots, builtin: a.builtin });
+    else {
+      a = { ...def, id: `demo-${this.automations.length + 1}`, builtin: false, sourceTrusted: true, repoPresent: true, bots: [{ id: 'main', name: `${def.name} 1`, saved: {}, startedAt: 0, state: 'stopped' }] };
+      this.automations.push(a);
+    }
+    return this.view(a);
   }
 
-  async cloneStart() {
-    if (!this.username || !this.hasPassword) throw new Error('save the account name and password first');
-    if (this.state === 'launching' || this.state === 'running') throw new Error('it is already running');
-    this.state = 'launching';
-    this.startedAt = Date.now();
-    return this.status();
+  async cloneAutomationDelete(id) {
+    if (this.find(id).builtin) throw new Error('the built-in example cannot be removed');
+    this.automations = this.automations.filter((a) => a.id !== id);
+    return this.clones();
   }
 
-  async cloneStop() {
-    this.state = 'stopped';
-    this.log = [...this.log, '  [STOP] Sent ACPI power-off -- the guest is shutting down.'];
-    return this.status();
+  async cloneBotSave(id, botId, name, values) {
+    const a = this.find(id);
+    let bot = a.bots.find((b) => b.id === botId);
+    if (!bot) {
+      bot = { id: `b${a.bots.length + 1}`, name: `${a.name} ${a.bots.length + 1}`, saved: {}, startedAt: 0, state: 'stopped' };
+      a.bots.push(bot);
+    }
+    if (name?.trim()) bot.name = name.trim();
+    for (const [env, value] of Object.entries(values || {})) {
+      if (value.trim()) bot.saved[env] = value.trim();
+      else if (value) delete bot.saved[env];
+    }
+    return this.view(a);
+  }
+
+  async cloneBotDelete(id, botId) {
+    const a = this.find(id);
+    a.bots = a.bots.filter((b) => b.id !== botId);
+    return this.view(a);
+  }
+
+  async cloneStart(id, botId) {
+    const a = this.find(id);
+    const bot = a.bots.find((b) => b.id === (botId || 'main'));
+    if (!bot) throw new Error('unknown bot');
+    if (bot.state !== 'stopped') throw new Error('it is already running');
+    bot.state = 'launching';
+    bot.startedAt = Date.now();
+    return this.view(a);
+  }
+
+  async cloneStop(id, botId) {
+    const a = this.find(id);
+    const bot = a.bots.find((b) => b.id === (botId || 'main'));
+    if (bot) bot.state = 'stopped';
+    return this.view(a);
+  }
+
+  async cloneMachines() {
+    this.machines = this.machines.filter((m) => m.kind !== 'temporary' || m.state === 'running');
+    return { targets: DEMO_TARGETS, machines: this.machines, bench: this.bench };
+  }
+
+  async cloneMachineStart(body) {
+    let machine = this.machines.find((m) => m.id === body.machine);
+    if (body.mode !== 'existing') {
+      const target = DEMO_TARGETS.find((t) => t.id === body.target);
+      const temporary = body.mode === 'temporary';
+      const id = temporary ? `tmp-${Date.now()}` : body.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (!id) throw new Error('give the new machine a name with letters or digits in it');
+      machine = { id, key: `m:${id}`, name: temporary ? `${target.name} (temporary)` : body.name.trim(), target: target.id, kind: temporary ? 'temporary' : 'instance', state: 'stopped', diskBytes: 0.2 * GB, log: [] };
+      this.machines.push(machine);
+    }
+    if (!machine) throw new Error('unknown machine');
+    machine.state = 'running';
+    machine.log = ['  [DEMO] A pretend machine: nothing was started.'];
+    this.bench.unshift({ at: Date.now(), label: machine.name, target: machine.target, mode: body.mode, firstBoot: false, prepSeconds: 1.2, readySeconds: 9.6, ok: true });
+    return this.cloneMachines();
+  }
+
+  async cloneMachineStop(id) {
+    const machine = this.machines.find((m) => m.id === id);
+    if (machine) machine.state = 'stopped';
+    return this.cloneMachines();
+  }
+
+  async cloneMachineDelete(id) {
+    this.machines = this.machines.filter((m) => m.id !== id);
+    return this.cloneMachines();
   }
 }
 

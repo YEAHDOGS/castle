@@ -94,7 +94,11 @@ $ModuleRoot = Join-Path $PSScriptRoot "modules"
 . (Join-Path $ModuleRoot "profiles.ps1")
 
 $DataDir = Join-Path $PSScriptRoot "data"
-$CopyDir = Join-Path $DataDir "copy"
+# CASTLE_COPY_DIR points one launch at its own payload folder, so several VMs
+# can be prepared at once without sharing data/copy.
+$CopyDir = if ($env:CASTLE_COPY_DIR) { $env:CASTLE_COPY_DIR } else { Join-Path $DataDir "copy" }
+# Files staged per launch carry the instance name, for the same reason.
+function Get-LaunchSuffix { if ([string]::IsNullOrEmpty($Instance)) { "" } else { "-$Instance" } }
 
 function Get-CopyPayloadFiles {
     # Everything under data/copy except the folder's own README.
@@ -137,12 +141,15 @@ if (-not [string]::IsNullOrWhiteSpace($Profile)) {
         if ($ProfileData.Cores) { $env:CASTLE_VM_CORES = [string]$ProfileData.Cores }
         $Global:CastleExtraQemuArgs = @($ProfileData.QemuArgs | Where-Object { $_ })
         if (-not (Update-CastleProfilePayload -Profile $ProfileData -CopyDir $CopyDir)) { Exit 1 }
-        $ProfileEnvFile = Write-CastleProfileEnv -Profile $ProfileData -Path (Join-Path (Join-Path (Join-Path $DataDir "seeds") "profile") "castle-profile.env")
+        $ProfileEnvFile = Write-CastleProfileEnv -Profile $ProfileData -Path (Join-Path (Join-Path (Join-Path $DataDir "seeds") "profile$(Get-LaunchSuffix)") "castle-profile.env")
         # A profile is applied through the guest agent, like a copy payload.
         $Copy = $true
     }
 }
 else { $Global:CastleExtraQemuArgs = @() }
+# CASTLE_VM_SNAPSHOT=1: a throwaway run. QEMU keeps every disk write in a
+# temporary file and drops it when the VM closes; the disk file is not changed.
+if ($env:CASTLE_VM_SNAPSHOT -eq "1") { $Global:CastleExtraQemuArgs = @($Global:CastleExtraQemuArgs) + @("-snapshot") }
 
 # ==============================================================================
 # DIRECT COMMAND LINE CLEANUP / REMOVAL
@@ -718,6 +725,8 @@ if ($Matched[0].Runtime -eq "avd") {
     Write-Host "  Castle VM Pipeline -> Android Emulator (android.ps1)" -ForegroundColor Cyan
     $AvdArgs = @{}
     if ($Copy) { $AvdArgs.Copy = $true }
+    # CASTLE_AVD_PUSH=1: also push the payload's non-APK files to /sdcard/Download/castle-copy.
+    if ($env:CASTLE_AVD_PUSH -eq "1") { $AvdArgs.Push = $true }
     & (Join-Path $PSScriptRoot "android.ps1") @AvdArgs
     Exit $LASTEXITCODE
 }
@@ -810,7 +819,7 @@ if ($Iso.SupportsCopy) {
         if ($null -eq $ShareBytes) { $ShareBytes = 0 }
 
         $SeedsDir = Join-Path $DataDir "seeds"
-        $CopyIsoPath = Join-Path $SeedsDir "copy-share.iso"
+        $CopyIsoPath = Join-Path $SeedsDir "copy-share$(Get-LaunchSuffix).iso"
         $EffectiveCopyIso = $null
         $EffectiveCopyDir = $null
         if ($ShareFiles.Count -gt 0) {
@@ -818,7 +827,7 @@ if ($Iso.SupportsCopy) {
             $EffectiveCopyIso = New-CastlePayloadIso -SourceDir $CopyDir -OutputPath $CopyIsoPath -Label "CASTLECOPY" -IncludeFiles $ShareFiles
         }
         if (-not $EffectiveCopyIso) {
-            $StageDir = Join-Path $SeedsDir "copy-share"
+            $StageDir = Join-Path $SeedsDir "copy-share$(Get-LaunchSuffix)"
             if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
             New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
             $Kept = 0; $KeptBytes = 0

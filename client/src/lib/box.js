@@ -264,16 +264,50 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/clones/enable', { method: 'POST' })).json();
   }
 
-  async cloneLogin(id, username, password) {
-    return (await this.post('/clones/login', { id, username, password })).json();
+  /** Starts one bot of an automation. An empty bot means its first one. */
+  async cloneStart(id, bot = '') {
+    return (await this.post('/clones/start', { id, bot })).json();
   }
 
-  async cloneStart(id) {
-    return (await this.post('/clones/start', { id })).json();
+  async cloneStop(id, bot = '') {
+    return (await this.post('/clones/stop', { id, bot })).json();
   }
 
-  async cloneStop(id) {
-    return (await this.post('/clones/stop', { id })).json();
+  /** Creates an automation (no id) or changes one. Returns it as the box now has it. */
+  async cloneAutomationSave(def) {
+    return (await this.post('/clones/automation/save', def)).json();
+  }
+
+  /** @returns the automations that are left */
+  async cloneAutomationDelete(id) {
+    return (await this.post('/clones/automation/delete', { id })).json();
+  }
+
+  /** Adds a bot (empty bot id) or saves one's name and sign-in values. */
+  async cloneBotSave(id, bot, name, values) {
+    return (await this.post('/clones/bot/save', { id, bot, name, values })).json();
+  }
+
+  async cloneBotDelete(id, bot) {
+    return (await this.post('/clones/bot/delete', { id, bot })).json();
+  }
+
+  /** The operating systems the box can boot, the machines it has, and recent launch times. */
+  async cloneMachines() {
+    return (await this.call('/clones/machines')).json();
+  }
+
+  /** body: { target, mode: existing|new|temporary, machine, name, memoryGb, cores, fresh, apt, pacman, rootCommands, userCommands, paths } */
+  async cloneMachineStart(body) {
+    return (await this.post('/clones/machine/start', body)).json();
+  }
+
+  async cloneMachineStop(id) {
+    return (await this.post('/clones/machine/stop', { id })).json();
+  }
+
+  async cloneMachineDelete(id) {
+    return (await this.post('/clones/machine/delete', { id })).json();
   }
 
   /** @returns {Promise<string>} an object URL of the machine's screen right now; revoke it when replaced */

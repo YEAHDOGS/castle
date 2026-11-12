@@ -92,6 +92,8 @@ find "$COPY_DST/" -maxdepth 1 -type f -iname 'penguin-autosurf*.zip' -delete 2>/
 sed -i 's/\r$//' "$PROJECT/start.sh"
 chmod +x "$PROJECT/start.sh"
 chown -R "$ACTUAL_USER:" "$(readlink -f "$PROJECT")"
+# A bot started from the Castle app brings its own sign-in: castle-bot.env in the payload.
+[ -f /mnt/castle-copy/castle-bot.env ] && cp -f /mnt/castle-copy/castle-bot.env "$PROJECT/.env"
 [ -f "$PROJECT/.env" ] && chmod 600 "$PROJECT/.env"
 
 # --- Step 2: system packages (only what is missing) ---------------------------
