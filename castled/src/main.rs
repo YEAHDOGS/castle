@@ -15,6 +15,8 @@
 mod ai;
 mod arcade;
 mod clones;
+mod comms;
+mod contacts;
 mod dns;
 mod drives;
 mod host;
@@ -99,6 +101,10 @@ struct AppState {
     drives: drives::Drives,
     /// Films, shows, music, photos and videos from folders on this computer.
     theater: theater::Theater,
+    /// Each person's address book.
+    contacts: contacts::Contacts,
+    /// Each person's texts, calls, email and chats.
+    comms: comms::Comms,
     /// Steam games kept for every PC in the home.
     steam: Arc<steam::SteamCache>,
     /// Where the box's DNS server listens, once it does.
@@ -988,6 +994,226 @@ async fn media_subtitle(State(st): State<Shared>, UrlPath((ticket, n)): UrlPath<
 }
 
 // ---------------------------------------------------------------------------------------
+// Contacts and Comms: each person's address book and messages (see contacts.rs, comms.rs)
+// ---------------------------------------------------------------------------------------
+
+/// A contacts file is at most this big. Comms' own import is streamed and has no cap.
+const CONTACTS_UPLOAD_MAX: usize = 64 * 1024 * 1024;
+
+/// The person a box has until it grows accounts (the app's OWNER).
+fn owner() -> String {
+    "owner".into()
+}
+
+#[derive(Deserialize)]
+struct PersonQuery {
+    #[serde(default = "owner")]
+    person: String,
+}
+
+#[derive(Deserialize)]
+struct PersonItemQuery {
+    #[serde(default = "owner")]
+    person: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    /// For export: the cards to write, comma separated; all of them when absent.
+    #[serde(default)]
+    ids: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ContactSaveBody {
+    #[serde(default = "owner")]
+    person: String,
+    contact: contacts::Contact,
+}
+
+#[derive(Deserialize)]
+struct PersonIdsBody {
+    #[serde(default = "owner")]
+    person: String,
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct PersonIdBody {
+    #[serde(default = "owner")]
+    person: String,
+    id: String,
+}
+
+#[derive(Deserialize)]
+struct RestoreCopyBody {
+    #[serde(default = "owner")]
+    person: String,
+    at: u64,
+}
+
+#[derive(Deserialize)]
+struct ThreadQuery {
+    #[serde(default = "owner")]
+    person: String,
+    id: String,
+    before: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct CommsSearchQuery {
+    #[serde(default = "owner")]
+    person: String,
+    #[serde(default)]
+    q: String,
+}
+
+#[derive(Deserialize)]
+struct CommsImportQuery {
+    #[serde(default = "owner")]
+    person: String,
+    name: String,
+    /// The phone's minutes behind UTC, as a browser's getTimezoneOffset says it.
+    #[serde(default)]
+    offset: i64,
+}
+
+async fn blocking<T, F>(st: Shared, action: F) -> ApiResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState) -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || action(&st).map_err(|msg| ApiError::conflict(&msg)))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
+
+/// A whole small body, refused past `max`.
+async fn small_body(body: Body, max: usize) -> ApiResult<Vec<u8>> {
+    axum::body::to_bytes(body, max)
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|_| ApiError(StatusCode::PAYLOAD_TOO_LARGE, "that file is too big".into()))
+}
+
+async fn contacts_list(State(st): State<Shared>, Query(q): Query<PersonQuery>) -> ApiResult<Json<Vec<contacts::Contact>>> {
+    blocking(st, move |st| st.contacts.list(&q.person)).await.map(Json)
+}
+
+async fn contacts_save(State(st): State<Shared>, Json(b): Json<ContactSaveBody>) -> ApiResult<Json<contacts::Contact>> {
+    blocking(st, move |st| st.contacts.save(&b.person, b.contact)).await.map(Json)
+}
+
+async fn contacts_delete(State(st): State<Shared>, Json(b): Json<PersonIdsBody>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, move |st| st.contacts.delete(&b.person, &b.ids)).await.map(|n| Json(serde_json::json!({ "deleted": n })))
+}
+
+/// A vCard file from a phone, Google or iCloud.
+async fn contacts_import(State(st): State<Shared>, Query(q): Query<PersonItemQuery>, body: Body) -> ApiResult<Json<contacts::ImportReport>> {
+    let bytes = small_body(body, CONTACTS_UPLOAD_MAX).await?;
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let source = if q.name.is_empty() { "a contacts file".to_string() } else { q.name };
+    blocking(st, move |st| st.contacts.import(&q.person, &text, &source)).await.map(Json)
+}
+
+/// The book as a .vcf, which an Android phone or an iPhone opens to add every card back.
+async fn contacts_export(State(st): State<Shared>, Query(q): Query<PersonItemQuery>) -> ApiResult<Response> {
+    let ids: Option<Vec<String>> = q.ids.map(|ids| ids.split(',').map(str::to_string).filter(|s| !s.is_empty()).collect());
+    let text = blocking(st, move |st| st.contacts.export(&q.person, ids.as_deref())).await?;
+    let mut res = Response::new(Body::from(text));
+    let headers = res.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/vcard; charset=utf-8"));
+    headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_static("attachment; filename=\"contacts.vcf\""));
+    Ok(res)
+}
+
+async fn contacts_duplicates(State(st): State<Shared>, Query(q): Query<PersonQuery>) -> ApiResult<Json<Vec<contacts::Duplicate>>> {
+    blocking(st, move |st| st.contacts.duplicates(&q.person)).await.map(Json)
+}
+
+async fn contacts_merge(State(st): State<Shared>, Json(b): Json<PersonIdsBody>) -> ApiResult<Json<contacts::Contact>> {
+    blocking(st, move |st| st.contacts.merge(&b.person, &b.ids)).await.map(Json)
+}
+
+async fn contacts_history(State(st): State<Shared>, Query(q): Query<PersonQuery>) -> ApiResult<Json<Vec<contacts::Snapshot>>> {
+    blocking(st, move |st| st.contacts.snapshots(&q.person)).await.map(Json)
+}
+
+async fn contacts_restore(State(st): State<Shared>, Json(b): Json<RestoreCopyBody>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, move |st| st.contacts.restore(&b.person, b.at)).await.map(|n| Json(serde_json::json!({ "count": n })))
+}
+
+async fn contacts_photo(State(st): State<Shared>, Query(q): Query<PersonItemQuery>) -> ApiResult<Response> {
+    let (path, mime) = blocking(st, move |st| st.contacts.photo(&q.person, &q.id)).await.map_err(|_| ApiError::not_found())?;
+    let mut res = stream::file(&path, None, &mime, stream::Offer::Inline).await?;
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
+    Ok(res)
+}
+
+/// Sets a card's picture: the image is the body. An empty body takes the picture away.
+async fn contacts_photo_set(State(st): State<Shared>, Query(q): Query<PersonItemQuery>, headers: HeaderMap, body: Body) -> ApiResult<Json<contacts::Contact>> {
+    let bytes = small_body(body, contacts::MAX_PHOTO).await?;
+    let mime = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").split(';').next().unwrap_or("").trim().to_lowercase();
+    blocking(st, move |st| st.contacts.set_photo(&q.person, &q.id, &mime, &bytes)).await.map(Json)
+}
+
+async fn comms_overview(State(st): State<Shared>, Query(q): Query<PersonQuery>) -> ApiResult<Json<comms::Overview>> {
+    blocking(st, move |st| st.comms.overview(&q.person)).await.map(Json)
+}
+
+async fn comms_thread(State(st): State<Shared>, Query(q): Query<ThreadQuery>) -> ApiResult<Json<comms::Thread>> {
+    blocking(st, move |st| st.comms.thread(&q.person, &q.id, q.before)).await.map(Json)
+}
+
+async fn comms_search(State(st): State<Shared>, Query(q): Query<CommsSearchQuery>) -> ApiResult<Json<Vec<comms::Hit>>> {
+    blocking(st, move |st| st.comms.search(&q.person, &q.q)).await.map(Json)
+}
+
+async fn comms_delete(State(st): State<Shared>, Json(b): Json<PersonIdBody>) -> ApiResult<StatusCode> {
+    blocking(st, move |st| st.comms.delete(&b.person, &b.id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn comms_file(State(st): State<Shared>, Query(q): Query<PersonItemQuery>, headers: HeaderMap) -> ApiResult<Response> {
+    let (path, mime) = blocking(st, move |st| st.comms.file(&q.person, &q.name)).await.map_err(|_| ApiError::not_found())?;
+    // Pictures and recordings are shown in place; anything else is only ever downloaded.
+    let offer = if mime.starts_with("image/") || mime.starts_with("audio/") || mime.starts_with("video/") { stream::Offer::Inline } else { stream::Offer::Download };
+    Ok(stream::file(&path, headers.get(header::RANGE), &mime, offer).await?)
+}
+
+/// An export from a phone or a service, streamed to disk, then read in the background:
+/// a whole Takeout can take minutes. The app watches /comms until it is done. Contacts
+/// files found inside go to Contacts.
+async fn comms_import(State(st): State<Shared>, Query(q): Query<CommsImportQuery>, body: Body) -> ApiResult<Json<serde_json::Value>> {
+    let name: String = q.name.chars().filter(|c| !c.is_control() && *c != '/' && *c != '\\').take(200).collect();
+    if name.trim().is_empty() {
+        return Err(ApiError::bad("the file needs a name"));
+    }
+    st.comms.begin(&q.person, &name).map_err(|e| ApiError::conflict(&e))?;
+    let tmp_dir = st.root.join(META_DIR).join("tmp");
+    let tmp = tmp_dir.join(random_hex(16));
+    let received = async {
+        tokio::fs::create_dir_all(&tmp_dir).await?;
+        receive(body, &tmp).await
+    }
+    .await;
+    if let Err(e) = received {
+        st.comms.cancel();
+        return Err(e);
+    }
+    std::thread::spawn(move || {
+        if let Ok(found) = st.comms.import(&q.person, &tmp, &name, q.offset) {
+            println!("[castled] comms: {name} added {} messages", found.report.added());
+            for (source, text) in found.vcards {
+                let _ = st.contacts.import(&q.person, &text, &source);
+            }
+        }
+        let _ = std::fs::remove_file(&tmp);
+    });
+    Ok(Json(serde_json::json!({ "started": true })))
+}
+
+// ---------------------------------------------------------------------------------------
 // Steam cache: games downloaded once, shared over the home network (see steam.rs, dns.rs)
 // ---------------------------------------------------------------------------------------
 
@@ -1653,6 +1879,8 @@ const DEFAULT_LOG_ENTRIES: usize = 200;
 const MAX_LOG_ENTRIES: usize = 2000;
 /// A call's JSON body is read to record what it acted on; anything larger is refused.
 const MAX_RECORDED_BODY: usize = 1024 * 1024;
+/// Calls whose body is a file: passed on untouched, not read into the record.
+const STREAMED_BODIES: [&str; 5] = ["/upload", "/host/upload", "/comms/import", "/contacts/import", "/contacts/photo"];
 /// Body fields worth recording. Never the whole body: a login's password must not land in the record.
 const RECORDED_FIELDS: [&str; 8] = ["id", "name", "parent", "to", "system", "hash", "path", "target"];
 
@@ -1762,7 +1990,7 @@ async fn require_token(State(st): State<Shared>, req: Request, next: Next) -> Re
     let action = path.trim_start_matches('/').replace('/', ".");
     let query = req.uri().query().map(str::to_string);
     // An upload's body is the file itself and is streamed, not read here.
-    let (req, body) = if path == "/upload" || path == "/host/upload" {
+    let (req, body) = if STREAMED_BODIES.contains(&path.as_str()) {
         (req, Vec::new())
     } else {
         let (parts, body) = req.into_parts();
@@ -1951,6 +2179,22 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/theater/edit", post(theater_edit))
         .route("/theater/play", post(theater_play))
         .route("/theater/subtitles", post(theater_subtitles))
+        .route("/contacts", get(contacts_list))
+        .route("/contacts/save", post(contacts_save))
+        .route("/contacts/delete", post(contacts_delete))
+        .route("/contacts/export", get(contacts_export))
+        .route("/contacts/duplicates", get(contacts_duplicates))
+        .route("/contacts/merge", post(contacts_merge))
+        .route("/contacts/history", get(contacts_history))
+        .route("/contacts/restore", post(contacts_restore))
+        .route("/contacts/photo", get(contacts_photo).put(contacts_photo_set).layer(DefaultBodyLimit::max(contacts::MAX_PHOTO + 1024)))
+        .route("/contacts/import", put(contacts_import).layer(DefaultBodyLimit::max(CONTACTS_UPLOAD_MAX)))
+        .route("/comms", get(comms_overview))
+        .route("/comms/thread", get(comms_thread))
+        .route("/comms/search", get(comms_search))
+        .route("/comms/delete", post(comms_delete))
+        .route("/comms/file", get(comms_file))
+        .route("/comms/import", put(comms_import).layer(DefaultBodyLimit::disable()))
         .route("/steam", get(steam_overview))
         .route("/steam/art", get(steam_art))
         .route("/steam/search", get(steam_search))
@@ -2078,6 +2322,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         host: (addr.ip().is_loopback() || cfg.host_files).then(|| host::Host::new(&root)),
         drives: drives::Drives::open(root.join(META_DIR).join("drives.json"), &root),
         theater: theater::Theater::open(root.join(META_DIR).join("theater")),
+        contacts: contacts::Contacts::open(root.join(META_DIR).join("contacts")),
+        comms: comms::Comms::open(root.join(META_DIR).join("comms")),
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),
         ai: ai::Ai::new(addr, &root.join(META_DIR)),
