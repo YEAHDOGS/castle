@@ -5,11 +5,17 @@
      summary, cast, genres and poster from open sources, what the file is, tags, and Play.
 
      Who sees what follows each library's audience and each item's adults-only mark, by the
-     person signed in (see lib/theater.js). -->
+     person signed in (see lib/theater.js).
+
+     With a controller: the D-pad walks the posters, A opens one (a show or album opens its
+     page, a film its details) and A on Play plays it, B goes back a step, LB and RB change
+     library. On a show's page LB and RB change season; in a card they move through the titles. -->
 <script>
   import { Clapperboard, Search, Play, X, RefreshCw, FolderPlus, Library, Tag, Shield, Languages, ExternalLink, ChevronLeft, ChevronRight, ChevronUp, Folder, Trash2, LoaderCircle, PenLine, History, Info } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
+  import { ask } from '../../lib/ask.svelte.js';
+  import { PAD, setHints, focusSoon } from '../../lib/input.svelte.js';
   import { SvelteMap } from 'svelte/reactivity';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
@@ -195,6 +201,13 @@
 
   // ---- cards and details ----
 
+  /** Back from a show's or an album's page, with focus on its poster again. */
+  function closePage() {
+    const key = page?.key;
+    page = null;
+    if (key) focusSoon(`[data-nav-key="${CSS.escape(key)}"]`);
+  }
+
   function openCard(card) {
     const kind = kindOf.get(card.lead.library);
     if ((kind === 'shows' || kind === 'music') && card.items.length > 0) {
@@ -257,19 +270,53 @@
   }
 
   function onKey(e) {
+    if (e.defaultPrevented) return;
     if (queue.length && queue[playAt]?.kind !== 'track') return; // the player has the keyboard
     if (e.target?.closest?.('input, textarea, select')) return;
     if (openItem) {
+      // With a controller, left and right in the row of buttons (Play, subtitles, fix title)
+      // move between them, and LB / RB move through the titles. On a keyboard the arrows
+      // always move through the titles, and Tab reaches the buttons.
+      const inRow = e.fromPad && e.target?.closest?.('[data-nav-row]');
       if (e.key === 'Escape') closeItem();
-      else if (e.key === 'ArrowRight') step(1);
-      else if (e.key === 'ArrowLeft') step(-1);
+      else if ((e.key === 'ArrowRight' && !inRow) || e.key === PAD.NEXT) step(1);
+      else if ((e.key === 'ArrowLeft' && !inRow) || e.key === PAD.PREV) step(-1);
       else return;
       e.preventDefault();
     } else if (page && e.key === 'Escape') {
-      page = null;
+      closePage();
+      e.preventDefault();
+    } else if (page && pageSeasons.length > 1 && (e.key === PAD.NEXT || e.key === PAD.PREV)) {
+      // On a show's page, LB and RB change season.
+      const at = pageSeasons.indexOf(season);
+      season = pageSeasons[(at + (e.key === PAD.NEXT ? 1 : -1) + pageSeasons.length) % pageSeasons.length];
       e.preventDefault();
     }
   }
+
+  // What the controller's buttons do here, along the bottom of the screen.
+  $effect(() => {
+    if (openItem) {
+      return setHints('theater', [
+        { btn: 'A', label: 'Select' },
+        { btn: 'LB/RB', label: 'Titles' },
+        { btn: 'B', label: 'Close' },
+      ], 2);
+    }
+    if (page) {
+      return setHints('theater', [
+        { btn: 'A', label: 'Select' },
+        ...(pageSeasons.length > 1 ? [{ btn: 'LB/RB', label: 'Season' }] : []),
+        { btn: 'B', label: 'Back' },
+      ]);
+    }
+    return setHints('theater', [
+      { btn: 'A', label: 'Open' },
+      { btn: 'LB/RB', label: 'Library' },
+      { btn: 'LT/RT', label: 'Page' },
+      { btn: 'START', label: 'Sections' },
+    ]);
+  });
 
   function play(list, at = 0) {
     queue = list;
@@ -401,7 +448,7 @@
   }
 
   async function removeLibrary(library) {
-    if (!window.confirm(`Take ${library.name} out of Theater? The folder and its files stay where they are.`)) return;
+    if (!(await ask(`Take ${library.name} out of Theater? The folder and its files stay where they are.`, { yes: 'Take it out', danger: true }))) return;
     try {
       await source.theaterLibraryRemove(library.id);
       await load();
@@ -414,13 +461,14 @@
   const audienceLabel = (id) => AUDIENCES.find((a) => a.id === id)?.label || id;
 </script>
 
-<svelte:window onkeydown={onKey} />
+<!-- on the document, so Theater has the keys before the app's own navigation (on the window) -->
+<svelte:document onkeydown={onKey} />
 
 {#snippet card(c, i, shape)}
   {@const kind = kindById(kindOf.get(c.lead.library))}
   {@const Icon = kind.icon}
   <li in:fly={itemIn(Math.min(i, STAGGER_CAP))}>
-    <button class="expo t-hover group block w-full text-left" onclick={() => openCard(c)} use:lazyArt={c}>
+    <button class="nav-card expo t-hover group block w-full text-left" data-nav-key={c.key} onclick={() => openCard(c)} use:lazyArt={c}>
       <div class="relative {SHAPES[shape].box} overflow-hidden border border-hairline bg-white/[0.03] transition-all group-hover:border-white/25">
         {#if art.get(c.key)}
           <img src={art.get(c.key)} alt="" class="expo t-ui h-full w-full object-cover transition-transform group-hover:scale-[1.04]" loading="lazy" draggable="false" />
@@ -435,7 +483,7 @@
         {#if c.items.length > 1}
           <span class="micro absolute right-1.5 top-1.5 bg-black/70 px-1.5 py-0.5 text-white">{c.items.length}</span>
         {/if}
-        <div class="expo t-hover absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+        <div class="nav-reveal expo t-hover absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
           <span class="grid h-11 w-11 place-items-center rounded-full border border-white/40 bg-black/50">
             {#if c.items.length > 1}<Info class="h-5 w-5 text-white" />{:else}<Play class="ml-0.5 h-5 w-5 text-white" />{/if}
           </span>
@@ -588,7 +636,7 @@
     {@const lead = page.lead}
     {@const d = pageAnswer?.details}
     <div class="px-4 py-5 md:px-6" in:fly={{ x: 24 * cardDir, duration: reducedMotion() ? 0 : 220 }}>
-      <button class="micro expo t-hover mb-4 flex items-center gap-1 text-text-dim hover:text-white" onclick={() => (page = null)}>
+      <button class="micro expo t-hover mb-4 flex items-center gap-1 text-text-dim hover:text-white" onclick={closePage} data-nav-back>
         <ChevronLeft class="h-4 w-4" />{kindById(kindOf.get(lead.library)).label.toUpperCase()}
       </button>
       <div class="flex flex-col gap-6 md:flex-row">
@@ -608,7 +656,7 @@
             <p class="micro mt-2 text-text-faint">DETAILS: {d.source.toUpperCase()}{#if d.url} · <a class="text-bridge hover:underline" href={d.url} target="_blank" rel="noreferrer noopener">READ MORE</a>{/if}</p>
           {/if}
           <div class="mt-4 flex gap-2">
-            <button class="micro expo t-hover flex items-center gap-1.5 bg-chiral px-4 py-2.5 font-bold text-black hover:opacity-90" onclick={() => play(pageItems, 0)}>
+            <button data-autofocus class="micro expo t-hover flex items-center gap-1.5 bg-chiral px-4 py-2.5 font-bold text-black hover:opacity-90" onclick={() => play(pageItems, 0)}>
               <Play class="h-4 w-4" />{lead.kind === 'track' ? 'PLAY ALBUM' : pageSeasons.length > 1 ? `PLAY SEASON ${season}` : 'PLAY FROM THE START'}
             </button>
           </div>
@@ -703,8 +751,8 @@
   {@const probe = loaded?.probe}
   <div class="fixed inset-0 z-50 grid place-items-center p-3 md:p-6" role="dialog" aria-modal="true" aria-label={it.title}>
     <div class="absolute inset-0 bg-black/75" transition:fade={{ duration: reducedMotion() ? 0 : 180 }} onclick={closeItem} onkeydown={() => {}} role="presentation"></div>
-    <button class="nav-arrow expo t-hover absolute left-2 top-1/2 z-20 -translate-y-1/2 border border-white/15 bg-black/60 p-2.5 text-white hover:border-white/40 md:left-5" onclick={() => step(-1)} aria-label="Previous"><ChevronLeft class="h-5 w-5" /></button>
-    <button class="nav-arrow expo t-hover absolute right-2 top-1/2 z-20 -translate-y-1/2 border border-white/15 bg-black/60 p-2.5 text-white hover:border-white/40 md:right-5" onclick={() => step(1)} aria-label="Next"><ChevronRight class="h-5 w-5" /></button>
+    <button class="nav-arrow expo t-hover absolute left-2 top-1/2 z-20 -translate-y-1/2 border border-white/15 bg-black/60 p-2.5 text-white hover:border-white/40 md:left-5" onclick={() => step(-1)} tabindex="-1" aria-label="Previous"><ChevronLeft class="h-5 w-5" /></button>
+    <button class="nav-arrow expo t-hover absolute right-2 top-1/2 z-20 -translate-y-1/2 border border-white/15 bg-black/60 p-2.5 text-white hover:border-white/40 md:right-5" onclick={() => step(1)} tabindex="-1" aria-label="Next"><ChevronRight class="h-5 w-5" /></button>
     {#key it.id}
       <div in:fly={{ x: 30 * cardDir, duration: reducedMotion() ? 0 : 220 }} class="hud-corners glass relative z-10 flex max-h-[90dvh] w-full max-w-4xl flex-col overflow-hidden md:flex-row">
         <div class="relative w-full shrink-0 bg-black/50 md:w-72">
@@ -725,8 +773,8 @@
             <button class="expo t-hover p-1.5 text-text-dim hover:text-white" onclick={closeItem} aria-label="Close"><X class="h-5 w-5" /></button>
           </div>
 
-          <div class="mt-4 flex flex-wrap gap-2">
-            <button class="micro expo t-hover flex items-center gap-1.5 bg-chiral px-4 py-2.5 font-bold text-black hover:opacity-90" onclick={() => playFrom(it)}>
+          <div class="mt-4 flex flex-wrap gap-2" data-nav-row>
+            <button data-autofocus class="micro expo t-hover flex items-center gap-1.5 bg-chiral px-4 py-2.5 font-bold text-black hover:opacity-90" onclick={() => playFrom(it)}>
               <Play class="h-4 w-4" />{it.kind === 'photo' ? 'VIEW' : 'PLAY'}
             </button>
             {#if it.kind !== 'track' && it.kind !== 'photo'}

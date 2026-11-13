@@ -4,12 +4,18 @@
      under the beam is the one Enter (or a click) opens.
 
      The corner button itself does three things: a click opens or closes the dial, scrolling
-     over it opens the dial and turns it, and holding it goes back to Home. -->
+     over it opens the dial and turns it, and holding it goes back to Home.
+
+     From the keyboard, Shift+Enter opens and closes it anywhere (a controller's Start does
+     the same, see lib/input.svelte.js). While it is open, a section's letter (underlined
+     under its icon) or its number turns straight to it and opens it. -->
 <script>
+  import { untrack } from 'svelte';
   import { X } from '@lucide/svelte';
   import { shell } from '../lib/shell.svelte.js';
-  import { SECTIONS, sectionById } from '../lib/sections.js';
+  import { SECTIONS, sectionById, sectionForKey } from '../lib/sections.js';
   import { prefs } from '../lib/prefs.svelte.js';
+  import { input } from '../lib/input.svelte.js';
 
   const TARGET_STEP_DEG = 30; // roughly how far apart neighbouring slots should sit
   // The sections repeat a whole number of times around the rim, so the order never
@@ -41,24 +47,58 @@
   const current = $derived(sectionById(shell.section));
   const CurrentIcon = $derived(current.icon);
 
-  function open() {
-    index = SECTIONS.findIndex((s) => s.id === shell.section);
-    dragDeg = 0;
-    shell.userMenuOpen = false;
-    shell.wheelOpen = true;
+  // However the dial opens (the button, Shift+Enter, a controller's Start), it starts on the
+  // section showing and takes the keyboard.
+  $effect(() => {
+    if (!shell.wheelOpen) return;
+    untrack(() => {
+      index = SECTIONS.findIndex((s) => s.id === shell.section);
+      dragDeg = 0;
+      scrollSum = 0;
+      shell.userMenuOpen = false;
+    });
     requestAnimationFrame(() => dial?.focus());
+  });
+
+  function open() {
+    shell.wheelOpen = true;
   }
 
   function close() {
+    clearTimeout(confirmTimer);
     shell.wheelOpen = false;
   }
 
+  let confirmTimer = null;
+
   function confirm() {
     const chosen = active.id;
-    setTimeout(() => {
+    clearTimeout(confirmTimer); // a second choice before the first lands replaces it
+    confirmTimer = setTimeout(() => {
       shell.setSection(chosen);
-      close();
+      shell.wheelOpen = false;
     }, CONFIRM_DELAY_MS);
+  }
+
+  /** Turns to the nearest slot of a section and opens it: what a letter or number does. */
+  function chooseSection(id) {
+    let best = null;
+    for (const slot of SLOTS) {
+      if (slot.section.id !== id) continue;
+      let turn = (((slot.k - activeSlot) % SLOT_COUNT) + SLOT_COUNT) % SLOT_COUNT;
+      if (turn > SLOT_COUNT / 2) turn -= SLOT_COUNT;
+      if (best === null || Math.abs(turn) < Math.abs(best)) best = turn;
+    }
+    if (best === null) return;
+    index += best;
+    confirm();
+  }
+
+  /** A section's label split around its letter, so the letter can be marked. */
+  function labelParts(section) {
+    const at = section.label.toLowerCase().indexOf(section.key);
+    if (at < 0) return { before: section.label, key: '', after: '' };
+    return { before: section.label.slice(0, at), key: section.label[at], after: section.label.slice(at + 1) };
   }
 
   /** Turns the shortest way round to bring slot `k` under the beam, then opens it. */
@@ -118,11 +158,13 @@
   }
 
   function onKey(e) {
+    const jump = !e.ctrlKey && !e.metaKey && !e.altKey ? sectionForKey(e.key) : null;
     // The next slot waits to the left of the beam, the previous one below it.
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') index += 1;
     else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') index -= 1;
     else if (e.key === 'Enter' || e.key === ' ') confirm();
     else if (e.key === 'Escape') close();
+    else if (jump) chooseSection(jump.id);
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -182,7 +224,8 @@
   onpointercancel={endHold}
   oncontextmenu={(e) => e.preventDefault()}
   aria-label={shell.wheelOpen ? 'Close the section wheel' : `Sections. Now in ${current.label}. Scroll to turn the wheel, hold to go Home`}
-  title="Click or scroll for sections · hold for Home"
+  title="Click, scroll or Shift+Enter for sections · hold for Home"
+  data-nav-skip
   aria-expanded={shell.wheelOpen}
   aria-haspopup="dialog"
 >
@@ -201,6 +244,8 @@
     role="dialog"
     aria-modal="true"
     aria-label="Sections"
+    aria-keyshortcuts="Shift+Enter"
+    data-nav-own
     tabindex="-1"
     onwheel={onWheel}
     onkeydown={onKey}
@@ -222,6 +267,7 @@
         {#each SLOTS as slot (slot.k)}
           {@const Icon = slot.section.icon}
           {@const isActive = slot.k === activeSlot}
+          {@const label = labelParts(slot.section)}
           <div class="slot" style="--a: {slot.angle}deg">
             <button
               class="slot-face"
@@ -229,10 +275,11 @@
               onclick={() => onSlotClick(slot.k)}
               tabindex={isActive ? 0 : -1}
               aria-label={slot.section.label}
+              aria-keyshortcuts={slot.section.key.toUpperCase()}
               aria-current={slot.section.id === shell.section ? 'page' : undefined}
             >
               <span class="tile"><Icon class="h-6 w-6" strokeWidth={1.5} /></span>
-              <span class="micro label">{slot.section.label}</span>
+              <span class="micro label">{label.before}<span class="hotkey">{label.key}</span>{label.after}</span>
             </button>
           </div>
         {/each}
@@ -247,7 +294,13 @@
         <p class="name">{active.label}</p>
         <p class="tagline">{active.tagline}</p>
       {/key}
-      <p class="micro mt-3 text-text-faint">SCROLL OR DRAG TO TURN · ENTER TO OPEN · HOLD THE CORNER FOR HOME</p>
+      {#if input.mode === 'pad'}
+        <p class="micro mt-3 text-text-faint">STICK OR D-PAD TO TURN · {input.padKind === 'playstation' ? '✕' : 'A'} TO OPEN · {input.padKind === 'playstation' ? '○' : 'B'} TO CLOSE</p>
+      {:else if input.mode === 'keys'}
+        <p class="micro mt-3 text-text-faint">PRESS A SECTION'S LETTER · ARROWS TO TURN · ENTER TO OPEN · SHIFT+ENTER TO CLOSE</p>
+      {:else}
+        <p class="micro mt-3 text-text-faint">SCROLL OR DRAG TO TURN · ENTER TO OPEN · HOLD THE CORNER FOR HOME</p>
+      {/if}
     </div>
   </div>
 {/if}
@@ -405,6 +458,9 @@
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-chiral) 14%, transparent), 0 0 38px color-mix(in srgb, var(--color-chiral) 55%, transparent);
   }
   .label { white-space: nowrap; }
+  /* the letter that opens a section from the keyboard */
+  .hotkey { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .slot-face.active .hotkey { color: var(--color-chiral); }
 
   /* ---- readout: the selected section, in words, under the dial ---- */
   .readout {

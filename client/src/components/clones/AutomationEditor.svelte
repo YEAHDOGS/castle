@@ -64,7 +64,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
+<svelte:document onkeydown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); onclose(); } }} />
 
 <div class="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-label="Automation">
   <form class="hud-corners max-h-[92dvh] w-full max-w-3xl space-y-5 overflow-auto bg-panel-solid p-5" onsubmit={(e) => { e.preventDefault(); save(); }}>

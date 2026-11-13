@@ -153,6 +153,33 @@ body {
   outline-offset: 2px;
 }
 
+/* ---- the keyboard or a controller is driving (html[data-input], set by lib/input.svelte.js) ----
+   Focus can be moved by script there (spatial navigation), which the browser does not always
+   count as visible focus, so the ring is drawn for any focus. A pointer gets the plain rule above. */
+html[data-input="keys"] :focus:not([tabindex="-1"]),
+html[data-input="pad"] :focus:not([tabindex="-1"]) {
+  outline: 2px solid var(--color-bridge);
+  outline-offset: 2px;
+}
+/* Box art and posters lift and glow under focus, as they do under the mouse. */
+html[data-input="keys"] .nav-card:focus,
+html[data-input="pad"] .nav-card:focus {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 0 0 1px var(--color-bridge), 0 0 28px rgba(0, 215, 255, 0.35);
+  z-index: 1;
+}
+html[data-input="keys"] .nav-card:focus .nav-reveal,
+html[data-input="pad"] .nav-card:focus .nav-reveal {
+  opacity: 1;
+}
+/* A controller has no pointer: hide it until the mouse moves. */
+html[data-input="pad"],
+html[data-input="pad"] * {
+  cursor: none !important;
+}
+/* Room around what scrolls into view, so it does not sit hard against an edge. */
+button, a, [tabindex], input, select { scroll-margin: 16px; }
+
 /* ---- selection ---- */
 ::selection { background: rgba(255, 106, 0, 0.4); }
 

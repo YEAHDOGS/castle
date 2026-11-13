@@ -5,6 +5,7 @@
 import { startingAdapter, localAdapter, fixedDemoAdapter, connectBox, forgetBox, takeConnectLink, isDesktopApp, localBox } from './box.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { uid } from './format.js';
+import { ask } from './ask.svelte.js';
 import { prefs as devicePrefs } from './prefs.svelte.js';
 import { HOST_ROOT, COMPUTER_NAME, isHostId, hostTrail, hostParent } from './computer.js';
 
@@ -453,17 +454,29 @@ class DriveStore {
     this.selAnchor = null;
   }
 
+  /** Moves focus through the files. Returns false at the edge (nothing that way), so
+      focus can leave the grid for the rail, the bar or the "../" tile. */
   moveFocus(key, extend = false) {
-    if (!this.items.length) return;
+    if (!this.items.length) return false;
     const ids = this.items.map((i) => i.id);
     let idx = ids.indexOf(this.focusId);
     if (idx === -1) idx = 0;
     const cols = this.viewMode === 'grid' ? (this.columnsProvider?.() || 4) : 1;
-    if (key === 'ArrowRight') idx = Math.min(idx + 1, ids.length - 1);
-    else if (key === 'ArrowLeft') idx = Math.max(idx - 1, 0);
-    else if (key === 'ArrowDown') idx = Math.min(idx + cols, ids.length - 1);
-    else if (key === 'ArrowUp') idx = Math.max(idx - cols, 0);
-    else return;
+    const row = Math.floor(idx / cols);
+    const lastRow = Math.floor((ids.length - 1) / cols);
+    if (key === 'ArrowRight') {
+      if (cols === 1 || idx % cols === cols - 1 || idx === ids.length - 1) return false;
+      idx += 1;
+    } else if (key === 'ArrowLeft') {
+      if (cols === 1 || idx % cols === 0) return false;
+      idx -= 1;
+    } else if (key === 'ArrowDown') {
+      if (row === lastRow) return false;
+      idx = Math.min(idx + cols, ids.length - 1);
+    } else if (key === 'ArrowUp') {
+      if (row === 0) return false;
+      idx -= cols;
+    } else return false;
     const id = ids[idx];
     if (extend) {
       if (!this.selAnchor) this.selAnchor = this.focusId || ids[0];
@@ -473,15 +486,20 @@ class DriveStore {
     }
     this.focusId = id;
     this.ensureVisible(id);
+    return true;
   }
 
   /** Auto-scroll the node into view and hand it DOM focus (roving tabindex). */
   ensureVisible(id) {
-    requestAnimationFrame(() => {
+    const reveal = () => {
       const el = document.querySelector(`[data-node="${id}"]`);
       el?.scrollIntoView({ block: 'nearest' });
       if (document.activeElement?.closest?.('[data-kb]')) el?.focus({ preventScroll: true });
-    });
+      return !!el;
+    };
+    // At once when the file is on screen, so a quick second key starts from it; a frame
+    // later when it is still being drawn (just created, just uploaded).
+    if (!reveal()) requestAnimationFrame(reveal);
   }
 
   /** Type-ahead: jump to the first node matching the typed prefix (Drive behavior).
@@ -584,7 +602,7 @@ class DriveStore {
     const ids = this.targets();
     if (!ids.length) return;
     const question = ids.length > 1 ? `Delete ${ids.length} items for good? This cannot be undone.` : 'Delete this for good? This cannot be undone.';
-    if (devicePrefs.get('storage.confirmDelete') && !window.confirm(question)) return;
+    if (devicePrefs.get('storage.confirmDelete') && !(await ask(question, { yes: 'Delete forever', danger: true }))) return;
     for (const id of ids) await this.adapter.deleteForever(id);
     this.clearSelection();
     this.menu = null;
@@ -641,14 +659,22 @@ class DriveStore {
     this.previewId = null;
   }
 
-  /** Esc priority: menu → preview → rename → new-menu → selection. */
+  /** Something of the drive's own is open over the files: Connect, the menu, a preview, a rename, New. */
+  get hasOverlay() {
+    return !!(this.connectOpen || this.menu || this.previewId || this.renamingId || this.newMenuOpen);
+  }
+
+  /** Esc priority: menu → preview → rename → new-menu → selection.
+      Returns false when there was nothing to close or clear. */
   escape() {
-    if (this.connectOpen) { this.connectOpen = false; return; }
-    if (this.menu) return this.closeMenu();
-    if (this.previewId) return this.closePreview();
-    if (this.renamingId) return this.cancelRename();
-    if (this.newMenuOpen) { this.newMenuOpen = false; return; }
+    if (this.connectOpen) { this.connectOpen = false; return true; }
+    if (this.menu) { this.closeMenu(); return true; }
+    if (this.previewId) { this.closePreview(); return true; }
+    if (this.renamingId) { this.cancelRename(); return true; }
+    if (this.newMenuOpen) { this.newMenuOpen = false; return true; }
+    if (!this.selected.size && !this.focusId) return false;
     this.clearSelection();
+    return true;
   }
 
   toast(msg) {

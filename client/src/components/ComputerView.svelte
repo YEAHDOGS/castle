@@ -4,6 +4,7 @@
   import { HardDrive, Usb, Disc3, MemoryStick, Network, Vault, Gauge, LoaderCircle, Clock3, ShieldOff, CornerLeftUp } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
   import { store } from '../lib/store.svelte.js';
+  import { ask } from '../lib/ask.svelte.js';
   import { fmtSize } from '../lib/format.js';
   import { fmtStamp, fmtSince } from '../lib/computer.js';
   import { itemIn } from '../lib/motion.js';
@@ -40,11 +41,11 @@
     store.openHost(drive.path);
   }
 
-  function testWrite(drive) {
+  async function testWrite(drive) {
     const question =
       `Castle writes a test file of up to ${TEST_SIZE_MB} MB to ${drive.name}, reads it back, and deletes it. ` +
       'Nothing already on the drive is touched. Run the test?';
-    if (window.confirm(question)) store.speedTest(drive, true);
+    if (await ask(question, { yes: 'Run the test' })) store.speedTest(drive, true);
   }
 </script>
 

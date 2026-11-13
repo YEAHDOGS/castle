@@ -46,9 +46,55 @@ says otherwise. Every field is optional:
 starts (an unplugged drive) is skipped, and that section stays off until the next start.
 The box writes its output to `box.log` in the same folder.
 
-## Keyboard-first
+## Keyboard-first, and a game controller
 
-Everything is mouse-optional:
+Everything works without a mouse, from the keyboard or a game controller (Xbox, PlayStation,
+or anything the browser sees as a standard gamepad). The arrows move focus to whatever sits that
+way on screen, Enter presses it, Escape goes back. See `src/lib/input.svelte.js`.
+
+| Keys | Controller | Does |
+|---|---|---|
+| `Shift + Enter` | Start / Options | Opens and closes the section dial, from anywhere |
+| A letter, or `1`–`9`, with the dial open | | Goes straight to that section: **H**ome, **S**torage, A**I**, **A**rcade, **T**heater, **C**lones, **N**etwork, Secu**r**ity, Settin**g**s (`,` too). The letter is underlined on the dial |
+| `Arrows` | D-pad, left stick | Move focus |
+| `Enter` | A / ✕ | Press what is focused |
+| `Escape` | B / ○ | Back: closes the card, page or dialog on top |
+| | LB / RB | Previous / next view in the section's rail (console, library, folder view) |
+| `PageUp` / `PageDown` | LT / RT | A screen up or down, focus following |
+| | Right stick | Scroll |
+| | View / Create | Home |
+
+While a controller is in use, the bottom of the screen shows what its buttons do there, and
+the pointer hides until the mouse moves. Castle ignores the controller while its window is not
+in front, so a game started from Arcade has it to itself.
+
+**Arcade:** A on a game opens its card, A on Play starts it. In a card, left and right (or LB
+and RB) move through the games, and B closes it. Y shuffles: a random game from this console, or
+another one dealt while a shuffle is open.
+
+**Theater:** A on a poster opens it (a show or album opens its page, a film its details). On a
+show's page LB and RB change season; in a details card they move through the titles (left and
+right do too on a keyboard). In the player:
+
+| Keys | Controller | Does |
+|---|---|---|
+| `Space`, `Enter`, `K` | A | Play / pause |
+| `←` `→` (`J` `L`) | D-pad left / right | 10 seconds back / on |
+| `↑` `↓` | D-pad up / down | Volume |
+| `M` | | Mute |
+| `C` | X | Subtitles on / off |
+| `F` | Y | Full screen |
+| `Shift + P` / `Shift + N` | LB / RB | Previous / next episode, song or photo |
+| `Escape` | B | Close |
+
+Media keys play, pause and skip films and songs. Questions (delete forever, put a save back,
+replace the token) are asked inside Castle, so a controller can answer them; Cancel has focus first.
+
+Typing (search, a PIN, a tag) still needs a keyboard, or the system's on-screen keyboard
+(Steam's is Steam + X). DOGS AI runs in a frame of its own, so the keys inside it are DOGS AI's;
+Start and B still get you out.
+
+### Storage
 
 | Keys | Does |
 |---|---|
@@ -61,6 +107,10 @@ Everything is mouse-optional:
 | `Ctrl/⌘ + A` | Select all |
 | `A–Z` | Type-ahead: jumps to the first file matching what you type |
 | `Esc` | Close menu → preview → cancel rename → clear selection |
+| `Shift + F10` or the menu key (controller: X) | The focused file's menu |
+
+An arrow at the edge of the files carries focus out to the rail, the bar or `../`. On a
+controller, B closes what is open, otherwise goes up a folder.
 
 Double-click opens. Right-click gets the context menu. Drag files in from anywhere to upload.
 

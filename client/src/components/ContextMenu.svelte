@@ -55,7 +55,8 @@
 </script>
 
 {#if menu}
-  <div class="fixed inset-0 z-50">
+  <!-- modal for the keyboard and a controller: focus goes into the menu, and back to the file after -->
+  <div class="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Actions">
     <div transition:fade={{ duration: reducedMotion() ? 0 : 120 }} class="absolute inset-0" onclick={() => store.closeMenu()} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') store.closeMenu(); }} role="button" tabindex="-1" aria-label="Dismiss menu"></div>
     <div
       bind:this={el}

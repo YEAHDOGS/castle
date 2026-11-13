@@ -13,14 +13,30 @@
   import PeopleList from './PeopleList.svelte';
 
   /**
-   * items: [{ id, label, icon, count?, expanded?, indent? }] -- the section's views.
-   *   expanded (true/false) marks a group heading that opens and closes; indent marks its children.
+   * items: [{ id, label, icon, count?, expanded?, indent?, action? }] -- the section's views.
+   *   expanded (true/false) marks a group heading that opens and closes; indent marks its children;
+   *   action marks a row that does something rather than show a view (Arcade's Shuffle).
+   *   A controller's LB and RB step through the views, past headings and actions.
    * active: id of the current view; onselect(id) is called when one is picked
    * footer: optional snippet shown above the badge
    */
   let { items = [], active = null, onselect = () => {}, footer = null } = $props();
 
   const section = $derived(sectionById(shell.section));
+
+  /** LB / RB (see lib/input.svelte.js): the previous or next view, round and round. */
+  function onStep(e) {
+    const views = items.filter((item) => item.expanded == null && !item.action);
+    if (views.length < 2) return;
+    const at = views.findIndex((item) => item.id === active);
+    const next = views[(at + e.detail + views.length) % views.length];
+    if (next) onselect(next.id);
+  }
+
+  $effect(() => {
+    window.addEventListener('castle-view', onStep);
+    return () => window.removeEventListener('castle-view', onStep);
+  });
 </script>
 
 <aside class="scanlines flex h-full w-16 flex-col border-r border-hairline bg-black/40 lg:w-60">

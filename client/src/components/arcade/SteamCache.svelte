@@ -8,6 +8,7 @@
   import { Download, Power, Network, Copy, Check, Search, Trash2, X, Pin, PinOff, RefreshCw, LoaderCircle, ExternalLink, Monitor, CircleCheck, CircleAlert } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { fade, fly } from 'svelte/transition';
+  import { ask } from '../../lib/ask.svelte.js';
   import { SvelteMap } from 'svelte/reactivity';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -84,9 +85,9 @@
   const keep = (app, on = true) => act(`keep:${app}`, () => source.steamKeep(app, on), on ? 'Kept. Its details are on the way.' : 'No longer kept');
   const refresh = () => act('refresh', () => source.steamRefresh(), 'Looking up game details');
 
-  function purge(app) {
+  async function purge(app) {
     const question = `Purge ${app.name}? Its ${fmtSize(app.cached)} in the cache are deleted. The next PC to install it downloads it from the internet again.`;
-    if (!window.confirm(question)) return;
+    if (!(await ask(question, { yes: 'Purge', danger: true }))) return;
     act(`purge:${app.app}`, () => source.steamPurge(app.app), (r) => `${fmtSize(r.freed)} freed`).then(() => (open = null));
   }
 

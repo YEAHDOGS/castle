@@ -4,6 +4,7 @@
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
+  import { ask } from '../../lib/ask.svelte.js';
   import { ShieldCheck, ScrollText, KeyRound, ScanSearch, Hammer, Check, TriangleAlert, Minus, CircleHelp, RefreshCw, Play, Link2 } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
@@ -116,7 +117,7 @@
 
   async function rotateToken() {
     const question = 'Replace the box token? Every other device connected to this box is signed out and needs the new token.';
-    if (!window.confirm(question)) return;
+    if (!(await ask(question, { yes: 'Replace the token', danger: true }))) return;
     rotating = true;
     try {
       await source.securityRotate();

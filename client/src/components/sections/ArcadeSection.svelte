@@ -8,11 +8,17 @@
      arrows (on screen or on the keyboard) move through the games; Shuffle deals random ones,
      from one console or the whole library.
 
-     Steam cache keeps Steam games on the box for every PC in the home (see arcade/SteamCache). -->
+     Steam cache keeps Steam games on the box for every PC in the home (see arcade/SteamCache).
+
+     With a controller: the D-pad walks the grid, A opens a game's card and A again plays it,
+     B closes the card, LB and RB change console, Y shuffles. In a card, left and right (or
+     LB and RB) move through the games and Y deals another. -->
 <script>
   import { Gamepad2, Search, Play, X, HardDrive, Power, Save, History, RotateCcw, RefreshCw, Dices, ChevronLeft, ChevronRight, Disc3, ExternalLink, HardDriveDownload } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { scale, fade, fly } from 'svelte/transition';
+  import { ask } from '../../lib/ask.svelte.js';
+  import { PAD, setHints, focusSoon, modalOpen } from '../../lib/input.svelte.js';
   import { SvelteMap } from 'svelte/reactivity';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
@@ -76,7 +82,7 @@
     { id: CONSOLES, label: 'Consoles', icon: Gamepad2, count: systems.length, expanded: consolesOpen },
     ...(consolesOpen ? systems.map((s) => ({ id: s.id, label: s.short, count: s.games, indent: true })) : []),
     { id: SAVES, label: 'Saves', icon: Save, count: saves.length },
-    { id: SHUFFLE, label: 'Shuffle', icon: Dices },
+    { id: SHUFFLE, label: 'Shuffle', icon: Dices, action: true },
     { id: STEAM, label: 'Steam cache', icon: HardDriveDownload },
   ]);
   const gameSaves = $derived(openGame ? saves.filter((s) => s.game && s.game.system === openSystemId && s.game.id === openGame.id) : []);
@@ -146,7 +152,7 @@
 
   async function putBack(version) {
     const question = `Put this version of ${openSave.name} back? It replaces the save file on the games drive. The save as it is now is recorded first, so you can undo this.`;
-    if (!window.confirm(question)) return;
+    if (!(await ask(question, { yes: 'Put it back' }))) return;
     restoring = version.hash;
     try {
       await source.arcadeSaveRestore(openSave.id, version.hash);
@@ -270,8 +276,12 @@
   }
 
   function closeCard() {
+    const last = openGame;
+    const lastSystem = openSystemId;
     openGame = null;
     deck = null;
+    // Focus lands on the game the card last showed, which after the arrows is not always the one opened.
+    if (last && lastSystem === systemId) focusSoon(`[data-game="${CSS.escape(last.id)}"]`);
   }
 
   /** A random game that is on the drive, from this console or from any, not one dealt lately. */
@@ -324,14 +334,60 @@
     show(shown[(at + dir + shown.length) % shown.length], systemId);
   }
 
+  /** Left and right on the disc buttons choose a disc, as in any group of choices. */
+  function moveDisc(dir) {
+    const discs = openGame.discs || [];
+    for (let i = 1; i < discs.length; i++) {
+      const next = (disc + dir * i + discs.length) % discs.length;
+      if (discs[next].present) {
+        disc = next;
+        focusSoon('[data-disc][aria-checked="true"]');
+        return;
+      }
+    }
+  }
+
   function onCardKey(e) {
-    if (!openGame) return;
+    if (e.defaultPrevented) return;
+    if (!openGame) {
+      // Y in the grid: a random game from this console.
+      if (e.key === PAD.Y && mode === 'games' && games.length && !modalOpen()) {
+        e.preventDefault();
+        shuffle('system');
+      }
+      return;
+    }
+    const onDiscs = e.target?.closest?.('[data-disc]');
+    // In a row of choices (where to shuffle from), left and right move between them.
+    if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && e.target?.closest?.('[data-nav-row]')) return;
     if (e.key === 'Escape') closeCard();
-    else if (e.key === 'ArrowRight') step(1);
-    else if (e.key === 'ArrowLeft') step(-1);
+    else if (onDiscs && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) moveDisc(e.key === 'ArrowRight' ? 1 : -1);
+    else if (e.key === 'ArrowRight' || e.key === PAD.NEXT) step(1);
+    else if (e.key === 'ArrowLeft' || e.key === PAD.PREV) step(-1);
+    else if (e.key === PAD.Y) deck ? step(1) : shuffle('system');
     else return;
     e.preventDefault();
   }
+
+  // What the controller's buttons do here, along the bottom of the screen.
+  $effect(() => {
+    if (openGame) {
+      return setHints('arcade', [
+        { btn: 'A', label: 'Select' },
+        { btn: 'DPAD', label: deck ? 'Back / deal' : 'Games' },
+        { btn: 'Y', label: deck ? 'Deal another' : 'Shuffle' },
+        { btn: 'B', label: 'Close' },
+      ], 2);
+    }
+    if (mode === 'games' && games.length) {
+      return setHints('arcade', [
+        { btn: 'A', label: 'Open' },
+        { btn: 'Y', label: 'Shuffle' },
+        { btn: 'LB/RB', label: 'Console' },
+        { btn: 'START', label: 'Sections' },
+      ]);
+    }
+  });
 
   async function play(game) {
     try {
@@ -354,7 +410,8 @@
   });
 </script>
 
-<svelte:window onkeydown={onCardKey} />
+<!-- on the document, so the card has the keys before the app's own navigation (on the window) -->
+<svelte:document onkeydown={onCardKey} />
 
 <SectionFrame
   title="Arcade"
@@ -517,7 +574,8 @@
           <li in:fly={i < STAGGER_CAP ? itemIn(i) : { duration: 0 }}>
             <button
               use:lazyArt={game}
-              class="expo t-hover group block w-full border border-hairline bg-white/[0.02] text-left transition-all hover:-translate-y-0.5 hover:border-chiral/60 {game.present ? '' : 'opacity-50'}"
+              data-game={game.id}
+              class="nav-card expo t-hover group block w-full border border-hairline bg-white/[0.02] text-left transition-all hover:-translate-y-0.5 hover:border-chiral/60 {game.present ? '' : 'opacity-50'}"
               onclick={() => open(game)}
             >
               <div class="relative grid aspect-[3/4] place-items-center overflow-hidden border-b border-hairline-faint bg-black/50">
@@ -568,6 +626,7 @@
     <button
       class="nav-arrow left-1 sm:left-4"
       onclick={() => step(-1)}
+      tabindex="-1"
       disabled={deck ? deck.at <= 0 : shown.length < 2}
       aria-label={deck ? 'The game dealt before this one' : 'Previous game'}
       title="Left arrow"
@@ -577,6 +636,7 @@
     <button
       class="nav-arrow right-1 sm:right-4"
       onclick={() => step(1)}
+      tabindex="-1"
       disabled={!deck && shown.length < 2}
       aria-label={deck ? 'Deal another game' : 'Next game'}
       title="Right arrow"
@@ -592,7 +652,7 @@
       {#if deck}
         <div class="flex flex-wrap items-center gap-2 border-b border-hairline px-5 py-2.5">
           <p class="micro flex items-center gap-2 text-chiral"><Dices class="h-3.5 w-3.5" /> SHUFFLE</p>
-          <div class="ml-auto flex items-center border border-hairline" role="group" aria-label="Shuffle from">
+          <div class="ml-auto flex items-center border border-hairline" role="group" aria-label="Shuffle from" data-nav-row>
             {#each [{ id: 'system', label: system ? `ONLY ${system.short}` : 'THIS CONSOLE' }, { id: 'library', label: 'WHOLE LIBRARY' }] as choice (choice.id)}
               <button
                 class="expo t-hover micro px-2.5 py-1.5 transition-colors {deck.scope === choice.id ? 'bg-white/[0.07] text-chiral' : 'text-text-faint hover:text-white'}"
@@ -650,6 +710,8 @@
                   {#each discs as one, i (i)}
                     <button
                       role="radio"
+                      data-disc
+                      tabindex={disc === i ? 0 : -1}
                       aria-checked={disc === i}
                       disabled={!one.present}
                       onclick={() => (disc = i)}
@@ -685,6 +747,7 @@
                 <p class="text-[13px] text-text-dim">This game is in the playlist but its file is not on the drive.</p>
               {:else if cardSystem?.canPlay}
                 <button
+                  data-autofocus
                   class="expo t-hover hud-corners flex h-11 w-full items-center justify-center gap-2 bg-chiral font-bold text-black transition-all hover:brightness-110 active:scale-[0.98]"
                   onclick={() => play(openGame)}
                 >
@@ -701,9 +764,9 @@
       {/key}
       <p class="micro border-t border-hairline-faint px-5 py-2 text-text-faint">
         {#if deck}
-          GAME {deck.at + 1} OF THIS SHUFFLE · <span class="text-text-dim">RIGHT</span> DEALS ANOTHER · <span class="text-text-dim">LEFT</span> GOES BACK
+          GAME {deck.at + 1} OF THIS SHUFFLE · <span class="text-text-dim">RIGHT</span> DEALS ANOTHER · <span class="text-text-dim">LEFT</span> GOES BACK · <span class="text-text-dim">ESC</span> CLOSES
         {:else}
-          {shown.findIndex((g) => g.id === openGame.id) + 1} OF {shown.length} · <span class="text-text-dim">LEFT</span> AND <span class="text-text-dim">RIGHT</span> MOVE THROUGH THE GAMES
+          {shown.findIndex((g) => g.id === openGame.id) + 1} OF {shown.length} · <span class="text-text-dim">LEFT</span> AND <span class="text-text-dim">RIGHT</span> MOVE THROUGH THE GAMES · <span class="text-text-dim">ESC</span> CLOSES
         {/if}
       </p>
     </div>

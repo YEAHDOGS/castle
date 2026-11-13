@@ -150,6 +150,8 @@
               aria-selected={selected}
               aria-label={node.name}
               tabindex={focused || (!store.focusId && i === 0) ? 0 : -1}
+              data-autofocus={focused || (!store.focusId && i === 0) ? '' : undefined}
+              onfocus={() => { if (store.focusId !== node.id) store.focusId = node.id; }}
               onkeydown={(e) => { if (handleDriveKey(e)) e.stopPropagation(); }}
               in:fly={itemIn(i)}
               animate:flip={reducedMotion() ? { duration: 0 } : { duration: 200, easing: expoOut }}
@@ -226,6 +228,8 @@
               role="option"
               aria-selected={selected}
               tabindex={focused || (!store.focusId && i === 0) ? 0 : -1}
+              data-autofocus={focused || (!store.focusId && i === 0) ? '' : undefined}
+              onfocus={() => { if (store.focusId !== node.id) store.focusId = node.id; }}
               onkeydown={(e) => { if (handleDriveKey(e)) e.stopPropagation(); }}
               in:fly={itemIn(Math.min(i, 8))}
               onclick={(e) => { e.stopPropagation(); e.currentTarget.focus({ preventScroll: true }); store.select(node.id, e.ctrlKey || e.metaKey, e.shiftKey); }}
