@@ -1,17 +1,19 @@
 <!-- SecuritySection: Castle Security. What protects the box and what does not yet, the
      tamper-evident record of everything that changed, who holds the key, and read-only
-     audits of the box itself. Protections that are not built are listed as such. -->
+     audits of the box itself, and Presence: radar nodes that say which rooms have someone in
+     them, with no camera. Protections that are not built are listed as such. -->
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
   import { ask } from '../../lib/ask.svelte.js';
-  import { ShieldCheck, ScrollText, KeyRound, ScanSearch, Hammer, Check, TriangleAlert, Minus, CircleHelp, RefreshCw, Play, Link2 } from '@lucide/svelte';
+  import { ShieldCheck, ScrollText, KeyRound, ScanSearch, Hammer, Check, TriangleAlert, Minus, CircleHelp, RefreshCw, Play, Link2, Radar } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { itemIn, viewIn } from '../../lib/motion.js';
   import { PLANNED_PROTECTIONS } from '../../lib/demo-shell.js';
   import SectionFrame from '../SectionFrame.svelte';
   import Notice from '../Notice.svelte';
+  import PresenceView from '../security/PresenceView.svelte';
 
   const ADMIN = 'Admin';
   const VIEWS = [
@@ -19,6 +21,7 @@
     { id: 'activity', label: 'Activity record', icon: ScrollText },
     { id: 'access', label: 'Access', icon: KeyRound },
     { id: 'audits', label: 'Audits', icon: ScanSearch },
+    { id: 'presence', label: 'Presence', icon: Radar },
     { id: 'planned', label: 'Not built yet', icon: Hammer },
   ];
   const REFRESH_MS = 10_000;
@@ -52,6 +55,10 @@
     'network.speedtest': 'Ran a speed test',
     'security.token.rotate': 'Replaced the box token',
     'security.audits.run': 'Ran an audit',
+    'presence.node.add': 'Added a presence node',
+    'presence.node.update': 'Changed a presence node',
+    'presence.node.remove': 'Removed a presence node',
+    'presence.node.rekey': "Replaced a presence node's key",
   };
 
   let view = $state('overview');
@@ -336,6 +343,8 @@
             Audits only read; none changes the box. They list what is there and do not judge it: an unfamiliar entry is a prompt to look,
             not a verdict. They began as the Phoenix project's system listings, rewritten in bash for a Linux box.
           </p>
+        {:else if view === 'presence'}
+          <PresenceView source={shell.presenceSource} />
         {:else}
           <ul class="grid gap-3 lg:grid-cols-2">
             {#each PLANNED_PROTECTIONS as item, i (item.title)}

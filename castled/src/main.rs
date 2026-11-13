@@ -7,7 +7,9 @@
 //!
 //! Safety rules this file keeps:
 //!   * Listens on this machine only unless told otherwise (--bind).
-//!   * Every call except /api/v1/hello needs the box token (Authorization: Bearer ...).
+//!   * Every call except /api/v1/hello, play links and presence reports needs the box token
+//!     (Authorization: Bearer ...). A presence node reports with its own key, which can do
+//!     nothing else (see presence.rs).
 //!   * A path can never leave the vault: names are validated and symlinks are refused.
 //!   * Uploads stream to a temp file and are renamed into place, so a dropped connection
 //!     never leaves half a file where a whole one is expected.
@@ -21,6 +23,7 @@ mod host;
 mod lookup;
 mod media_tags;
 mod network;
+mod presence;
 mod saves;
 mod security;
 mod steam;
@@ -99,6 +102,8 @@ struct AppState {
     drives: drives::Drives,
     /// Films, shows, music, photos and videos from folders on this computer.
     theater: theater::Theater,
+    /// Radar nodes on the walls, and what they see (see presence.rs).
+    presence: presence::Presence,
     /// Steam games kept for every PC in the home.
     steam: Arc<steam::SteamCache>,
     /// Where the box's DNS server listens, once it does.
@@ -1721,6 +1726,67 @@ async fn security_audit_run(State(st): State<Shared>, Json(b): Json<IdBody>) -> 
 }
 
 // ---------------------------------------------------------------------------------------
+// Presence: radar nodes on the walls (see presence.rs)
+// ---------------------------------------------------------------------------------------
+
+async fn presence_call<T, F>(st: Shared, action: F) -> ApiResult<Json<T>>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState) -> presence::PresenceResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || action(&st))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .map(Json)
+        .map_err(|msg| ApiError::conflict(&msg))
+}
+
+async fn presence_overview(State(st): State<Shared>) -> ApiResult<Json<presence::Overview>> {
+    presence_call(st, |st| st.presence.overview()).await
+}
+
+/// A new node. Its key is in this answer and nowhere else, ever.
+async fn presence_node_add(State(st): State<Shared>, Json(b): Json<presence::AddBody>) -> ApiResult<Json<presence::Added>> {
+    presence_call(st, move |st| st.presence.add(b)).await
+}
+
+async fn presence_node_update(State(st): State<Shared>, Json(b): Json<presence::UpdateBody>) -> ApiResult<Json<presence::NodeView>> {
+    presence_call(st, move |st| st.presence.update(b)).await
+}
+
+async fn presence_node_remove(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<StatusCode> {
+    let _ = presence_call(st, move |st| st.presence.remove(&b.id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn presence_node_rekey(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<serde_json::Value>> {
+    presence_call(st, move |st| st.presence.rekey(&b.id).map(|key| serde_json::json!({ "key": key }))).await
+}
+
+/// What a node sees, sent several times a second. Needs the node's own key
+/// (Authorization: Node <key>), never the box token. Readings are not written to the
+/// activity record, which they would fill.
+async fn presence_report(State(st): State<Shared>, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<StatusCode> {
+    let key = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Node "))
+        .unwrap_or("")
+        .trim();
+    // The key is checked before the body is read, so a stranger learns nothing from it.
+    let report = |b: &[u8]| serde_json::from_slice::<presence::Report>(b).map_err(|_| "that is not a presence report".to_string());
+    match st.presence.report_with(key, || report(&body)) {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(presence::Refused::Key) => {
+            st.security.note_denied("/presence/report");
+            Err(ApiError(StatusCode::UNAUTHORIZED, "this node needs its own key".into()))
+        }
+        Err(presence::Refused::TooSoon) => Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "too many reports; slow down".into())),
+        Err(presence::Refused::Bad(msg)) => Err(ApiError::bad(&msg)),
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // Auth, and the record of what each call did
 // ---------------------------------------------------------------------------------------
 
@@ -1999,6 +2065,11 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/security/token/rotate", post(security_rotate))
         .route("/security/audits", get(security_audits))
         .route("/security/audits/run", post(security_audit_run))
+        .route("/presence", get(presence_overview))
+        .route("/presence/node/add", post(presence_node_add))
+        .route("/presence/node/update", post(presence_node_update))
+        .route("/presence/node/remove", post(presence_node_remove))
+        .route("/presence/node/rekey", post(presence_node_rekey))
         // Uploads are streamed straight to disk, so the usual in-memory body cap is lifted
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
@@ -2006,8 +2077,10 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
 
     // Play links carry their own permission (see theater.rs), so a video player can use them.
+    // Presence nodes report with their own key, which opens nothing else (see presence.rs).
     let api = Router::new()
         .route("/hello", get(hello))
+        .route("/presence/report", post(presence_report).layer(DefaultBodyLimit::max(presence::MAX_REPORT_BYTES)))
         .route("/media/{ticket}", get(media))
         .route("/media/{ticket}/sub/{n}", get(media_subtitle))
         .merge(protected);
@@ -2078,6 +2151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         host: (addr.ip().is_loopback() || cfg.host_files).then(|| host::Host::new(&root)),
         drives: drives::Drives::open(root.join(META_DIR).join("drives.json"), &root),
         theater: theater::Theater::open(root.join(META_DIR).join("theater")),
+        presence: presence::Presence::open(root.join(META_DIR).join("presence")),
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),
         ai: ai::Ai::new(addr, &root.join(META_DIR)),
