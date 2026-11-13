@@ -150,3 +150,6 @@ clonewars/data/copy/*
 
 # Android SDK license copied from data/android-sdk into the container build by container.ps1
 clonewars/docker/android/licenses/
+
+# The assembled castle.dogs.red site (landing + the showcase demo), from scripts/build-site.mjs
+site-dist/

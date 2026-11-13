@@ -7,6 +7,7 @@
 import { StorageAdapter, LocalStorageAdapter } from './adapter.js';
 import { isDemoRoute, demoNodes, demoComputer } from './demo.js';
 import { HOST_ROOT, isHostId, hostPath, hostId } from './computer.js';
+import { SHOWCASE, readOnly } from './showcase.js';
 
 const BOX_KEY = 'castle-box-v1';
 const API_BASE = '/api/v1';
@@ -55,7 +56,7 @@ export function forgetBox() {
  */
 export function takeConnectLink() {
   if (typeof location === 'undefined' || !location.hash.startsWith(CONNECT_HASH)) return null;
-  if (isDemoRoute()) return null; // the demo never talks to a box
+  if (isDemoRoute() || SHOWCASE) return null; // the demo never talks to a box
   // "#connect=<token>" means the box serving this page. "#connect=<token>&box=<address>"
   // names another one, which is how the live development interface reaches the box.
   const [token, ...rest] = location.hash.slice(CONNECT_HASH.length).split('&');
@@ -687,12 +688,12 @@ export function fixedDemoAdapter(person = null) {
   const computer = demoComputer();
   const adapter = new LocalStorageAdapter({ nodes: [...demoNodes(person), ...computer.nodes], computer });
   adapter.isDemo = true;
-  return adapter;
+  return readOnly(adapter); // the showcase build: look, don't touch (see showcase.js)
 }
 
 /** The backend to start with: the /demo drive, the remembered box, or the local drive. */
 export function startingAdapter() {
-  if (isDemoRoute()) return fixedDemoAdapter();
+  if (isDemoRoute() || SHOWCASE) return fixedDemoAdapter(); // the showcase is always the demo
   const box = readBox();
   if (box) return new HttpAdapter(box);
   const adapter = new LocalStorageAdapter();

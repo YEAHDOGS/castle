@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:showcase": "vite build --mode showcase",
     "preview": "vite preview",
     "tauri": "tauri",
     "daemon": "node scripts/daemon.js",

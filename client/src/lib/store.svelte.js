@@ -8,6 +8,7 @@ import { uid } from './format.js';
 import { ask } from './ask.svelte.js';
 import { prefs as devicePrefs } from './prefs.svelte.js';
 import { HOST_ROOT, COMPUTER_NAME, isHostId, hostTrail, hostParent } from './computer.js';
+import { SHOWCASE, REFUSED, onRefused, refused } from './showcase.js';
 
 export const VIEWS = ['drive', 'computer', 'shared', 'recent', 'starred', 'trash'];
 export const SORT_KEYS = ['name', 'size', 'modified'];
@@ -22,6 +23,12 @@ const GUARDED_ACTIONS = [
   'newFolder', 'commitRename', 'trashSelection', 'restoreSelection', 'deleteForeverSelection',
   'toggleStar', 'moveSelection', 'uploadFiles', 'setView', 'openNode', 'goUp', 'goToCrumb', 'setQuery',
   'climb', 'openHost', 'speedTest',
+];
+// The showcase (see showcase.js) refuses these before they start: no rename box opens, no
+// file picker appears, nothing is half done. The adapter refuses the same calls as well.
+const SHOWCASE_REFUSED = [
+  'newFolder', 'startRename', 'trashSelection', 'restoreSelection', 'deleteForeverSelection',
+  'toggleStar', 'moveSelection', 'uploadFiles', 'speedTest', 'connect', 'disconnect',
 ];
 function readPrefs() {
   try {
@@ -168,7 +175,7 @@ class DriveStore {
    * In a browser the address follows (/demo), so a reload stays in the same mode.
    */
   async setDemo(on) {
-    if (on === this.isDemo) return;
+    if (on === this.isDemo || SHOWCASE) return; // the showcase is only ever the demo
     if (!isDesktopApp()) history.replaceState(null, '', (on ? '/demo' : '/') + location.search);
     this.connectOpen = false;
     if (on) {
@@ -678,6 +685,8 @@ class DriveStore {
   }
 
   toast(msg) {
+    // A refused call toasts by itself and its caller often toasts the error again: once is enough.
+    if (msg === REFUSED && this.toasts.some((t) => t.msg === msg)) return;
     const id = uid();
     this.toasts = [...this.toasts, { id, msg }];
     setTimeout(() => {
@@ -715,4 +724,14 @@ for (const name of GUARDED_ACTIONS) {
   };
 }
 
+if (SHOWCASE) {
+  for (const name of SHOWCASE_REFUSED) {
+    DriveStore.prototype[name] = async function () {
+      refused();
+      return false;
+    };
+  }
+}
+
 export const store = new DriveStore();
+onRefused((msg) => store.toast(msg));

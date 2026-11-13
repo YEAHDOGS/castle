@@ -8,6 +8,7 @@
   import NewMenu from './NewMenu.svelte';
   import Avatar from './Avatar.svelte';
   import { shell } from '../lib/shell.svelte.js';
+  import { SHOWCASE } from '../lib/showcase.js';
 
   let searchEl = $state(null);
   let debounce = null;
@@ -54,7 +55,8 @@
 
   <div class="flex-1 md:hidden"></div>
 
-  <!-- box connection: cyan when files are on a real box, faint otherwise -->
+  <!-- box connection: cyan when files are on a real box, faint otherwise. Not in the showcase: it has no box. -->
+  {#if !SHOWCASE}
   <button
     class="expo t-hover flex h-10 items-center gap-1.5 border border-hairline px-2.5 transition-colors {store.boxUrl ? 'text-bridge' : 'text-text-faint hover:text-white'}"
     onclick={() => (store.connectOpen = true)}
@@ -64,6 +66,7 @@
     <Server class="h-4 w-4" strokeWidth={1.75} />
     <span class="micro hidden lg:inline">{store.boxUrl ? 'BOX' : store.isDemo ? 'DEMO' : 'LOCAL'}</span>
   </button>
+  {/if}
 
   <div class="hidden sm:block"><ModeSwitch /></div>
 
