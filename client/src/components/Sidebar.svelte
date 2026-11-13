@@ -1,14 +1,17 @@
 <!-- Sidebar: the left rail every section shares. Top: the Castle mark, which opens the
      people menu. Middle: the current section's own navigation, or, in a section with no
      views of its own (Home), the people on this box, so the rail is never empty. Bottom: an optional slot
-     (Storage puts its meter there) and the DOGS head, which goes back to Home. -->
+     (Storage puts its meter there) and the bottom bar: the DOGS head, which goes back to Home,
+     then Home, full screen and Settings. -->
 <script>
   import dogsLogo from '../assets/dogs-logo.svg';
   import { fly } from 'svelte/transition';
-  import { ChevronDown } from '@lucide/svelte';
+  import { ChevronDown, House, Maximize, Minimize, Settings } from '@lucide/svelte';
   import { shell } from '../lib/shell.svelte.js';
   import { sectionById } from '../lib/sections.js';
   import { itemIn } from '../lib/motion.js';
+  import { fullScreen } from '../lib/fullscreen.svelte.js';
+  import { store } from '../lib/store.svelte.js';
   import Avatar from './Avatar.svelte';
   import PeopleList from './PeopleList.svelte';
 
@@ -23,6 +26,18 @@
   let { items = [], active = null, onselect = () => {}, footer = null } = $props();
 
   const section = $derived(sectionById(shell.section));
+  const BAR_BUTTON = 'expo t-hover grid h-9 w-9 shrink-0 place-items-center text-text-dim transition-colors hover:bg-white/[0.04] hover:text-white';
+
+  async function toggleFullScreen() {
+    const error = await fullScreen.toggle();
+    if (error) store.toast(error);
+  }
+
+  function openSettings() {
+    shell.wheelOpen = false;
+    shell.userMenuOpen = false;
+    shell.setSection('settings');
+  }
 
   /** LB / RB (see lib/input.svelte.js): the previous or next view, round and round. */
   function onStep(e) {
@@ -99,13 +114,29 @@
     {@render footer()}
   {/if}
 
-  <!-- The DOGS head is the way home from anywhere. -->
-  <button
-    class="expo t-hover block w-full border-t border-hairline-faint px-3 py-3 text-left opacity-70 transition-opacity hover:opacity-100 lg:px-6"
-    onclick={() => shell.goHome()}
-    aria-label="Go to Home"
-    title="Home"
-  >
-    <img src={dogsLogo} alt="" class="h-10 w-10" />
-  </button>
+  <!-- The bottom bar: the DOGS head (the way home from anywhere), then Home, full screen and
+       Settings. A row in the wide rail, a column in the narrow one. -->
+  <div class="flex flex-col items-center gap-1 border-t border-hairline-faint px-2 py-2 lg:flex-row lg:gap-0.5 lg:px-3">
+    <button
+      class="expo t-hover block shrink-0 px-1 py-1 opacity-70 transition-opacity hover:opacity-100 lg:mr-auto lg:px-3"
+      onclick={() => shell.goHome()}
+      aria-label="Go to Home"
+      title="Home"
+    >
+      <img src={dogsLogo} alt="" class="h-10 w-10" />
+    </button>
+    <button class={BAR_BUTTON} onclick={() => shell.goHome()} aria-label="Home" title="Home" aria-current={shell.section === 'home' ? 'page' : undefined}>
+      <House class="h-[18px] w-[18px] {shell.section === 'home' ? 'text-chiral' : ''}" strokeWidth={1.75} />
+    </button>
+    <button class={BAR_BUTTON} onclick={toggleFullScreen} aria-label={fullScreen.on ? 'Leave full screen' : 'Full screen'} title={fullScreen.on ? 'Leave full screen' : 'Full screen'} aria-pressed={fullScreen.on}>
+      {#if fullScreen.on}
+        <Minimize class="h-[18px] w-[18px] text-chiral" strokeWidth={1.75} />
+      {:else}
+        <Maximize class="h-[18px] w-[18px]" strokeWidth={1.75} />
+      {/if}
+    </button>
+    <button class={BAR_BUTTON} onclick={openSettings} aria-label="Settings" title="Settings" aria-current={shell.section === 'settings' ? 'page' : undefined}>
+      <Settings class="h-[18px] w-[18px] {shell.section === 'settings' ? 'text-chiral' : ''}" strokeWidth={1.75} />
+    </button>
+  </div>
 </aside>

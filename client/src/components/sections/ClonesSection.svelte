@@ -252,7 +252,7 @@
               {STATE_LABEL[m.state] || m.state}
             </p>
             {#if live}
-              <button disabled={busy} class={BTN_STOP} onclick={() => act(() => source.cloneMachineStop(m.id), 'Shutting the VM down', applyLab)}>
+              <button disabled={busy} class={BTN_STOP} onclick={() => act(() => source.cloneMachineStop(m.id), m.engine === 'container' ? 'Stopping the container' : 'Shutting the machine down', applyLab)}>
                 <Square class="h-3.5 w-3.5 fill-current" /> STOP
               </button>
             {:else if m.kind !== 'temporary'}
@@ -269,7 +269,7 @@
           </div>
           {#if open}
             <pre class="mt-3 max-h-56 overflow-auto border border-hairline bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-text-dim">{m.log.length ? m.log.join('\n') : m.state === 'running' ? 'Running. It was started outside this screen, so there is no launch log here.' : 'Nothing yet.'}</pre>
-            {#if m.state === 'running' && source.cloneScreen}<VmScreen {source} id={m.key} />{/if}
+            {#if m.state === 'running' && source.cloneScreen}<VmScreen {source} id={m.key} controllable={m.controllable} name={m.name} />{/if}
           {/if}
         </li>
       {/each}

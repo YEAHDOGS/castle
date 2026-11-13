@@ -293,11 +293,13 @@ const DEMO_LAUNCH_LOG = [
 
 const DEMO_TARGETS = [
   { id: 'debian-x11', name: 'Debian 13 (minimal X11 desktop)', description: 'Light desktop for automations.', family: 'linux', runtime: '', cloud: true, inject: true, built: true, disks: 1 },
+  { id: 'container-debian', name: 'Debian 13 container (light, for automations)', description: 'An in-memory screen and Openbox in a Docker container: up in seconds, only the memory its programs use.', family: 'linux', runtime: 'container', cloud: false, inject: true, automatable: true, built: false, disks: 0 },
+  { id: 'container-android', name: 'Android 15 container (Google emulator, headless)', description: 'The Android emulator in a Docker container. Installs your APKs; Android automations run their tasks on the phone.', family: 'android', runtime: 'container', apk: true, cloud: false, inject: false, automatable: true, built: false, disks: 0 },
   { id: 'endeavouros', name: 'EndeavourOS Linux', description: 'Friendly Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: true, built: true, disks: 1 },
   { id: 'cachyos', name: 'CachyOS Linux', description: 'Performance-tuned Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
   { id: 'ubuntu-cloud', name: 'Ubuntu 24.04 LTS (headless)', description: 'SSH-ready in a minute.', family: 'linux', runtime: '', cloud: true, inject: false, built: false, disks: 0 },
   { id: 'win11-pro', name: 'Windows 11 Pro', description: 'Unattended install.', family: 'windows', runtime: '', cloud: false, inject: false, built: true, disks: 1 },
-  { id: 'android-avd', name: 'Android 15 (Google emulator)', description: 'Play Store image. Installs the APKs you give it.', family: 'android', runtime: 'avd', apk: true, cloud: false, inject: false, built: false, disks: 0 },
+  { id: 'android-avd', name: 'Android 15 (Google emulator)', description: 'Play Store image. Installs the APKs you give it.', family: 'android', runtime: 'avd', apk: true, cloud: false, inject: false, automatable: true, built: false, disks: 0 },
   { id: 'blissos', name: 'BlissOS 16 (Android 13)', description: 'Phone apps on x86.', family: 'android', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
   { id: 'mac', name: 'macOS Bootstrap (OpenCore)', description: 'Bare-metal bootstrap shim.', family: 'macos', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
 ];
@@ -339,7 +341,10 @@ export class DemoClones {
       for (let run = 1; run <= Math.min(runs, 6); run++) log.push(`cart game ${run} finished: +${COINS_PER_RUN} coins (${run * COINS_PER_RUN} this session)`);
     }
     const values = a.fields.map((f) => ({ env: f.env, from: bot.saved[f.env] ? 'saved' : 'missing', value: f.secret ? '' : bot.saved[f.env] || '' }));
-    return { id: bot.id, name: bot.name, key: `a:${a.id}:${bot.id}`, state, ready: values.every((v) => v.from !== 'missing'), ownDisk: index > 0 || a.temporary, values, log };
+    const runtime = DEMO_TARGETS.find((t) => t.id === a.target)?.runtime;
+    const engine = runtime === 'container' ? 'container' : runtime === 'avd' ? 'emulator' : 'vm';
+    const family = DEMO_TARGETS.find((t) => t.id === a.target)?.family || 'linux';
+    return { id: bot.id, name: bot.name, key: `a:${a.id}:${bot.id}`, state, ready: values.every((v) => v.from !== 'missing'), ownDisk: index > 0 || a.temporary || engine !== 'vm', engine, controllable: engine === 'container' && family === 'linux', values, log };
   }
 
   view(a) {
@@ -411,6 +416,10 @@ export class DemoClones {
     const bot = a.bots.find((b) => b.id === (botId || 'main'));
     if (bot) bot.state = 'stopped';
     return this.view(a);
+  }
+
+  async cloneLive() {
+    throw new Error('Taking control needs a real box: the demo has no containers');
   }
 
   async cloneMachines() {

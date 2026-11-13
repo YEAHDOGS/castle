@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Castle Android container: PID 1 (under docker --init)
+# ==============================================================================
+# Boots the emulator headless, waits for Android, then does what an Android
+# automation asks: installs every .apk in the payload (/mnt/castle-copy) and
+# opens it, pushes the other files to /sdcard/Download/castle-copy, and starts
+# castle-tasks.sh (written by the Castle app) on the phone, detached, with its
+# log at /data/local/tmp/castle-automation.log. The container lives as long as
+# the emulator does.
+#
+#   CASTLE_MEMORY_MB       phone RAM (default 3072)
+#   CASTLE_CORES           phone cores (default 2)
+#   CASTLE_STOP_AFTER_MIN  stop this many minutes after it starts (0: never)
+#   CASTLE_WIPE=1          factory-reset the phone on this boot
+#
+# The launcher waits for "[castle] setup finished" (or "failed") in the log.
+set -uo pipefail
+
+# Settings for this launch (container.ps1 writes them before every start).
+[ -f /mnt/castle-profile/castle-container.env ] && . /mnt/castle-profile/castle-container.env
+
+MEM="${CASTLE_MEMORY_MB:-3072}"
+CORES="${CASTLE_CORES:-2}"
+[ -e /dev/kvm ] || echo "[castle] no /dev/kvm in the container: the emulator will crawl"
+echo "[castle] Android container $(hostname): ${MEM} MB, ${CORES} core(s)"
+
+EMU_ARGS=(-avd castle -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          -memory "$MEM" -cores "$CORES" -netdelay none -netspeed full)
+[ "${CASTLE_WIPE:-0}" = 1 ] && EMU_ARGS+=(-wipe-data)
+# A container that was stopped and started again finds the AVD's old lock files.
+find "$ANDROID_AVD_HOME/castle.avd" -maxdepth 1 -name '*.lock' -exec rm -rf {} + 2>/dev/null
+emulator "${EMU_ARGS[@]}" >/tmp/emulator.log 2>&1 &
+EMU=$!
+ADB=(adb -s emulator-5554)
+stop_all() {
+  echo "[castle] stopping"
+  "${ADB[@]}" emu kill >/dev/null 2>&1
+  for _ in $(seq 1 10); do kill -0 "$EMU" 2>/dev/null || exit 0; sleep 1; done
+  kill "$EMU" 2>/dev/null
+  exit 0
+}
+trap stop_all TERM INT
+
+if [ "${CASTLE_STOP_AFTER_MIN:-0}" -gt 0 ] 2>/dev/null; then
+  ( sleep $((CASTLE_STOP_AFTER_MIN * 60)); echo "[castle] the stop time has come"; kill -TERM 1 ) &
+fi
+
+adb start-server >/dev/null 2>&1
+start=$SECONDS
+booted=0
+while [ $((SECONDS - start)) -lt 900 ]; do
+  if ! kill -0 "$EMU" 2>/dev/null; then
+    echo "[castle] setup failed: the emulator exited"
+    tail -n 30 /tmp/emulator.log
+    exit 1
+  fi
+  if [ "$("${ADB[@]}" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then booted=1; break; fi
+  sleep 3
+done
+if [ "$booted" != 1 ]; then
+  echo "[castle] setup failed: Android did not finish booting in 15 minutes"
+  tail -n 30 /tmp/emulator.log
+  exit 1
+fi
+echo "[castle] Android booted in $((SECONDS - start)) s"
+"${ADB[@]}" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1
+"${ADB[@]}" shell wm dismiss-keyguard >/dev/null 2>&1
+# Bots work on a screen that stays on.
+"${ADB[@]}" shell settings put global stay_on_while_plugged_in 7 >/dev/null 2>&1
+"${ADB[@]}" shell svc power stayon true >/dev/null 2>&1
+
+if [ -d /mnt/castle-copy ]; then
+  before=$("${ADB[@]}" shell pm list packages -3 2>/dev/null | tr -d '\r' | sort)
+  while IFS= read -r -d '' apk; do
+    echo "[castle] installing $(basename "$apk"): $("${ADB[@]}" install -r -g "$apk" 2>&1 | tail -n 1)"
+  done < <(find /mnt/castle-copy -type f -iname '*.apk' -print0)
+  after=$("${ADB[@]}" shell pm list packages -3 2>/dev/null | tr -d '\r' | sort)
+  for pkg in $(comm -13 <(echo "$before") <(echo "$after") | sed 's/^package://'); do
+    echo "[castle] opening $pkg"
+    "${ADB[@]}" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  done
+  pushed=0
+  while IFS= read -r -d '' f; do
+    rel="${f#/mnt/castle-copy/}"
+    "${ADB[@]}" shell mkdir -p "/sdcard/Download/castle-copy/$(dirname "$rel")" >/dev/null 2>&1
+    "${ADB[@]}" push "$f" "/sdcard/Download/castle-copy/$rel" >/dev/null 2>&1 && pushed=$((pushed + 1))
+  done < <(find /mnt/castle-copy -type f ! -iname '*.apk' ! -name castle-tasks.sh -print0)
+  [ "$pushed" -gt 0 ] && echo "[castle] $pushed file(s) in /sdcard/Download/castle-copy"
+  if [ -f /mnt/castle-copy/castle-tasks.sh ]; then
+    tr -d '\r' < /mnt/castle-copy/castle-tasks.sh > /tmp/castle-tasks.sh
+    "${ADB[@]}" push /tmp/castle-tasks.sh /data/local/tmp/castle-tasks.sh >/dev/null
+    "${ADB[@]}" shell "chmod 755 /data/local/tmp/castle-tasks.sh; setsid sh /data/local/tmp/castle-tasks.sh > /data/local/tmp/castle-automation.log 2>&1 < /dev/null &"
+    echo "[castle] tasks started on the phone (log: /data/local/tmp/castle-automation.log)"
+  fi
+fi
+echo "[castle] setup finished"
+
+wait "$EMU"
+echo "[castle] the emulator stopped"

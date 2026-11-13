@@ -56,7 +56,7 @@
       spellcheck="false"
       class="min-w-0 flex-1 border-b border-transparent bg-transparent text-[15px] font-bold text-white hover:border-hairline focus:border-chiral/60 focus:outline-none"
     />
-    {#if bot.ownDisk}<span class="micro text-text-faint">OWN DISK</span>{/if}
+    {#if bot.engine === 'container'}<span class="micro text-text-faint">CONTAINER</span>{:else if bot.engine === 'emulator'}<span class="micro text-text-faint">OWN PHONE</span>{:else if bot.ownDisk}<span class="micro text-text-faint">OWN DISK</span>{/if}
     <p class="micro flex items-center gap-2 {STATE_TONE[bot.state]}" role="status">
       <span class="h-2 w-2 rounded-full bg-current {bot.state === 'launching' ? 'animate-pulse' : ''}"></span>
       {STATE_LABEL[bot.state] || bot.state}
@@ -97,11 +97,11 @@
 
   <div class="mt-3 flex gap-2">
     {#if live}
-      <button disabled={busy} class="{BTN_STOP} flex-1" onclick={() => onact(() => source.cloneStop(automation.id, bot.id), 'Shutting the VM down')}>
+      <button disabled={busy} class="{BTN_STOP} flex-1" onclick={() => onact(() => source.cloneStop(automation.id, bot.id), bot.engine === 'container' ? 'Stopping the container' : 'Shutting the machine down')}>
         <Square class="h-3.5 w-3.5 fill-current" strokeWidth={2} /> STOP
       </button>
     {:else}
-      <button disabled={busy || !bot.ready || dirty} class="{BTN_PRIMARY} flex-1" onclick={() => onact(() => source.cloneStart(automation.id, bot.id), 'Starting the VM')}>
+      <button disabled={busy || !bot.ready || dirty} class="{BTN_PRIMARY} flex-1" onclick={() => onact(() => source.cloneStart(automation.id, bot.id), bot.engine === 'container' ? 'Starting the container' : 'Starting the machine')}>
         <Play class="h-4 w-4 fill-black" strokeWidth={2} /> START
       </button>
     {/if}
@@ -120,6 +120,6 @@
     <pre bind:this={logEl} class="mt-3 h-44 overflow-auto border border-hairline bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-text-dim" aria-live="polite">{bot.log.length ? bot.log.join('\n') : 'Nothing yet. Press Start and the launch appears here line by line.'}</pre>
   {/if}
   {#if bot.state === 'running' && source.cloneScreen}
-    <VmScreen {source} id={bot.key} />
+    <VmScreen {source} id={bot.key} controllable={bot.controllable} name={bot.name} />
   {/if}
 </section>

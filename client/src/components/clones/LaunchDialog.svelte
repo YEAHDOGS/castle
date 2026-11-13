@@ -11,7 +11,8 @@
   /** machines: the ones that already exist for this target. onstart(body) launches. */
   let { target, machines, busy, onstart, onclose } = $props();
 
-  const single = $derived(!!target.runtime); // Docker and emulator targets have one machine
+  // Docker desktops and the emulator have one machine; containers make as many as you like.
+  const single = $derived(!!target.runtime && target.runtime !== 'container');
   let mode = $state(''); // '' (choosing) | new | temporary
   let name = $state('');
   let memoryGb = $state(prefs.get('clones.memoryGb'));

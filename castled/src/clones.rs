@@ -8,6 +8,10 @@
 //!     number of bots, each with its own sign-in and its own disk, so several run at once.
 //!
 //! Every launch is `start.ps1` in the clonewars folder, given a profile this module writes.
+//! A unit runs in one of three engines: a QEMU VM (its disk under data/), a container
+//! (`container.ps1`: Docker, one image shared by all, the container is the disk), or
+//! Google's Android emulator (`android.ps1`, one AVD per unit). Android automations run
+//! their tasks on the phone (`castle-tasks.sh`), never on the box.
 //! Tasks and scripts run inside the guest, never on the box itself. All of it is off unless
 //! the daemon has a clonewars folder, and it only acts when the daemon listens on this
 //! machine alone: an automation's tasks are commands, so this API is for the owner at the
@@ -44,6 +48,12 @@ const WATCH_PAUSE: Duration = Duration::from_millis(300);
 const QMP_FLAG: &str = "-qmp tcp:127.0.0.1:";
 /// The launcher prints this just before it hands the machine to QEMU.
 const LOG_VM_HANDOFF: &str = "QMP:";
+/// container.ps1 prints this when it hands the container to Docker.
+const LOG_CONTAINER_HANDOFF: &str = "CONTAINER:";
+/// Docker label every Castle container carries (container.ps1).
+const CONTAINER_LABEL: &str = "net.wearedogs.castle.unit";
+/// The script an Android automation runs on the phone.
+const TASKS_FILE: &str = "castle-tasks.sh";
 const MAIN_BOT: &str = "main";
 const BOT_ENV_FILE: &str = "castle-bot.env";
 const PROJECT_ZIP: &str = "project.zip";
@@ -185,6 +195,28 @@ struct Unit {
     target: String,
     /// Its own disk under data/instances; None means the target's main disk.
     instance: Option<String>,
+    engine: Engine,
+}
+
+/// Where a unit runs.
+#[derive(Clone, PartialEq)]
+enum Engine {
+    Vm,
+    /// A Docker container of this name (`castle-<instance or target>`).
+    Container(String),
+    /// Google's emulator with an AVD of this name.
+    Emulator(String),
+}
+
+impl Engine {
+    /// vm | container | emulator, as the app sees it.
+    fn label(&self) -> &'static str {
+        match self {
+            Engine::Vm => "vm",
+            Engine::Container(_) => "container",
+            Engine::Emulator(_) => "emulator",
+        }
+    }
 }
 
 struct Launch {
@@ -198,6 +230,12 @@ struct Scan {
     at: Instant,
     /// Command lines of every running QEMU process.
     qemu: Vec<String>,
+}
+
+struct ContainerScan {
+    at: Instant,
+    /// Every Castle container there is, and whether it is running.
+    all: Vec<(String, bool)>,
 }
 
 /// The Clonewars profile written for one launch.
@@ -216,6 +254,8 @@ struct Profile {
     root: Vec<String>,
     user: Vec<String>,
     setup: String,
+    /// CASTLE_* variables for this launch only.
+    env: Vec<(String, String)>,
 }
 
 struct Plan {
@@ -232,6 +272,8 @@ struct Plan {
     /// The payload folder is the whole injection: no profile, the launcher just takes its
     /// files (the Android emulator installs the APKs and pushes the rest).
     payload_only: bool,
+    /// CASTLE_* variables for the launcher.
+    env: Vec<(String, String)>,
 }
 
 pub struct Clones {
@@ -240,6 +282,9 @@ pub struct Clones {
     loopback: bool,
     launches: Arc<Mutex<HashMap<String, Launch>>>,
     scan: Mutex<Option<Scan>>,
+    containers: Mutex<Option<ContainerScan>>,
+    /// Whether a docker command is on this box, looked up once.
+    docker: std::sync::OnceLock<bool>,
     /// Held while a screen picture is taken: a VM's control port serves one caller at a time.
     screen: Mutex<()>,
     targets: Mutex<Option<Arc<Vec<Target>>>>,
@@ -442,6 +487,10 @@ impl Profile {
         if !self.setup.is_empty() {
             lines.push(format!("    Setup        = {}", ps(&self.setup)));
         }
+        if !self.env.is_empty() {
+            let pairs: Vec<String> = self.env.iter().map(|(k, v)| format!("{k} = {}", ps(v))).collect();
+            lines.push(format!("    Env          = @{{ {} }}", pairs.join("; ")));
+        }
         lines.push("}".to_string());
         lines.join("\r\n") + "\r\n"
     }
@@ -481,6 +530,59 @@ fn session_command(a: &AutomationDef) -> Option<String> {
     Some(format!(
         "cd ~/castle-copy && mkdir -p project && {{ [ ! -f {PROJECT_ZIP} ] || bsdtar -xf {PROJECT_ZIP} -C project; }} && {{ [ ! -f {BOT_ENV_FILE} ] || cp {BOT_ENV_FILE} project/.env; }} && cd project && set -a && {{ [ ! -f .env ] || . ./.env; }} && set +a && {{ {run}; }} >> ~/castle-automation.log 2>&1"
     ))
+}
+
+/// A shell single-quoted string.
+fn sh(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+/// The script an Android automation runs on the phone (Android's own `sh`): the fields as
+/// variables, then the tasks in order, again and again when the automation restarts. Root
+/// tasks go through `su 0`, which google_apis images have and Play Store images do not.
+fn android_tasks_script(a: &AutomationDef, bot: &str, values: &[(String, String)], shutdown_after_minutes: u32) -> String {
+    let mut lines = vec![
+        "#!/system/bin/sh".to_string(),
+        format!("# Castle automation: {} / {} (written by the Castle app on every start)", a.name.replace('\n', " "), bot.replace('\n', " ")),
+    ];
+    for (name, value) in values {
+        lines.push(format!("export {name}={}", sh(value)));
+    }
+    // Shared storage is mounted a little after Android says it has booted.
+    lines.push("for i in $(seq 1 60); do [ -d /sdcard/Download ] && break; sleep 1; done".into());
+    // Fresh from a boot, the launcher is still coming up and would cover an app started now.
+    lines.push("[ \"$(cut -d. -f1 /proc/uptime)\" -lt 180 ] && sleep 15".into());
+    lines.push("mkdir -p /sdcard/Download/castle-copy 2>/dev/null".into());
+    lines.push("cd /sdcard/Download/castle-copy 2>/dev/null || cd /data/local/tmp".into());
+    if shutdown_after_minutes > 0 {
+        lines.push(format!("( sleep {}; echo \"[castle] the stop time has come\"; su 0 reboot -p 2>/dev/null || reboot -p ) &", shutdown_after_minutes * 60));
+    }
+    let tasks: Vec<String> = a
+        .tasks
+        .iter()
+        .filter(|t| !t.command.trim().is_empty())
+        .map(|t| {
+            let name = if t.name.trim().is_empty() { t.command.trim() } else { t.name.trim() };
+            let run = if t.root {
+                format!("su 0 sh -c {} || echo \"[castle] root task failed (it needs a google_apis image)\"", sh(t.command.trim()))
+            } else {
+                format!("( {} )", t.command.trim())
+            };
+            format!("  echo \"[castle] $(date +%T) {}\"; {run}", name.replace(['"', '\\', '$', '`'], ""))
+        })
+        .collect();
+    if tasks.is_empty() {
+        lines.push("echo \"[castle] no tasks: the apps are installed and opened\"".into());
+    } else if a.restart {
+        lines.push("while true; do".into());
+        lines.extend(tasks);
+        lines.push("  sleep 5".into());
+        lines.push("done".into());
+    } else {
+        lines.extend(tasks);
+        lines.push("echo \"[castle] tasks done\"".into());
+    }
+    lines.join("\n") + "\n"
 }
 
 fn check_commands(commands: &[String]) -> ClonesResult<()> {
@@ -528,7 +630,7 @@ fn watch(launches: Arc<Mutex<HashMap<String, Launch>>>, files: Arc<Mutex<()>>, k
         let mut prepared: Option<f64> = None;
         let code = loop {
             std::thread::sleep(WATCH_PAUSE);
-            if prepared.is_none() && std::fs::read(&log).is_ok_and(|raw| String::from_utf8_lossy(&raw).contains(LOG_VM_HANDOFF)) {
+            if prepared.is_none() && std::fs::read(&log).is_ok_and(|raw| { let text = String::from_utf8_lossy(&raw); text.contains(LOG_VM_HANDOFF) || text.contains(LOG_CONTAINER_HANDOFF) }) {
                 prepared = Some(seconds(started));
             }
             let mut map = launches.lock().unwrap();
@@ -562,6 +664,8 @@ impl Clones {
             loopback,
             launches: Arc::new(Mutex::new(HashMap::new())),
             scan: Mutex::new(None),
+            containers: Mutex::new(None),
+            docker: std::sync::OnceLock::new(),
             screen: Mutex::new(()),
             targets: Mutex::new(None),
             files: Arc::new(Mutex::new(())),
@@ -665,6 +769,10 @@ impl Clones {
 
     /// The disk a unit runs from, or None for a target that is not a QEMU machine.
     fn disk(&self, unit: &Unit) -> Option<PathBuf> {
+        // A container is its own disk, and an emulator keeps its phone in the AVD folder.
+        if unit.engine != Engine::Vm {
+            return None;
+        }
         if let Some(instance) = &unit.instance {
             return Some(self.instance_disk(instance));
         }
@@ -702,6 +810,7 @@ impl Clones {
 
     fn forget_scan(&self) {
         *self.scan.lock().unwrap() = None;
+        *self.containers.lock().unwrap() = None;
     }
 
     /// The QEMU command line running this disk out of this clonewars folder, if there is
@@ -712,18 +821,99 @@ impl Clones {
         self.qemu_command_lines().into_iter().find(|line| line.to_lowercase().contains(&disk))
     }
 
-    fn is_emulator(&self, unit: &Unit) -> bool {
-        unit.instance.is_none() && self.targets().iter().any(|t| t.id == unit.target && t.runtime == "avd")
+    fn runtime_of(&self, target: &str) -> Option<String> {
+        self.targets().iter().find(|t| t.id == target).map(|t| t.runtime.clone())
     }
 
-    /// The command line of the process running a unit. The Android emulator has no disk of
-    /// ours to match on; its engine runs out of the SDK folder inside this clonewars folder.
-    fn vm_line(&self, unit: &Unit) -> Option<String> {
-        match self.disk(unit) {
-            Some(disk) => self.vm_command_line(&disk),
-            None if self.is_emulator(unit) => self.vm_command_line(&self.data().join("android-sdk")),
-            None => None,
+    /// A unit, with the engine its target runs in.
+    fn unit(&self, key: String, target: &str, instance: Option<String>) -> Unit {
+        let name = instance.clone().unwrap_or_else(|| target.to_string());
+        let engine = match self.runtime_of(target).as_deref() {
+            Some("container") => Engine::Container(format!("castle-{name}")),
+            // The target's own emulator keeps the AVD android.ps1 has always called "castle".
+            Some("avd") => Engine::Emulator(instance.as_ref().map(|i| format!("castle-{i}")).unwrap_or_else(|| "castle".into())),
+            _ => Engine::Vm,
+        };
+        Unit { key, target: target.to_string(), instance, engine }
+    }
+
+    fn has_docker(&self) -> bool {
+        *self.docker.get_or_init(|| {
+            let mut cmd = hidden(Command::new("docker"));
+            cmd.args(["--version"]);
+            cmd.output().is_ok_and(|o| o.status.success())
+        })
+    }
+
+    /// Every Castle container and whether it runs, refreshed at most every few seconds.
+    fn container_list(&self) -> Vec<(String, bool)> {
+        if !self.has_docker() {
+            return Vec::new();
         }
+        let mut scan = self.containers.lock().unwrap();
+        if let Some(s) = scan.as_ref() {
+            if s.at.elapsed() < SCAN_CACHE {
+                return s.all.clone();
+            }
+        }
+        let mut cmd = hidden(Command::new("docker"));
+        cmd.args(["ps", "-a", "--filter", &format!("label={CONTAINER_LABEL}"), "--format", "{{.Names}}\t{{.State}}"]);
+        let all: Vec<(String, bool)> = cmd
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|line| line.split_once('\t').map(|(name, state)| (name.trim().to_string(), state.trim() == "running")))
+                    .collect()
+            })
+            .unwrap_or_default();
+        *scan = Some(ContainerScan { at: Instant::now(), all: all.clone() });
+        all
+    }
+
+    fn container_exists(&self, name: &str) -> bool {
+        self.container_list().iter().any(|(n, _)| n == name)
+    }
+
+    fn docker(&self, args: &[&str]) -> ClonesResult<std::process::Output> {
+        let mut cmd = hidden(Command::new("docker"));
+        cmd.args(args);
+        cmd.output().map_err(|_| "Docker is not installed on this box".to_string())
+    }
+
+    fn android_state_dir(&self) -> PathBuf {
+        self.data().join("android-sdk").join("castle")
+    }
+
+    /// True while the emulator android.ps1 started for this AVD is alive (its PID file).
+    fn emulator_running(&self, avd: &str) -> bool {
+        let Some(pid) = std::fs::read_to_string(self.android_state_dir().join(format!("{avd}.pid"))).ok().and_then(|t| t.trim().parse::<u32>().ok()) else {
+            return false;
+        };
+        let pid = sysinfo::Pid::from_u32(pid);
+        let Ok(mut sys) = sysinfo::System::new() else { return false };
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        sys.process(pid).is_some_and(|p| {
+            let name = p.name().to_string_lossy().to_lowercase();
+            name.contains("emulator") || name.contains("qemu")
+        })
+    }
+
+    /// Whether the machine behind a unit is up, whatever engine it runs in.
+    fn is_up(&self, unit: &Unit) -> bool {
+        match &unit.engine {
+            Engine::Container(name) => self.container_list().iter().any(|(n, running)| n == name && *running),
+            Engine::Emulator(avd) => self.emulator_running(avd),
+            Engine::Vm => self.disk(unit).is_some_and(|disk| self.vm_command_line(&disk).is_some()),
+        }
+    }
+
+    fn launcher(&self, script: &str) -> Command {
+        let mut cmd = hidden(Command::new("pwsh"));
+        cmd.current_dir(&self.dir).args(["-NoProfile", "-NonInteractive", "-File", script]);
+        cmd
     }
 
     /// stopped | launching | running | failed
@@ -739,7 +929,7 @@ impl Clones {
                 launch.exit
             })
         };
-        let running = self.vm_line(unit).is_some();
+        let running = self.is_up(unit);
         match launch_state {
             Some(None) => "launching",
             _ if running => "running",
@@ -798,6 +988,12 @@ impl Clones {
         if let Some(dir) = &plan.copy_dir {
             cmd.env("CASTLE_COPY_DIR", dir);
         }
+        if let Engine::Emulator(avd) = &unit.engine {
+            cmd.env("CASTLE_AVD_NAME", avd);
+        }
+        for (name, value) in &plan.env {
+            cmd.env(name, value);
+        }
         let child = cmd.stdout(log).stderr(log_err).spawn().map_err(|_| "could not start PowerShell 7 (pwsh)".to_string())?;
         let serial = self.serial.fetch_add(1, Ordering::Relaxed);
         self.launches.lock().unwrap().insert(unit.key.clone(), Launch { serial, child, exit: None });
@@ -816,14 +1012,25 @@ impl Clones {
                 let _ = launch.child.wait();
             }
         }
-        if self.is_emulator(unit) {
-            // The emulator is not ours to talk to over QMP; its own script shuts it down.
-            let mut cmd = hidden(Command::new("pwsh"));
-            cmd.current_dir(&self.dir).args(["-NoProfile", "-NonInteractive", "-File", "android.ps1", "-Stop"]);
-            cmd.output().map_err(|_| "could not start PowerShell 7 (pwsh)".to_string())?;
-        } else if let Some(line) = self.disk(unit).and_then(|disk| self.vm_command_line(&disk)) {
-            let port = qmp_port(&line).ok_or_else(|| "this VM has no control port".to_string())?;
-            power_off(port)?;
+        match &unit.engine {
+            Engine::Container(name) => {
+                if self.container_list().iter().any(|(n, running)| n == name && *running) {
+                    let out = self.docker(&["stop", "-t", "20", name])?;
+                    if !out.status.success() {
+                        return Err(format!("Docker could not stop it: {}", String::from_utf8_lossy(&out.stderr).trim()));
+                    }
+                }
+            }
+            Engine::Emulator(avd) => {
+                // The emulator is not ours to talk to over QMP; its own script shuts it down.
+                self.launcher("android.ps1").args(["-Name", avd, "-Stop"]).output().map_err(|_| "could not start PowerShell 7 (pwsh)".to_string())?;
+            }
+            Engine::Vm => {
+                if let Some(line) = self.disk(unit).and_then(|disk| self.vm_command_line(&disk)) {
+                    let port = qmp_port(&line).ok_or_else(|| "this VM has no control port".to_string())?;
+                    power_off(port)?;
+                }
+            }
         }
         self.forget_scan();
         Ok(())
@@ -844,7 +1051,7 @@ impl Clones {
             (Some("a"), Some(id), Some(bot)) => {
                 let a = self.automation(id)?;
                 let bot = a.bots.iter().find(|b| b.id == bot).ok_or_else(unknown)?;
-                Ok(Self::bot_unit(&a, bot))
+                Ok(self.bot_unit(&a, bot))
             }
             (Some("m"), Some(id), None) => self.machine_unit(id),
             _ => Err(unknown()),
@@ -855,6 +1062,34 @@ impl Clones {
     /// clicked or changed in the machine, and its own window is left alone.
     pub fn screen(&self, key: &str) -> ClonesResult<Vec<u8>> {
         let unit = self.unit_for(key)?;
+        let not_running = || "this machine is not running".to_string();
+        let png = |out: std::process::Output| {
+            if out.status.success() && out.stdout.starts_with(b"\x89PNG") {
+                Ok(out.stdout)
+            } else {
+                Err("the machine did not produce a picture".to_string())
+            }
+        };
+        match &unit.engine {
+            // Inside the container: Xvfb's screen for Linux, `screencap` for the phone.
+            Engine::Container(name) => {
+                if !self.is_up(&unit) {
+                    return Err(not_running());
+                }
+                return png(self.docker(&["exec", name, "castle-screen"])?);
+            }
+            Engine::Emulator(avd) => {
+                if !self.is_up(&unit) {
+                    return Err(not_running());
+                }
+                let port = std::fs::read_to_string(self.android_state_dir().join(format!("{avd}.port"))).map_err(|_| not_running())?;
+                let adb = self.data().join("android-sdk").join("platform-tools").join(if cfg!(windows) { "adb.exe" } else { "adb" });
+                let mut cmd = hidden(Command::new(adb));
+                cmd.args(["-s", &format!("emulator-{}", port.trim()), "exec-out", "screencap", "-p"]);
+                return png(cmd.output().map_err(|_| "adb is not installed in the Android SDK folder".to_string())?);
+            }
+            Engine::Vm => {}
+        }
         let line = self.disk(&unit).and_then(|disk| self.vm_command_line(&disk)).ok_or_else(|| "this machine is not running".to_string())?;
         let port = qmp_port(&line).ok_or_else(|| "this VM has no control port".to_string())?;
         let _one_at_a_time = self.screen.lock();
@@ -865,6 +1100,65 @@ impl Clones {
         let _ = std::fs::remove_file(&file);
         taken?;
         bytes.map_err(|_| "the machine did not produce a picture".to_string())
+    }
+
+    /// Live control of a container's screen: `on` starts a VNC server and a noVNC viewer
+    /// inside it behind a new one-time password and returns the viewer's address (on this
+    /// machine's loopback only); `!on` stops them. The picture view needs none of this.
+    pub fn live(&self, key: &str, on: bool) -> ClonesResult<Value> {
+        self.require_loopback()?;
+        let unit = self.unit_for(key)?;
+        let Engine::Container(name) = &unit.engine else {
+            return Err("taking control works for machines in containers. A VM has its own window".into());
+        };
+        if self.runtime_kind(&unit.target) != "linux" {
+            return Err("taking control of an Android container is not there yet; its screen shows here".into());
+        }
+        if !self.is_up(&unit) {
+            return Err("this machine is not running".into());
+        }
+        if !on {
+            self.docker(&["exec", name, "castle-live", "stop"])?;
+            return Ok(json!({ "live": false }));
+        }
+        let out = self.docker(&["exec", name, "castle-live", "start"])?;
+        let password = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !out.status.success() || password.len() < 8 || !password.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err("the live viewer did not start in the container".into());
+        }
+        // "127.0.0.1:49153", one line per address family.
+        let port = self.docker(&["port", name, "6080/tcp"])?;
+        let port = String::from_utf8_lossy(&port.stdout)
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("127.0.0.1:").and_then(|p| p.parse::<u16>().ok()))
+            .ok_or_else(|| "this container was made before live control existed. Delete it and start it again".to_string())?;
+        Ok(json!({
+            "live": true,
+            "url": format!("http://127.0.0.1:{port}/vnc.html?autoconnect=1&resize=scale&reconnect=1&show_dot=1&password={password}"),
+        }))
+    }
+
+    /// "linux" or "android": what a target's guest is.
+    fn runtime_kind(&self, target: &str) -> &'static str {
+        if self.targets().iter().any(|t| t.id == target && t.family == "android") { "android" } else { "linux" }
+    }
+
+    /// Deletes everything a unit keeps of its own: its disk, container or AVD.
+    fn remove_unit(&self, unit: &Unit) {
+        match &unit.engine {
+            Engine::Container(name) => {
+                let _ = self.docker(&["rm", "-f", name]);
+                let _ = std::fs::remove_dir_all(self.data().join("containers").join(name));
+            }
+            Engine::Emulator(avd) if avd != "castle" => {
+                let _ = self.launcher("android.ps1").args(["-Name", avd, "-Purge"]).output();
+            }
+            _ => {}
+        }
+        if let Some(instance) = &unit.instance {
+            self.remove_instance(instance);
+        }
+        self.forget_scan();
     }
 
     // ---- automations ----
@@ -885,11 +1179,13 @@ impl Clones {
         save(&self.automations_file(), &all)
     }
 
-    fn bot_unit(a: &AutomationDef, bot: &Bot) -> Unit {
+    fn bot_unit(&self, a: &AutomationDef, bot: &Bot) -> Unit {
         // The first bot keeps the target's main disk, so a box that already built it starts
-        // at once. Every other bot, and every throwaway run, has a disk of its own.
-        let instance = (bot.id != MAIN_BOT || a.temporary).then(|| format!("{}-{}", a.id, bot.id));
-        Unit { key: format!("a:{}:{}", a.id, bot.id), target: a.target.clone(), instance }
+        // at once. Every other bot, and every throwaway run, has a disk of its own. In a
+        // container or an emulator every bot is its own machine: nothing is shared but the image.
+        let own = bot.id != MAIN_BOT || a.temporary || self.runtime_of(&a.target).is_some_and(|r| r == "container" || r == "avd");
+        let instance = own.then(|| format!("{}-{}", a.id, bot.id));
+        self.unit(format!("a:{}:{}", a.id, bot.id), &a.target, instance)
     }
 
     /// Where the automation's project is on the box.
@@ -955,7 +1251,7 @@ impl Clones {
             .bots
             .iter()
             .map(|bot| {
-                let unit = Self::bot_unit(a, bot);
+                let unit = self.bot_unit(a, bot);
                 let state = self.state_of(&unit);
                 if state == "running" || (state == "launching" && any_live != "running") || (state == "failed" && any_live == "stopped") {
                     any_live = state;
@@ -972,6 +1268,7 @@ impl Clones {
                     "id": bot.id, "name": bot.name, "key": unit.key, "state": state,
                     "ready": sources.iter().all(|(from, _)| *from != "missing"),
                     "ownDisk": unit.instance.is_some(), "values": values, "log": tail(&self.log_file(&unit.key)),
+                    "engine": unit.engine.label(), "controllable": matches!(unit.engine, Engine::Container(_)) && self.runtime_kind(&a.target) == "linux",
                 })
             })
             .collect();
@@ -983,6 +1280,7 @@ impl Clones {
             "memoryGb": a.memory_gb, "cores": a.cores, "screen": a.screen, "apt": a.apt, "pacman": a.pacman,
             "tasks": a.tasks, "fields": a.fields, "restart": a.restart, "stopAfterMinutes": a.stop_after_minutes,
             "temporary": a.temporary, "builtin": a.builtin, "state": any_live, "bots": bots,
+            "family": self.runtime_kind(&a.target), "engine": self.unit(String::new(), &a.target, None).engine.label(),
         })
     }
 
@@ -1012,7 +1310,8 @@ impl Clones {
         if def.name.is_empty() || !one_line(&def.name, 80) || !one_line(&def.description, 400) {
             return Err("give the automation a name".into());
         }
-        if !self.target(&def.target)?.inject {
+        let target = self.target(&def.target)?;
+        if !(target.inject || (target.family == "android" && !target.runtime.is_empty())) {
             return Err("this operating system cannot be set up from the host yet. Pick one marked as scriptable".into());
         }
         if is_git_address(&def.source) && !trusted_source(&def.source) {
@@ -1060,7 +1359,7 @@ impl Clones {
         if a.builtin {
             return Err("the built-in example cannot be removed".into());
         }
-        if a.bots.iter().any(|b| matches!(self.state_of(&Self::bot_unit(&a, b)), "running" | "launching")) {
+        if a.bots.iter().any(|b| matches!(self.state_of(&self.bot_unit(&a, b)), "running" | "launching")) {
             return Err("stop its bots first".into());
         }
         self.change_automations(|all| {
@@ -1120,13 +1419,11 @@ impl Clones {
         self.require_loopback()?;
         let a = self.automation(id)?;
         let found = a.bots.iter().find(|b| b.id == bot).ok_or_else(|| "unknown bot".to_string())?;
-        let unit = Self::bot_unit(&a, found);
+        let unit = self.bot_unit(&a, found);
         if matches!(self.state_of(&unit), "running" | "launching") {
             return Err("stop it first".into());
         }
-        if let Some(instance) = &unit.instance {
-            self.remove_instance(instance);
-        }
+        self.remove_unit(&unit);
         self.launches.lock().unwrap().remove(&unit.key);
         self.change_automations(|all| {
             if let Some(a) = all.iter_mut().find(|a| a.id == id) {
@@ -1141,7 +1438,7 @@ impl Clones {
         self.require_loopback()?;
         let a = self.automation(id)?;
         let bot = a.bots.iter().find(|b| b.id == bot || (bot.is_empty() && b.id == MAIN_BOT)).ok_or_else(|| "unknown bot".to_string())?;
-        let unit = Self::bot_unit(&a, bot);
+        let unit = self.bot_unit(&a, bot);
         if matches!(self.state_of(&unit), "running" | "launching") {
             return Err("it is already running".into());
         }
@@ -1152,6 +1449,40 @@ impl Clones {
             return Err(format!("this bot has no {} yet", field.label.to_lowercase()));
         }
         let copy_dir = self.copy_dir(&unit.key)?;
+        let label = format!("{} / {}", a.name, bot.name);
+        let mut env_vars: Vec<(String, String)> = Vec::new();
+        let in_container = matches!(unit.engine, Engine::Container(_));
+        if a.stop_after_minutes > 0 && in_container {
+            env_vars.push(("CASTLE_STOP_AFTER_MIN".into(), a.stop_after_minutes.to_string()));
+        }
+
+        // Android: the project's APKs are installed and its other files pushed to the phone;
+        // the tasks run on the phone as castle-tasks.sh, with the fields as variables.
+        if self.runtime_kind(&a.target) == "android" {
+            if let Some(dir) = self.source_dir(&a) {
+                copy_into(&dir, &copy_dir)?;
+                // The project's git history and its .env have no business on the phone; the
+                // fields the tasks need are in the script.
+                if let Some(name) = dir.file_name() {
+                    let _ = std::fs::remove_dir_all(copy_dir.join(name).join(".git"));
+                    let _ = std::fs::remove_file(copy_dir.join(name).join(".env"));
+                }
+            }
+            let values: Vec<(String, String)> = a
+                .fields
+                .iter()
+                .zip(&sources)
+                .map(|(f, (from, saved))| (f.env.clone(), if *from == "saved" { saved.clone() } else { env_value(&env, &f.env).unwrap_or_default() }))
+                .collect();
+            let shutdown = if in_container { 0 } else { a.stop_after_minutes };
+            std::fs::write(copy_dir.join(TASKS_FILE), android_tasks_script(&a, &bot.name, &values, shutdown)).map_err(|_| "could not prepare the tasks for the phone".to_string())?;
+            if a.memory_gb > 0 && !in_container {
+                env_vars.push(("CASTLE_AVD_RAM_MB".into(), (a.memory_gb * 1024).to_string()));
+            }
+            self.launch(Plan { label, mode: "automation", profile: None, snapshot: a.temporary, base: None, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: true, env: env_vars, unit })?;
+            return self.automation_status(id);
+        }
+
         // The bot's own sign-in: the project's .env with this bot's values written over it.
         if !bot.values.is_empty() {
             let text = a.fields.iter().zip(&sources).filter(|(_, (from, _))| *from == "saved").fold(env.clone(), |text, (f, (_, value))| with_env_value(&text, &f.env, value));
@@ -1182,12 +1513,14 @@ impl Clones {
         } else {
             profile.user = a.tasks.iter().filter(|t| !t.root).map(|t| t.command.clone()).collect();
         }
-        if a.stop_after_minutes > 0 {
+        if a.stop_after_minutes > 0 && !in_container {
             profile.root.push(format!("shutdown -h +{}", a.stop_after_minutes));
         }
+        // A container's own clock (the container stops itself); the profile carries it in.
+        profile.env = env_vars;
         // A bot with a disk of its own starts from the target's built disk when there is one.
-        let base = self.target(&a.target).ok().map(|t| self.main_disk(&t)).filter(|disk| unit.instance.is_some() && Self::is_built(disk));
-        self.launch(Plan { label: format!("{} / {}", a.name, bot.name), mode: "automation", profile: Some(profile), snapshot: a.temporary, base, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: false, unit })?;
+        let base = self.target(&a.target).ok().filter(|t| t.runtime.is_empty()).map(|t| self.main_disk(&t)).filter(|disk| unit.instance.is_some() && Self::is_built(disk));
+        self.launch(Plan { label, mode: "automation", profile: Some(profile), snapshot: a.temporary, base, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: false, env: Vec::new(), unit })?;
         self.automation_status(id)
     }
 
@@ -1195,7 +1528,7 @@ impl Clones {
         self.require_loopback()?;
         let a = self.automation(id)?;
         let bot = a.bots.iter().find(|b| b.id == bot || (bot.is_empty() && b.id == MAIN_BOT)).ok_or_else(|| "unknown bot".to_string())?;
-        self.halt(&Self::bot_unit(&a, bot))?;
+        self.halt(&self.bot_unit(&a, bot))?;
         self.automation_status(id)
     }
 
@@ -1215,9 +1548,9 @@ impl Clones {
     fn machine_unit(&self, id: &str) -> ClonesResult<Unit> {
         let key = format!("m:{id}");
         if let Some(m) = self.registry().into_iter().find(|m| m.id == id) {
-            return Ok(Unit { key, target: m.target, instance: Some(m.id) });
+            return Ok(self.unit(key, &m.target, Some(m.id)));
         }
-        self.target(id).map(|t| Unit { key, target: t.id, instance: None }).map_err(|_| "unknown machine".to_string())
+        self.target(id).map(|t| self.unit(key, &t.id, None)).map_err(|_| "unknown machine".to_string())
     }
 
     /// Deletes an instance's disk and everything the launcher staged beside it.
@@ -1240,7 +1573,7 @@ impl Clones {
             .into_iter()
             .filter(|m| m.temporary)
             .filter(|m| {
-                let unit = Unit { key: format!("m:{}", m.id), target: m.target.clone(), instance: Some(m.id.clone()) };
+                let unit = self.unit(format!("m:{}", m.id), &m.target, Some(m.id.clone()));
                 if self.state_of(&unit) != "stopped" {
                     return false;
                 }
@@ -1253,7 +1586,7 @@ impl Clones {
             return;
         }
         for m in &closed {
-            self.remove_instance(&m.id);
+            self.remove_unit(&self.unit(format!("m:{}", m.id), &m.target, Some(m.id.clone())));
             self.launches.lock().unwrap().remove(&format!("m:{}", m.id));
             let _ = std::fs::remove_file(self.log_file(&format!("m:{}", m.id)));
         }
@@ -1269,26 +1602,33 @@ impl Clones {
         let mut machines = Vec::new();
         let mut catalogue = Vec::new();
         for t in targets.iter() {
-            let unit = Unit { key: format!("m:{}", t.id), target: t.id.clone(), instance: None };
+            let unit = self.unit(format!("m:{}", t.id), &t.id, None);
             let disk = self.disk(&unit);
-            let built = disk.as_ref().is_some_and(|d| size(d) > EMPTY_DISK_BYTES);
+            let built = match &unit.engine {
+                Engine::Container(name) => self.container_exists(name),
+                _ => disk.as_ref().is_some_and(|d| size(d) > EMPTY_DISK_BYTES),
+            };
             let state = self.state_of(&unit);
             if built || state != "stopped" {
                 machines.push(json!({
                     "id": t.id, "key": unit.key, "name": t.name, "target": t.id, "kind": "main", "state": state,
+                    "engine": unit.engine.label(), "controllable": matches!(unit.engine, Engine::Container(_)) && t.family != "android",
                     "diskBytes": disk.as_ref().map(|d| size(d)).unwrap_or(0), "log": tail(&self.log_file(&unit.key)),
                 }));
             }
             let mut entry = serde_json::to_value(t).unwrap_or_default();
             entry["built"] = json!(built);
-            entry["apk"] = json!(t.runtime == "avd");
+            entry["apk"] = json!(t.family == "android" && !t.runtime.is_empty());
+            // Android targets with an engine Castle drives can carry automations (tasks on the phone).
+            entry["automatable"] = json!(t.inject || (t.family == "android" && !t.runtime.is_empty()));
             entry["disks"] = json!(registry.iter().filter(|m| m.target == t.id && !m.temporary).count() + usize::from(built));
             catalogue.push(entry);
         }
         for m in &registry {
-            let unit = Unit { key: format!("m:{}", m.id), target: m.target.clone(), instance: Some(m.id.clone()) };
+            let unit = self.unit(format!("m:{}", m.id), &m.target, Some(m.id.clone()));
             machines.push(json!({
                 "id": m.id, "key": unit.key, "name": m.name, "target": m.target, "kind": if m.temporary { "temporary" } else { "instance" },
+                "engine": unit.engine.label(), "controllable": matches!(unit.engine, Engine::Container(_)) && self.runtime_kind(&m.target) == "linux",
                 "state": self.state_of(&unit), "diskBytes": size(&self.instance_disk(&m.id)), "memoryGb": m.memory_gb, "cores": m.cores,
                 "log": tail(&self.log_file(&unit.key)),
             }));
@@ -1296,7 +1636,7 @@ impl Clones {
         let mut bench: Vec<Value> = load(&self.bench_file()).unwrap_or_default();
         bench.reverse();
         bench.truncate(50);
-        json!({ "targets": catalogue, "machines": machines, "bench": bench })
+        json!({ "targets": catalogue, "machines": machines, "bench": bench, "docker": self.has_docker() })
     }
 
     /// Starts a machine: one that exists, a new one with a disk it keeps, or a throwaway.
@@ -1326,7 +1666,7 @@ impl Clones {
             }
             mode @ ("new" | "temporary") => {
                 let target = self.target(&b.target)?;
-                if !target.runtime.is_empty() {
+                if !target.runtime.is_empty() && target.runtime != "container" {
                     return Err("this one runs outside QEMU and has a single machine. Start the existing one".into());
                 }
                 let temporary = mode == "temporary";
@@ -1340,7 +1680,7 @@ impl Clones {
                     return Err("there is already a machine with that name".into());
                 }
                 registered = Some(Machine { id: id.clone(), name: name.clone(), target: target.id.clone(), temporary, memory_gb: b.memory_gb, cores: b.cores });
-                (Unit { key: format!("m:{id}"), target: target.id.clone(), instance: Some(id) }, name, if temporary { "temporary" } else { "new" }, target)
+                (self.unit(format!("m:{id}"), &target.id, Some(id)), name, if temporary { "temporary" } else { "new" }, target)
             }
             _ => return Err("choose an existing machine, a new one or a temporary one".into()),
         };
@@ -1348,7 +1688,7 @@ impl Clones {
         let injecting = !(apt.is_empty() && pacman.is_empty() && root.is_empty() && user.is_empty() && paths.is_empty());
         let mut copy_dir = None;
         let mut profile = None;
-        let payload_only = injecting && target.runtime == "avd";
+        let payload_only = injecting && target.family == "android" && !target.runtime.is_empty();
         if payload_only {
             if !(apt.is_empty() && pacman.is_empty() && root.is_empty() && user.is_empty()) {
                 return Err("Android takes files only: APKs are installed, anything else lands in Download/castle-copy".into());
@@ -1379,7 +1719,7 @@ impl Clones {
             profile = Some(p);
         }
         // A new disk starts from the target's built one unless a fresh install was asked for.
-        let base = Some(self.main_disk(&target)).filter(|disk| unit.instance.is_some() && Self::is_built(disk) && (mode == "temporary" || !b.fresh));
+        let base = Some(self.main_disk(&target)).filter(|disk| target.runtime.is_empty() && unit.instance.is_some() && Self::is_built(disk) && (mode == "temporary" || !b.fresh));
         let (memory_gb, cores) = match self.registry().into_iter().find(|m| Some(&m.id) == unit.instance.as_ref()) {
             Some(m) => (if b.memory_gb > 0 { b.memory_gb } else { m.memory_gb }, if b.cores > 0 { b.cores } else { m.cores }),
             None => (b.memory_gb, b.cores),
@@ -1388,7 +1728,7 @@ impl Clones {
             p.memory_gb = memory_gb;
             p.cores = cores;
         }
-        self.launch(Plan { unit, label, mode, profile, snapshot: mode == "temporary", base, memory_gb, cores, copy_dir, payload_only })?;
+        self.launch(Plan { unit, label, mode, profile, snapshot: mode == "temporary", base, memory_gb, cores, copy_dir, payload_only, env: Vec::new() })?;
         if let Some(machine) = registered {
             self.change_registry(|all| all.push(machine))?;
         }
@@ -1529,14 +1869,62 @@ mod tests {
         assert!(env_name("API_KEY") && !env_name("api key") && !env_name("1X"));
     }
 
+    /// A Clones with a fixed catalogue, so no test asks PowerShell for the target list.
+    fn test_clones() -> Clones {
+        let clones = Clones::new(std::env::temp_dir().join("castle-clones-test"), std::env::temp_dir().join("castle-clones-test-log"), true);
+        let target = |id: &str, family: &str, runtime: &str| Target { id: id.into(), name: id.into(), family: family.into(), runtime: runtime.into(), ..Default::default() };
+        *clones.targets.lock().unwrap() = Some(Arc::new(vec![
+            target("debian-x11", "linux", ""),
+            target("container-debian", "linux", "container"),
+            target("container-android", "android", "container"),
+            target("android-avd", "android", "avd"),
+        ]));
+        clones
+    }
+
     #[test]
     fn each_bot_gets_its_own_disk_except_the_first() {
+        let clones = test_clones();
         let mut a = penguin();
         a.bots.push(Bot { id: "b2".into(), name: "Penguin 2".into(), values: HashMap::new() });
-        assert!(Clones::bot_unit(&a, &a.bots[0]).instance.is_none());
-        assert_eq!(Clones::bot_unit(&a, &a.bots[1]).instance.as_deref(), Some("penguin-b2"));
+        assert!(clones.bot_unit(&a, &a.bots[0]).instance.is_none());
+        assert_eq!(clones.bot_unit(&a, &a.bots[1]).instance.as_deref(), Some("penguin-b2"));
         a.temporary = true;
-        assert_eq!(Clones::bot_unit(&a, &a.bots[0]).instance.as_deref(), Some("penguin-main"));
+        assert_eq!(clones.bot_unit(&a, &a.bots[0]).instance.as_deref(), Some("penguin-main"));
+    }
+
+    #[test]
+    fn in_a_container_or_an_emulator_every_bot_is_its_own_machine() {
+        let clones = test_clones();
+        let mut a = penguin();
+        a.target = "container-debian".into();
+        let unit = clones.bot_unit(&a, &a.bots[0]);
+        assert_eq!(unit.instance.as_deref(), Some("penguin-main"));
+        assert!(unit.engine == Engine::Container("castle-penguin-main".into()));
+        a.target = "android-avd".into();
+        assert!(clones.bot_unit(&a, &a.bots[0]).engine == Engine::Emulator("castle-penguin-main".into()));
+        // The target's own emulator keeps the AVD android.ps1 always called "castle".
+        assert!(clones.unit("m:android-avd".into(), "android-avd", None).engine == Engine::Emulator("castle".into()));
+        assert!(clones.unit("m:debian-x11".into(), "debian-x11", None).engine == Engine::Vm);
+        assert_eq!(clones.runtime_kind("container-android"), "android");
+    }
+
+    #[test]
+    fn android_tasks_quote_the_fields_and_root_goes_through_su() {
+        let mut a = penguin();
+        a.restart = true;
+        a.tasks = vec![
+            Task { name: "Open".into(), command: "am start -a android.settings.SETTINGS".into(), root: false },
+            Task { name: "As root".into(), command: "id > /data/local/tmp/x".into(), root: true },
+        ];
+        let script = android_tasks_script(&a, "Bot 1", &[("GREETING".into(), "it's $HOME `x`".into())], 0);
+        assert!(script.starts_with("#!/system/bin/sh\n"));
+        assert!(script.contains("export GREETING='it'\\''s $HOME `x`'\n"));
+        assert!(script.contains("( am start -a android.settings.SETTINGS )"));
+        assert!(script.contains("su 0 sh -c 'id > /data/local/tmp/x'"));
+        assert!(script.contains("while true; do") && script.contains("done\n"));
+        assert!(!script.contains("reboot"));
+        assert!(android_tasks_script(&a, "Bot 1", &[], 30).contains("sleep 1800"));
     }
 
     #[test]

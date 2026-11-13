@@ -1,6 +1,8 @@
 <!-- AutomationEditor: makes an automation, or changes one. An automation is a recipe: the
-     system it runs on, the project it brings, what to install, the tasks to run in order,
-     the rules it runs under, and the sign-in fields each of its bots fills in. -->
+     system it runs on (in a virtual machine, or in a container, which is far lighter), the
+     project it brings, what to install, the tasks to run in order, the rules it runs under,
+     and the sign-in fields each of its bots fills in. On Android the tasks are commands for
+     the phone's own shell, and the project's APKs are installed. -->
 <script>
   import { X, Plus, Trash2, Save, Sparkles } from '@lucide/svelte';
   import { untrack } from 'svelte';
@@ -9,7 +11,12 @@
   /** initial: the automation being changed, or null for a new one. targets: the catalogue. */
   let { initial, targets, busy, onsave, onclose } = $props();
 
-  const scriptable = $derived(targets.filter((t) => t.inject));
+  const automatable = $derived(targets.filter((t) => t.automatable ?? t.inject));
+  const isContainer = (t) => t?.runtime === 'container';
+  const ENGINES = [
+    { id: 'vm', label: 'VIRTUAL MACHINE', help: 'A whole computer: its own kernel and desktop, a fixed share of memory, a window of its own.' },
+    { id: 'container', label: 'CONTAINER · LIGHTER', help: 'Shares the box\'s kernel and starts only what the bot needs: up in seconds, using only the memory its programs use. Needs Docker.' },
+  ];
   const EXAMPLE = {
     name: 'My AutoSurf',
     description: 'Signs in and plays on a loop. A copy of the Penguin AutoSurf recipe to change.',
@@ -41,6 +48,20 @@
   }
 
   let form = $state(untrack(() => formOf(initial)));
+
+  const current = $derived(targets.find((t) => t.id === form.target));
+  const engine = $derived(isContainer(current) ? 'container' : 'vm');
+  const choices = $derived(automatable.filter((t) => isContainer(t) === (engine === 'container')));
+  const android = $derived(current?.family === 'android');
+
+  /** Moves the automation to the other engine, on the same kind of system where there is one. */
+  function setEngine(id) {
+    if (id === engine) return;
+    const family = current?.family || 'linux';
+    const pool = automatable.filter((t) => isContainer(t) === (id === 'container'));
+    const next = pool.find((t) => t.family === family) || pool[0];
+    if (next) form.target = next.id;
+  }
 
   function save() {
     const pkgs = words(form.packages);
@@ -81,10 +102,27 @@
       <label class="block">
         <span class={LABEL}>RUNS ON</span>
         <select bind:value={form.target} class={INPUT}>
-          {#each scriptable as t (t.id)}<option value={t.id} class="bg-black">{t.name}</option>{/each}
+          {#each choices as t (t.id)}<option value={t.id} class="bg-black">{t.name}</option>{/each}
         </select>
       </label>
       <label class="block sm:col-span-2"><span class={LABEL}>WHAT IT DOES</span><input bind:value={form.description} class={INPUT} /></label>
+    </div>
+
+    <div>
+      <p class={LABEL}>RUNS IN</p>
+      <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Runs in">
+        {#each ENGINES as e (e.id)}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={engine === e.id}
+            disabled={!automatable.some((t) => isContainer(t) === (e.id === 'container'))}
+            class="{BTN} {engine === e.id ? '!border-chiral/70 !text-chiral' : ''}"
+            onclick={() => setEngine(e.id)}
+          >{e.label}</button>
+        {/each}
+      </div>
+      <p class="mt-1 text-[12px] leading-relaxed text-text-dim">{ENGINES.find((e) => e.id === engine)?.help}</p>
     </div>
 
     <div>
@@ -93,23 +131,26 @@
         <input bind:value={form.source} spellcheck="false" placeholder="https://github.com/you/your-bot   or   C:\Projects\your-bot" class={INPUT} />
       </label>
       <p class="mt-1 text-[12px] leading-relaxed text-text-dim">
-        A folder on this box, or an https address on GitHub, GitLab, Codeberg or Bitbucket. Other addresses are refused. The project is unpacked in the machine and the tasks run inside it.
+        A folder on this box, or an https address on GitHub, GitLab, Codeberg or Bitbucket. Other addresses are refused.
+        {#if android}Every .apk in it is installed on the phone and opened; its other files go to Download/castle-copy, where the tasks start.{:else}The project is unpacked in the machine and the tasks run inside it.{/if}
       </p>
     </div>
 
-    <label class="block">
-      <span class={LABEL}>PACKAGES TO INSTALL</span>
-      <input bind:value={form.packages} spellcheck="false" placeholder="python3-venv firefox-esr" class={INPUT} />
-    </label>
+    {#if !android}
+      <label class="block">
+        <span class={LABEL}>PACKAGES TO INSTALL</span>
+        <input bind:value={form.packages} spellcheck="false" placeholder="python3-venv firefox-esr" class={INPUT} />
+      </label>
+    {/if}
 
     <div>
-      <p class={LABEL}>TASKS, RUN IN THIS ORDER</p>
+      <p class={LABEL}>{android ? 'TASKS ON THE PHONE, RUN IN THIS ORDER' : 'TASKS, RUN IN THIS ORDER'}</p>
       <ul class="space-y-2">
         {#each form.tasks as task, i (i)}
           <li class="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto_auto] items-center gap-2">
             <input bind:value={task.name} placeholder="what it is" class={INPUT} />
-            <input bind:value={task.command} spellcheck="false" placeholder="python main.py" class="{INPUT} font-mono text-[12px]" />
-            <label class="micro flex items-center gap-1.5 text-text-faint" title="Run as root before the desktop starts, instead of as the user inside it">
+            <input bind:value={task.command} spellcheck="false" placeholder={android ? 'am start -n com.example.app/.MainActivity' : 'python main.py'} class="{INPUT} font-mono text-[12px]" />
+            <label class="micro flex items-center gap-1.5 text-text-faint" title={android ? 'Run as root (su), on images that allow it' : 'Run as root before the desktop starts, instead of as the user inside it'}>
               <input type="checkbox" bind:checked={task.root} class="accent-chiral" /> ROOT
             </label>
             <button type="button" class={BTN} aria-label="Remove task" onclick={() => form.tasks.splice(i, 1)}><Trash2 class="h-3.5 w-3.5" /></button>
@@ -117,6 +158,11 @@
         {/each}
       </ul>
       <button type="button" class="{BTN} mt-2" onclick={() => form.tasks.push({ name: '', command: '', root: false })}><Plus class="h-3.5 w-3.5" /> ADD A TASK</button>
+      {#if android}
+        <p class="mt-1 text-[12px] leading-relaxed text-text-dim">
+          Commands for the phone's own shell, as with adb shell: <span class="font-mono">am start</span>, <span class="font-mono">input tap 540 1200</span>, <span class="font-mono">input text hello</span>, <span class="font-mono">sleep 5</span>. ROOT runs one with su, which the container's Android image allows and the Play Store emulator does not.
+        </p>
+      {/if}
       {#if initial?.builtin}
         <p class="mt-1 text-[12px] text-text-dim">The built-in example has its own setup; tasks here run after it.</p>
       {/if}
@@ -148,14 +194,16 @@
       </ul>
       <button type="button" class="{BTN} mt-2" onclick={() => form.fields.push({ env: '', label: '', secret: false })}><Plus class="h-3.5 w-3.5" /> ADD A FIELD</button>
       <p class="mt-1 text-[12px] leading-relaxed text-text-dim">
-        Each field becomes a line of the project's .env and a variable the tasks can read. A bot that leaves one empty uses the project's own .env.
+        {#if android}Each field becomes a variable the phone's tasks can read ($API_KEY).{:else}Each field becomes a line of the project's .env and a variable the tasks can read.{/if} A bot that leaves one empty uses the project's own .env.
       </p>
     </div>
 
     <div class="grid grid-cols-3 gap-3">
       <label class="block"><span class={LABEL}>MEMORY (GB)</span><input bind:value={form.memoryGb} type="number" min="1" max="256" class={INPUT} /></label>
       <label class="block"><span class={LABEL}>CORES</span><input bind:value={form.cores} type="number" min="1" max="128" class={INPUT} /></label>
-      <label class="block"><span class={LABEL}>SCREEN</span><input bind:value={form.screen} spellcheck="false" placeholder="1440x900" class={INPUT} /></label>
+      {#if !android}
+        <label class="block"><span class={LABEL}>SCREEN</span><input bind:value={form.screen} spellcheck="false" placeholder="1440x900" class={INPUT} /></label>
+      {/if}
     </div>
 
     <button type="submit" disabled={busy || !form.name.trim()} class="{BTN_PRIMARY} w-full"><Save class="h-4 w-4" /> {initial ? 'SAVE CHANGES' : 'CREATE AUTOMATION'}</button>

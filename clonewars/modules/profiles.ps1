@@ -127,8 +127,9 @@ function New-CastlePayloadZip {
     $Root = (Get-Item -LiteralPath $Source).FullName.TrimEnd('\', '/')
     $Names = $null
     if ((Test-Path (Join-Path $Root ".git")) -and (Get-Command git -ErrorAction SilentlyContinue)) {
-        $Listed = & git -C $Root ls-files -co --exclude-standard 2>$null
-        if ($LASTEXITCODE -eq 0) { $Names = @($Listed | Where-Object { $_ }) }
+        # Windowless: from the Castle box a plain & git would flash a console.
+        $Git = Invoke-Quiet git @("-C", $Root, "ls-files", "-co", "--exclude-standard")
+        if ($Git.ExitCode -eq 0) { $Names = $Git.Lines }
     }
     if ($null -eq $Names) {
         $Names = @(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { $_.FullName.Substring($Root.Length + 1) -replace '\\', '/' })

@@ -7,6 +7,7 @@
   import { sectionIn } from './lib/motion.js';
   import { store } from './lib/store.svelte.js';
   import { shell } from './lib/shell.svelte.js';
+  import { fullScreen } from './lib/fullscreen.svelte.js';
   import HomeSection from './components/sections/HomeSection.svelte';
   import StorageSection from './components/sections/StorageSection.svelte';
   import AiSection from './components/sections/AiSection.svelte';
@@ -30,6 +31,7 @@
 
   onMount(() => {
     store.init(); // no login wall: straight into the drive
+    fullScreen.listen();
   });
 </script>
 

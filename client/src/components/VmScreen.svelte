@@ -3,10 +3,13 @@
      window stays where it is and is still the place to click or type. -->
 <script>
   import { onDestroy } from 'svelte';
-  import { Monitor, Maximize2, Minimize2 } from '@lucide/svelte';
+  import { Monitor, Maximize2, Minimize2, MousePointer2 } from '@lucide/svelte';
+  import LiveScreen from './LiveScreen.svelte';
 
-  /** source: where Clones reads from. id: the automation whose machine to show. */
-  let { source, id } = $props();
+  /** source: where Clones reads from. id: the machine to show. controllable: it runs in a
+      container, so Take control can open a live viewer on it. name: what to call it. */
+  let { source, id, controllable = false, name = 'the machine' } = $props();
+  let controlling = $state(false);
 
   const FRAME_MS = 1000; // pause between one picture arriving and the next being asked for
   const RETRY_MS = 3000; // after a failed picture
@@ -72,6 +75,15 @@
       <Monitor class="h-3.5 w-3.5" /> THE MACHINE'S SCREEN
       {#if frame && !problem}<span class="flex items-center gap-1.5 text-live"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span> LIVE</span>{/if}
     </p>
+    {#if controllable && source.cloneLive}
+      <button
+        class="expo t-hover micro flex h-8 items-center gap-1.5 border border-chiral/60 px-2.5 font-bold text-chiral transition-colors hover:bg-chiral-dim"
+        onclick={() => (controlling = true)}
+        title="Open a live viewer: click and type in the machine"
+      >
+        <MousePointer2 class="h-3.5 w-3.5" /> TAKE CONTROL
+      </button>
+    {/if}
     <button
       class="expo t-hover micro flex h-8 items-center gap-1.5 border border-hairline px-2.5 font-bold text-white transition-colors hover:border-chiral/60"
       onclick={() => (large = !large)}
@@ -91,7 +103,14 @@
     {#if problem && frame}
       <span class="text-chiral">{problem}.</span> Showing the last picture, from {new Date(seenAt).toLocaleTimeString()}.
     {:else}
+    {:else if controllable}
+      A new picture about once a second. This view only watches: Take control to click and type in it.
+    {:else}
       A new picture about once a second. This view only watches: to click or type, use the machine's own window.
     {/if}
   </p>
 </div>
+
+{#if controlling}
+  <LiveScreen {source} {id} {name} onclose={() => (controlling = false)} />
+{/if}

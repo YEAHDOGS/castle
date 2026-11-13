@@ -181,6 +181,33 @@ Two targets, pick by what you need:
 - **Network.** Both get internet through the host's user-mode NAT; inside Android the host is `10.0.2.2`. The AVD shows up in `adb devices` as `emulator-5554`. BlissOS forwards its adbd to a free loopback port printed at boot (`adb connect 127.0.0.1:5655`); use `data\android-sdk\platform-tools\adb.exe` once the AVD target has installed it.
 - **BlissOS boot.** Every boot loads the ISO's kernel/initrd directly with its "No HW Acceleration" entry (`nomodeset HWACCEL=0`) plus `DATA=vda SETUPWIZARD=0`. The VM disk is not installed to: it is a bare ext4 volume (formatted once through WSL, then never touched again) mounted as `/data`, so apps and settings persist. Without WSL it still boots, with `/data` in RAM. First boot is slow (several minutes while Android optimises apps under software rendering).
 
+### Containers: the light engine for automations (`container.ps1`)
+A VM boots a kernel, an init system and a desktop for every bot, and holds a fixed share of memory whether the bot uses it or not. A container shares the Docker engine's kernel and starts only what the bot needs. Two container targets, one image each, built once and shared by every container made from them:
+
+| | `container-debian` | `container-android` |
+|---|---|---|
+| What runs | Debian 13 + an in-memory X server (Xvfb, 1440x900 or the profile's `Screen`) + Openbox | Google's Android Emulator, headless, on KVM; Android 15 `google_apis` (root tasks work) |
+| Setup | the same `scripts/setup-*.sh` and launch profiles as the VMs (`castle-lib.sh` knows it is in a container) | every `.apk` in the payload installed and opened, other files pushed to `Download/castle-copy`, `castle-tasks.sh` started on the phone |
+| Image | `docker/automation/`, about 750 MB | `docker/android/`, SDK + system image, a few GB |
+| Measured | penguin-autosurf (Firefox + the Python bot) up and playing in about 60 s from a fresh container, 9 s from a kept one; an idle box is 46 MB | |
+
+```powershell
+.\start.ps1 -Profile penguin -Target container-debian -Instance penguin-1   # the Cart Surfer bot, in a container
+.\container.ps1 container-debian -Instance job-01            # a plain container machine (castle-job-01)
+.\container.ps1 container-debian -Instance job-01 -Stop      # stop it; it is kept, the next start resumes it
+.\container.ps1 container-debian -Instance job-01 -Remove    # delete it, its "disk" with it
+.\container.ps1 container-android -Instance phone-1 -Copy    # Android: APKs from data\copy installed and opened
+.\container.ps1 -List
+```
+- **A container is a machine.** It is called `castle-<instance>` (`castle-<target>` without one). Its writable layer is its disk: what a setup installs stays, so the second start skips it. `CASTLE_VM_SNAPSHOT=1` (a temporary run from the app) makes a throwaway that is removed when it stops. Editing anything under `docker/<kind>/` gives the image a new tag, and a kept container made from an older image is made again on its next start.
+- **What goes in, read-only.** Before every start the payload and the launch profile are staged into `data/containers/<name>/` and mounted read-only, the scripts folder too. Nothing on the host is writable from inside. Memory and CPU are Docker limits (`MemoryGB`, `Cores`), not reservations.
+- **Seeing it.** `docker exec <name> castle-screen` writes a PNG of the screen (the Castle app shows these, once a second). **Take control** in the app runs `castle-live start` inside the container: x11vnc plus a noVNC web viewer behind a new one-time password, on a port published to the host's `127.0.0.1` only. Nothing listens on it until then, and closing the viewer turns it off.
+- **No console windows.** The Castle box runs these scripts without a console, so every `docker`, `wsl`, `git` and `adb` call goes through `Invoke-Quiet` (`modules/quiet.ps1`), which starts it without a window. A plain `& docker ...` in a script the box runs opens a console window per call.
+- **Needs.** Docker Desktop on Windows (started minimized if it is installed but not running) or any Docker engine on Linux. `container-android` also needs KVM in the engine, which `container.ps1` sets up in Docker Desktop's VM before every start like `docker.ps1` does, and the Android SDK license already accepted on this box (`.\android.ps1 -InstallOnly` asks once; the license file is copied into the build).
+
+### Android automations
+An automation on an Android target (`android-avd`, `container-android`) runs on the phone, never on the box. Each bot gets its own phone: an AVD of its own (`castle-<automation>-<bot>`, made by `android.ps1 -Name`) or a container of its own. The project's APKs are installed and opened, its other files land in `Download/castle-copy` (its `.git` and `.env` stay behind), and the tasks become `castle-tasks.sh`: the bot's fields as variables, then the tasks in order as commands for the phone's own shell (`am start ...`, `input tap 540 1200`, `input text ...`, `sleep 5`), looped when the automation restarts. ROOT tasks run through `su 0`, which the container's `google_apis` image has and the Play Store emulator does not. The script runs detached and logs to `/data/local/tmp/castle-automation.log` on the phone.
+
 ### Boot any ISO you already have (`boot-iso.ps1` / `boot-iso.sh`)
 Outside the manifest: point the script at any bootable ISO (EndeavourOS, Ubuntu, Kali, Arch, Windows ...) and a disk size, and it boots it in QEMU with a fresh qcow2 of that size under `data/adhoc/`. First run boots the installer from the ISO; later runs boot the installed disk with the ISO still attached as a CD. Same QEMU setup as the pipeline (WHPX/KVM with TCG fallback, virtio, OVMF with per-VM NVRAM, the `CASTLE` USB share, QMP and guest-agent sockets on Windows), plus knobs on top:
 ```powershell

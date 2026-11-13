@@ -369,6 +369,11 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   /** @returns {Promise<string>} an object URL of the machine's screen right now; revoke it when replaced */
+  /** Live control of a machine in a container: { url } of a viewer behind a one-time password, or off. */
+  async cloneLive(key, on) {
+    return (await this.post('/clones/live', { key, on })).json();
+  }
+
   async cloneScreen(id) {
     const res = await this.call(`/clones/screen?path=${encodeURIComponent(id)}`);
     return URL.createObjectURL(await res.blob());

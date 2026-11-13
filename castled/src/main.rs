@@ -1413,6 +1413,17 @@ async fn clones_machine_delete(State(st): State<Shared>, Json(b): Json<IdBody>) 
     clones_call(st, move |c| c.delete_machine(&b.id)).await
 }
 
+/// Live control of a container's screen (VNC behind a one-time password), on or off.
+#[derive(Deserialize)]
+struct LiveBody {
+    key: String,
+    on: bool,
+}
+
+async fn clones_live(State(st): State<Shared>, Json(b): Json<LiveBody>) -> ClonesJson {
+    clones_call(st, move |c| c.live(&b.key, b.on)).await
+}
+
 /// One picture of a running automation's VM screen.
 async fn clones_screen(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Response> {
     let bytes = tokio::task::spawn_blocking(move || match st.clones.read().ok().and_then(|slot| slot.clone()) {
@@ -1955,6 +1966,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
+        .route("/clones/live", post(clones_live))
         .route("/arcade/enable", post(arcade_enable))
         .route("/clones/automation/save", post(clones_automation_save))
         .route("/clones/automation/delete", post(clones_automation_delete))

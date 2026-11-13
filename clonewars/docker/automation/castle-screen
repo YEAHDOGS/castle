@@ -1,0 +1,4 @@
+#!/bin/sh
+# Writes a PNG of the container's screen to stdout. The Castle app's screen
+# view calls this through `docker exec`; it only looks, nothing is typed.
+xwd -root -silent -display "${DISPLAY:-:0}" | xwdtopnm 2>/dev/null | pnmtopng 2>/dev/null

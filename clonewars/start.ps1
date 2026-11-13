@@ -84,6 +84,7 @@ param (
 # MODULE LOADER
 # ==============================================================================
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
+. (Join-Path $ModuleRoot "quiet.ps1")
 . (Join-Path $ModuleRoot "targets.ps1")
 . (Join-Path $ModuleRoot "network.ps1")
 . (Join-Path $ModuleRoot "verify.ps1")
@@ -191,6 +192,14 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
     # Google emulator: the AVD lives in data/android-sdk; android.ps1 removes it.
     if ($Matched[0].Runtime -eq "avd") {
         & (Join-Path $PSScriptRoot "android.ps1") -Purge
+        Exit $LASTEXITCODE
+    }
+
+    # Containers: the container is the disk; container.ps1 removes it.
+    if ($Matched[0].Runtime -eq "container") {
+        $RemoveArgs = @{ Target = $Matched[0].Id; Remove = $true }
+        if ($Instance) { $RemoveArgs.Instance = $Instance }
+        & (Join-Path $PSScriptRoot "container.ps1") @RemoveArgs
         Exit $LASTEXITCODE
     }
 
@@ -312,6 +321,7 @@ function Show-CastleMenu {
 
         if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
         if ($Entry.Runtime -eq "avd") { $IsoIcon = "[AVD]"; $DiskIcon = "      "; $SizeStr = "" }
+        if ($Entry.Runtime -eq "container") { $IsoIcon = "[CTR]"; $DiskIcon = "      "; $SizeStr = "" }
 
         $IdxStr = "[{0,2}]" -f $Index
         Write-Host "   $IdxStr $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
@@ -319,7 +329,7 @@ function Show-CastleMenu {
     }
 
     Write-Host ""
-    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)" -ForegroundColor DarkGray
+    Write-Host "   [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)  [CTR] = container (container.ps1)" -ForegroundColor DarkGray
     Write-Host "   Usage: Select a number, enter a Target ID, type 'help' or 'exit'." -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -667,12 +677,13 @@ if ($Target -eq "list") {
 
         if ($Entry.Runtime -eq "docker") { $IsoIcon = "[DKR]"; $DiskIcon = "      "; $SizeStr = "" }
         if ($Entry.Runtime -eq "avd") { $IsoIcon = "[AVD]"; $DiskIcon = "      "; $SizeStr = "" }
+        if ($Entry.Runtime -eq "container") { $IsoIcon = "[CTR]"; $DiskIcon = "      "; $SizeStr = "" }
 
         Write-Host "  $IsoIcon $DiskIcon  $($Entry.Id.PadRight(18)) $($Entry.Name) $SizeStr" -ForegroundColor White
     }
 
     Write-Host ""
-    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)" -ForegroundColor DarkGray
+    Write-Host "  [ISO] = ISO cached  [DISK] = VM disk exists  [   ] = Not downloaded  [DKR] = Docker container (docker.ps1)  [AVD] = Google Android Emulator (android.ps1)  [CTR] = container (container.ps1)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Usage: .\start.ps1 <target-id>" -ForegroundColor DarkGray
     Write-Host ""
@@ -716,6 +727,19 @@ if ($Matched[0].Runtime -eq "docker") {
     Write-Host "  Target: $($Matched[0].Name)  (docker.ps1 -Profile $($Matched[0].DockerProfile))" -ForegroundColor White
     Write-Host "  ================================================================" -ForegroundColor DarkGray
     & (Join-Path $PSScriptRoot "docker.ps1") -Profile $Matched[0].DockerProfile
+    Exit $LASTEXITCODE
+}
+
+# Containers: container.ps1 builds the image once and runs the setup inside.
+if ($Matched[0].Runtime -eq "container") {
+    Write-Host ""
+    Write-Host "  Castle VM Pipeline -> container (container.ps1)" -ForegroundColor Cyan
+    $CArgs = @{ Target = $Matched[0].Id; Setup = $Setup; CopyDir = $CopyDir }
+    if ($Instance) { $CArgs.Instance = $Instance }
+    if ($Copy) { $CArgs.Copy = $true }
+    if ($ProfileEnvFile) { $CArgs.ProfileEnv = $ProfileEnvFile }
+    if ($ProfileData -and $ProfileData.Screen) { $CArgs.Screen = [string]$ProfileData.Screen }
+    & (Join-Path $PSScriptRoot "container.ps1") @CArgs
     Exit $LASTEXITCODE
 }
 

@@ -35,6 +35,9 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+# Invoke-Quiet / Enable-DockerKvm: docker and wsl run without console windows (the Castle
+# box starts this script with no console, and a plain & docker would open one per call).
+. (Join-Path (Join-Path $PSScriptRoot "modules") "containers.ps1")
 $ProfileDir = Join-Path (Join-Path $PSScriptRoot "docker") $Profile
 $Compose = Join-Path $ProfileDir "compose.yml"
 $EnvFile = Join-Path $ProfileDir ".env"
@@ -119,8 +122,7 @@ if ($P.Iso) {
 if ($Down) {
     $DownArgs = @("down")
     if ($Purge) { $DownArgs += "--volumes" }
-    & docker @ComposeArgs @DownArgs
-    $Rc = $LASTEXITCODE
+    $Rc = (Invoke-Quiet docker ($ComposeArgs + $DownArgs) -Stream).ExitCode
     if ($Purge -and $P.DataDir -and (Test-Path $P.DataDir)) {
         Remove-Item -Recurse -Force $P.DataDir -Confirm:$false
     }
@@ -132,33 +134,17 @@ if ($Shell) { & docker @ComposeArgs exec -it $Profile bash; Exit $LASTEXITCODE }
 
 # -- KVM for the VM profiles (Docker Desktop on Windows 11) --------------------
 if ($P.NeedsKvm) {
-    $Distros = (& wsl -l -q 2>$null) -replace "`0", "" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    if ($Distros -contains "docker-desktop") {
-        $KvmFix = 'modprobe kvm_intel 2>/dev/null || modprobe kvm_amd 2>/dev/null; ' +
-                  '[ -d /dev/kvm ] && rmdir /dev/kvm; sleep 1; ' +
-                  '[ -c /dev/kvm ] || mknod /dev/kvm c 10 232; chmod 666 /dev/kvm; ' +
-                  '[ -c /dev/kvm ] && echo kvm-ok'
-        $KvmOut = & wsl -d docker-desktop -- sh -c $KvmFix 2>&1
-        if ("$KvmOut" -match "kvm-ok") {
-            Write-Host "  [OK] /dev/kvm ready in Docker Desktop's VM." -ForegroundColor Green
-        } else {
-            Write-Host "  [FAIL] Could not set up /dev/kvm in the docker-desktop distro: $KvmOut" -ForegroundColor Red
-            Write-Host "     Needs Windows 11 with nested virtualization (default on) and the Docker Desktop WSL2 backend." -ForegroundColor DarkGray
-            Exit 1
-        }
-    } else {
-        Write-Host "  [*] No docker-desktop WSL distro; assuming the engine already exposes /dev/kvm." -ForegroundColor Yellow
-    }
+    if (-not (Enable-DockerKvm)) { Exit 1 }
     if ($P.DataDir -and -not (Test-Path $P.DataDir)) { New-Item -ItemType Directory $P.DataDir | Out-Null }
 }
 
 $UpArgs = @("up", "-d")
 if ($Build) { $UpArgs += "--build" }
 Write-Host "  [DOCKER] Bringing up '$Profile' ($($P.UpNote))..." -ForegroundColor Cyan
-& docker @ComposeArgs @UpArgs
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [FAIL] docker compose up failed (exit $LASTEXITCODE)." -ForegroundColor Red
-    Exit $LASTEXITCODE
+$Up = Invoke-Quiet docker ($ComposeArgs + $UpArgs) -Stream
+if ($Up.ExitCode -ne 0) {
+    Write-Host "  [FAIL] docker compose up failed (exit $($Up.ExitCode))." -ForegroundColor Red
+    Exit $Up.ExitCode
 }
 
 Write-Host ""

@@ -27,9 +27,12 @@
     .\android.ps1 -Stop                 # clean shutdown of the Castle emulator
     .\android.ps1 -Wipe                 # factory-reset the AVD's data on this boot
     .\android.ps1 -Purge                # delete the AVD (the SDK stays)
+    .\android.ps1 -Name castle-bot1 -Copy   # a second phone; with castle-tasks.sh in the payload
+                                        # (written by the Castle app) its tasks run on the phone
 #>
 param (
-    [string]$Name = "castle",
+    # The AVD. CASTLE_AVD_NAME gives each Castle automation bot a phone of its own.
+    [string]$Name = $(if ($env:CASTLE_AVD_NAME) { $env:CASTLE_AVD_NAME } else { "castle" }),
     # SDK package id of the system image. Play Store images run ARM-only apps
     # through Google's ARM->x86 translation (API 30+) and can sign in to Play.
     [string]$Image = $(if ($env:CASTLE_AVD_IMAGE) { $env:CASTLE_AVD_IMAGE } else { "system-images;android-35;google_apis_playstore;x86_64" }),
@@ -54,6 +57,10 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path (Join-Path $PSScriptRoot "modules") "quiet.ps1")
+if ($Name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$') { Write-Host "  [FAIL] -Name must be letters, digits, dots, dashes and underscores." -ForegroundColor Red; Exit 1 }
+# CASTLE_VM_SNAPSHOT=1 (a throwaway run from the Castle app): the phone starts factory-fresh.
+if ($env:CASTLE_VM_SNAPSHOT -eq "1") { $Wipe = $true; $ColdBoot = $true }
 . (Join-Path (Join-Path $PSScriptRoot "modules") "network.ps1")
 . (Join-Path (Join-Path $PSScriptRoot "modules") "verify.ps1")
 
@@ -103,9 +110,11 @@ function Invoke-Adb {
     param([string[]]$AdbArgs, [switch]$Quiet)
     $Serial = Get-CastleEmulatorSerial
     $Full = if ($Serial) { @("-s", $Serial) + $AdbArgs } else { $AdbArgs }
-    $Out = & $Adb @Full 2>&1
-    if (-not $Quiet) { return $Out }
-    return ($Out | Out-String).Trim()
+    # Windowless (modules/quiet.ps1): the Castle box runs this script with no console.
+    $R = Invoke-Quiet $Adb $Full
+    $Out = ($R.Out + $R.Err).Trim()
+    if (-not $Quiet) { return @($Out -split "`r?`n") }
+    return $Out
 }
 
 # ==============================================================================
@@ -127,7 +136,7 @@ if ($Stop -or $Purge) {
     }
     Remove-Item $PidFile, $PortFile -Force -ErrorAction SilentlyContinue
     if ($Purge) {
-        if (Test-Path $AvdManager) { & $AvdManager delete avd -n $Name 2>&1 | Out-Null }
+        if (Test-Path $AvdManager) { Invoke-Quiet $AvdManager @("delete", "avd", "-n", $Name) | Out-Null }
         Remove-Item (Join-Path $env:ANDROID_AVD_HOME "$Name.avd"), (Join-Path $env:ANDROID_AVD_HOME "$Name.ini") -Recurse -Force -ErrorAction SilentlyContinue
         Write-Host "  [OK] AVD '$Name' deleted. The SDK in $Sdk is kept (delete the folder to remove it too)." -ForegroundColor Green
     }
@@ -151,7 +160,8 @@ if ($Existing) {
 if (-not $Existing) {
     $JavaOk = $false
     try {
-        $JavaVer = (& java -version 2>&1 | Out-String)
+        $J = Invoke-Quiet java @("-version")
+        $JavaVer = "$($J.Out)$($J.Err)"
         if ($JavaVer -match 'version "(\d+)') { $JavaOk = ([int]$Matches[1] -ge 17) }
     }
     catch { }
@@ -272,7 +282,8 @@ if (-not $Existing -and -not (Test-Path $AvdConfig)) {
     # checked for 17+.
     $env:SKIP_JDK_VERSION_CHECK = "1"
     # The package id is quoted by hand: cmd.exe (avdmanager.bat) splits on ';'.
-    "no" | & $AvdManager create avd -n $Name -k "`"$Image`"" -d $Device 2>&1 | ForEach-Object { if ($_ -notmatch '^\[=*\s*\]') { "     $_" } }
+    $Made = Invoke-Quiet $AvdManager @("create", "avd", "-n", $Name, "-k", "`"$Image`"", "-d", $Device) -InputText "no`n"
+    ($Made.Out + $Made.Err) -split "`r?`n" | ForEach-Object { if ($_ -and $_ -notmatch '^\[=*\s*\]') { "     $_" } }
     if (-not (Test-Path $AvdConfig)) { Write-Host "  [FAIL] avdmanager did not create $AvdConfig." -ForegroundColor Red; Exit 1 }
 }
 if (Test-Path $AvdConfig) {
@@ -314,7 +325,8 @@ if ($InstallOnly) {
 # ==============================================================================
 if (-not $Existing) {
     Write-Step "Booting the emulator"
-    $Accel = (& $Emulator -accel-check 2>&1 | Out-String).Trim()
+    $AccelRun = Invoke-Quiet $Emulator @("-accel-check")
+    $Accel = "$($AccelRun.Out)$($AccelRun.Err)".Trim()
     # Output is "accel:", a status code, the human line, "accel".
     $AccelLine = ($Accel -split "`r?`n" | Where-Object { $_ -match 'usable|install|not|error|fail' } | Select-Object -First 1)
     Write-Host "  [i] Acceleration: $AccelLine" -ForegroundColor White
@@ -355,7 +367,7 @@ if (-not $Existing) {
 }
 
 $Serial = Get-CastleEmulatorSerial
-& $Adb start-server 2>&1 | Out-Null
+Invoke-Quiet $Adb @("start-server") | Out-Null
 Write-Host "  [*] Waiting for Android to finish booting (up to $BootTimeoutSec s)..." -ForegroundColor DarkGray
 $Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $Booted = $false
@@ -412,7 +424,7 @@ elseif ($Copy) {
     Write-Host "  [i] -Copy: no .apk files in data/copy." -ForegroundColor DarkGray
 }
 if ($Push -and (Test-Path $CopyDir)) {
-    $Others = @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { $_.Extension -ine ".apk" -and $_.Name -ine "README.md" })
+    $Others = @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { $_.Extension -ine ".apk" -and $_.Name -ine "README.md" -and $_.Name -ine "castle-tasks.sh" })
     if ($Others.Count -gt 0) {
         Write-Step "Pushing $($Others.Count) file(s) to /sdcard/Download/castle-copy"
         Invoke-Adb -AdbArgs @("shell", "mkdir", "-p", "/sdcard/Download/castle-copy") -Quiet | Out-Null
@@ -421,6 +433,23 @@ if ($Push -and (Test-Path $CopyDir)) {
             Invoke-Adb -AdbArgs @("push", $f.FullName, "/sdcard/Download/castle-copy/") -Quiet | Out-Null
         }
     }
+}
+
+# ==============================================================================
+# PHASE 7 -- An Android automation's tasks, on the phone
+# ==============================================================================
+# castle-tasks.sh (written by the Castle app: the fields as variables, then the
+# tasks) is pushed and started detached, so it outlives this script. Its log is
+# /data/local/tmp/castle-automation.log on the phone.
+$TasksFile = Join-Path $CopyDir "castle-tasks.sh"
+if ($Copy -and (Test-Path $TasksFile)) {
+    Write-Step "Starting the automation's tasks on the phone"
+    $Lf = Join-Path $StateDir "$Name-tasks.sh"
+    [System.IO.File]::WriteAllText($Lf, ([System.IO.File]::ReadAllText($TasksFile) -replace "`r", ""), [System.Text.UTF8Encoding]::new($false))
+    Invoke-Adb -AdbArgs @("push", $Lf, "/data/local/tmp/castle-tasks.sh") -Quiet | Out-Null
+    Invoke-Adb -AdbArgs @("shell", "chmod 755 /data/local/tmp/castle-tasks.sh; setsid sh /data/local/tmp/castle-tasks.sh > /data/local/tmp/castle-automation.log 2>&1 < /dev/null &") -Quiet | Out-Null
+    Remove-Item $Lf -Force -ErrorAction SilentlyContinue
+    Write-Host "  [OK] Tasks started (log on the phone: /data/local/tmp/castle-automation.log)." -ForegroundColor Green
 }
 
 Write-Host ""

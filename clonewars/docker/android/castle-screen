@@ -1,0 +1,4 @@
+#!/bin/sh
+# Writes a PNG of the phone's screen to stdout (the Castle app's screen view).
+# It only looks: nothing is tapped or typed.
+exec adb -s emulator-5554 exec-out screencap -p

@@ -59,6 +59,10 @@ castle_wait_cloud_init() {
   echo "[+] cloud-init: $(cloud-init status 2>/dev/null | awk '/^status:/ { print $2 }')"
 }
 
+# In a Castle container (container.ps1) there is no systemd, no cloud-init and
+# no scratch disk: CASTLE_CONTAINER=1 is set, the X server is :0, the desktop
+# user is "castle", and every helper below falls back to what is there.
+
 # castle_user  -> sets ACTUAL_USER, USER_HOME, USER_UID (the desktop user)
 castle_user() {
   ACTUAL_USER="${SUDO_USER:-}"
@@ -179,7 +183,7 @@ castle_in_session() {
        --setenv=PYTHONUNBUFFERED=1 "$@" 2>/dev/null; then
     return 0
   fi
-  echo "[i] systemd-run --user unavailable, starting it with sudo -u $ACTUAL_USER"
+  [ -n "${CASTLE_CONTAINER:-}" ] || echo "[i] systemd-run --user unavailable, starting it with sudo -u $ACTUAL_USER"
   castle_on_x env PYTHONUNBUFFERED=1 bash -c "cd ${dir@Q} && setsid nohup ${*@Q} >/dev/null 2>&1 &"
 }
 
@@ -190,6 +194,8 @@ castle_in_session() {
 #   returns once it has held for a few seconds.
 castle_ensure_screen() {
   local want="${1:-${CASTLE_SCREEN:-}}" out mode steady=0 i now
+  # A container's screen (Xvfb) is made at the right size and nothing resets it.
+  [ -n "${CASTLE_CONTAINER:-}" ] && return 0
   out=$(castle_on_x xrandr 2>/dev/null | awk '/ connected/ { print $1; exit }')
   [ -n "$out" ] || return 0
   for i in $(seq 1 30); do

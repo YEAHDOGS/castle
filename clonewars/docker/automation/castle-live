@@ -1,0 +1,41 @@
+#!/bin/sh
+# ==============================================================================
+# Castle: live control of a container's screen, only while someone asks for it
+# ==============================================================================
+# The Castle app shows a bot's screen as pictures by default (castle-screen).
+# "Take control" runs `castle-live start`: a VNC server on the screen plus a
+# noVNC web viewer, behind a one-time password, on the container's port 6080
+# (published on the host's 127.0.0.1 only). `castle-live stop` ends it.
+#
+#   castle-live start   prints the password (a new one every time)
+#   castle-live stop
+#   castle-live status  prints "on" or "off"
+set -u
+DIR=/run/castle-live
+case "${1:-status}" in
+  start)
+    "$0" stop >/dev/null 2>&1
+    mkdir -p "$DIR" && chmod 700 "$DIR"
+    PASS=$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 8)
+    x11vnc -storepasswd "$PASS" "$DIR/passwd" >/dev/null 2>&1
+    x11vnc -display :0 -rfbauth "$DIR/passwd" -rfbport 5900 -localhost -forever -shared -noxdamage -quiet \
+      -bg -o "$DIR/x11vnc.log" >/dev/null 2>&1 || { echo "x11vnc did not start" >&2; exit 1; }
+    websockify --web /usr/share/novnc 6080 127.0.0.1:5900 >"$DIR/websockify.log" 2>&1 &
+    echo $! > "$DIR/websockify.pid"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      (echo > /dev/tcp/127.0.0.1/6080) 2>/dev/null && break
+      bash -c 'echo > /dev/tcp/127.0.0.1/6080' 2>/dev/null && break
+      sleep 0.3
+    done
+    echo "$PASS"
+    ;;
+  stop)
+    [ -f "$DIR/websockify.pid" ] && kill "$(cat "$DIR/websockify.pid")" 2>/dev/null
+    pkill -x x11vnc 2>/dev/null
+    pkill -f 'websockify --web' 2>/dev/null
+    rm -rf "$DIR"
+    ;;
+  status)
+    if pgrep -x x11vnc >/dev/null 2>&1; then echo on; else echo off; fi
+    ;;
+esac

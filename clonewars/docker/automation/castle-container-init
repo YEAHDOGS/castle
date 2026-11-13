@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Castle automation container: PID 1 (under docker --init)
+# ==============================================================================
+# Starts the screen (Xvfb) and a window manager, then runs the bot's setup as
+# root, the same scripts/setup-*.sh a VM runs: the scripts folder arrives at
+# /mnt/castle, the payload at /mnt/castle-copy and the launch profile at
+# /mnt/castle-profile, all read-only. The container lives as long as its
+# screen does.
+#
+#   CASTLE_SETUP           setup script name (scripts/setup-<name>.sh), default "profile"
+#   CASTLE_SCREEN          screen size, default 1440x900
+#   CASTLE_STOP_AFTER_MIN  stop the container this many minutes after it starts (0: never)
+#
+# The launcher waits for "[castle] setup finished" (or "failed") in the log.
+set -uo pipefail
+
+# Settings for this launch (container.ps1 writes them before every start).
+[ -f /mnt/castle-profile/castle-container.env ] && . /mnt/castle-profile/castle-container.env
+
+SCREEN="${CASTLE_SCREEN:-1440x900}"
+[[ "$SCREEN" =~ ^[0-9]{3,5}x[0-9]{3,5}$ ]] || SCREEN=1440x900
+echo "[castle] container $(hostname) up: screen $SCREEN, $(nproc) core(s), $(awk '/MemTotal/ { printf "%.1f GB", $2 / 1048576 }' /proc/meminfo) visible"
+
+pids=()
+stop_all() { echo "[castle] stopping"; kill "${pids[@]}" 2>/dev/null; pkill -TERM -u castle 2>/dev/null; exit 0; }
+trap stop_all TERM INT
+
+# A container that was stopped and started again finds its old lock files.
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0
+mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+Xvfb :0 -screen 0 "${SCREEN}x24" -nolisten tcp -ac +extension RANDR >/tmp/xvfb.log 2>&1 &
+XVFB=$!
+pids+=("$XVFB")
+for _ in $(seq 1 100); do [ -S /tmp/.X11-unix/X0 ] && break; sleep 0.1; done
+[ -S /tmp/.X11-unix/X0 ] || { echo "[castle] setup failed: the screen did not start"; cat /tmp/xvfb.log; exit 1; }
+export DISPLAY=:0
+sudo -u castle env HOME=/home/castle DISPLAY=:0 openbox >/tmp/openbox.log 2>&1 &
+pids+=("$!")
+sudo -u castle env DISPLAY=:0 xset s off -dpms 2>/dev/null || true
+
+if [ "${CASTLE_STOP_AFTER_MIN:-0}" -gt 0 ] 2>/dev/null; then
+  ( sleep $((CASTLE_STOP_AFTER_MIN * 60)); echo "[castle] the stop time has come"; kill -TERM 1 ) &
+fi
+
+# The scripts are read from a Windows checkout: copy them out and make sure
+# every one has LF line endings before bash reads it.
+rm -rf /tmp/castle && mkdir -p /tmp/castle
+cp -r /mnt/castle/. /tmp/castle/ 2>/dev/null
+find /tmp/castle -type f -name '*.sh' -exec sed -i 's/\r$//' {} +
+export CASTLE_PROFILE_FILE=/mnt/castle-profile/castle-profile.env CASTLE_CONTAINER=1
+SETUP="/tmp/castle/setup-${CASTLE_SETUP:-profile}.sh"
+if [ ! -f "$SETUP" ]; then
+  echo "[castle] setup failed: no $(basename "$SETUP") in the scripts folder"
+else
+  echo "[castle] running $(basename "$SETUP")"
+  if bash "$SETUP" --copy; then
+    echo "[castle] setup finished"
+  else
+    echo "[castle] setup failed (exit $?)"
+  fi
+fi
+
+# The bot runs on in the background; the container lives as long as the screen.
+wait "$XVFB"
+echo "[castle] the screen stopped"

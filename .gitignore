@@ -147,3 +147,6 @@ clonewars/scripts/wine-apps/*
 !clonewars/data/copy/
 clonewars/data/copy/*
 !clonewars/data/copy/README.md
+
+# Android SDK license copied from data/android-sdk into the container build by container.ps1
+clonewars/docker/android/licenses/

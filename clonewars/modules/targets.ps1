@@ -363,6 +363,32 @@ $IsoMatrix = @(
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # CONTAINERS (the light engine for automations -- delegated to container.ps1)
+    # ══════════════════════════════════════════════════════════════════════════
+    # Runtime = "container": no ISO, no disk image, no kernel to boot. One image
+    # per ContainerKind (docker/<kind>/) is built once and shared; every bot or
+    # machine is its own container, whose writable layer is its disk. -Instance
+    # names it, a profile sets it up exactly as it would a VM.
+
+    @{
+        Id            = "container-debian"
+        Name          = "Debian 13 container (light, for automations)"
+        Description   = "Debian Trixie with an in-memory X server (Xvfb) and Openbox in a Docker container: no kernel to boot, up in seconds, uses only the memory its programs use. Runs the same setup scripts and profiles as the VMs. Needs Docker."
+        Runtime       = "container"
+        ContainerKind = "automation"
+        OsFamily      = "linux"
+        SupportsCopy  = $true
+    },
+    @{
+        Id            = "container-android"
+        Name          = "Android 15 container (Google emulator, headless)"
+        Description   = "Google's Android Emulator in a Docker container on KVM, with a google_apis image (root tasks work). Every .apk in the payload is installed and opened; Android automations run their tasks on the phone. Needs Docker and an accepted Android SDK license."
+        Runtime       = "container"
+        ContainerKind = "android"
+        OsFamily      = "android"
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # WINDOWS
     # ══════════════════════════════════════════════════════════════════════════
 
