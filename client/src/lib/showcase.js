@@ -44,6 +44,9 @@ const READS = new Set([
   'security', 'securityLog', 'securityVerify', 'securityAudits', 'record',
   // Presence (radar nodes) and the spec card
   'presence', 'specs',
+  // Contacts and Comms (exporting a .vcf is a download of a real file, so it is refused)
+  'contacts', 'contactDuplicates', 'contactHistory', 'contactPhoto',
+  'comms', 'commsThread', 'commsSearch', 'commsFile',
   // AI
   'aiStatus',
 ]);

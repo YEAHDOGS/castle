@@ -80,7 +80,7 @@ export const SETTINGS = [
 
   // ---- look and feel ----
   { id: 'look.motion', group: 'look', where: 'device', type: 'choice', default: 'full', live: true, label: 'Motion', help: 'Reduced turns off animations and transitions.', options: [choice('full', 'Full'), choice('reduced', 'Reduced')] },
-  { id: 'look.startSection', group: 'look', where: 'device', type: 'choice', default: 'last', live: true, label: 'Open Castle in', help: 'The section shown when the app starts.', options: [choice('last', 'Where I left off'), choice('storage', 'Storage'), choice('ai', 'AI'), choice('arcade', 'Arcade'), choice('theater', 'Theater'), choice('clones', 'Clones'), choice('network', 'Network')] },
+  { id: 'look.startSection', group: 'look', where: 'device', type: 'choice', default: 'last', live: true, label: 'Open Castle in', help: 'The section shown when the app starts.', options: [choice('last', 'Where I left off'), choice('storage', 'Storage'), choice('ai', 'AI'), choice('arcade', 'Arcade'), choice('theater', 'Theater'), choice('comms', 'Comms'), choice('contacts', 'Contacts'), choice('clones', 'Clones'), choice('network', 'Network')] },
   { id: 'look.wheelInvert', group: 'look', where: 'device', type: 'toggle', default: false, live: true, label: 'Reverse the wheel', help: 'Turns the section wheel the other way when you scroll.' },
 
   // ---- updates and backup ----

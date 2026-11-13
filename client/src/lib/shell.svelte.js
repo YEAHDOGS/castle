@@ -5,6 +5,8 @@ import { store } from './store.svelte.js';
 import { SECTIONS, DEFAULT_SECTION } from './sections.js';
 import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity, DemoTheater } from './demo-shell.js';
 import { DemoPresence } from './demo-presence.js';
+import { DemoContacts } from './demo-contacts.js';
+import { DemoComms } from './demo-comms.js';
 import { prefs } from './prefs.svelte.js';
 import { SHOWCASE, readOnly } from './showcase.js';
 
@@ -42,6 +44,16 @@ class Shell {
   demoSecurity = readOnly(new DemoSecurity());
   demoTheater = readOnly(new DemoTheater());
   demoPresence = readOnly(new DemoPresence());
+  demoContacts = readOnly(new DemoContacts());
+  demoComms = readOnly(new DemoComms());
+
+  /**
+   * What a section was opened to show, when another section sent the person there:
+   * { section, ... } (Contacts sends { section: 'comms', contact }, Comms sends
+   * { section: 'contacts', contactId } or { section: 'contacts', draft }). The section
+   * that reads it clears it.
+   */
+  focus = $state(null);
 
   /** People on this box. Accounts exist only in the demo until the box grows them. */
   get users() {
@@ -118,6 +130,25 @@ class Shell {
   }
 
   /** Where Security's Presence view reads its radar nodes from, by the same rule. */
+  /** Where Contacts reads from, by the same rule. */
+  get contactsSource() {
+    if (store.isDemo) return this.demoContacts;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Where Comms reads from, by the same rule. */
+  get commsSource() {
+    if (store.isDemo) return this.demoComms;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Opens a section to show something in it (see `focus`). */
+  openWith(section, focus) {
+    this.focus = { section, ...focus };
+    this.wheelOpen = false;
+    this.setSection(section);
+  }
+
   get presenceSource() {
     if (store.isDemo) return this.demoPresence;
     return store.boxUrl ? store.adapter : null;

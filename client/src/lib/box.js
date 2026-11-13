@@ -474,6 +474,118 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.post('/presence/node/rekey', { id })).json();
   }
 
+  // ---- Contacts: each person's address book (see castled/src/contacts.rs) ----
+  // `person` is the signed-in person's id; a box without accounts has only 'owner'.
+
+  async contacts(person) {
+    return (await this.call(`/contacts?person=${encodeURIComponent(person)}`)).json();
+  }
+
+  /** Adds a card (no id) or replaces one. Answers the card as kept. */
+  async contactSave(person, contact) {
+    return (await this.post('/contacts/save', { person, contact })).json();
+  }
+
+  /** { deleted } — the book is kept as it was first, so History can undo it. */
+  async contactsDelete(person, ids) {
+    return (await this.post('/contacts/delete', { person, ids })).json();
+  }
+
+  /** A .vcf from a phone, Google or iCloud. { added, skipped, empty } */
+  async contactsImport(person, file) {
+    const query = `person=${encodeURIComponent(person)}&name=${encodeURIComponent(file.name || 'contacts.vcf')}`;
+    return (await this.call(`/contacts/import?${query}`, { method: 'PUT', body: file })).json();
+  }
+
+  /** The book (or some cards) as one .vcf, as a Blob to save. */
+  async contactsExport(person, ids = null) {
+    const query = `person=${encodeURIComponent(person)}${ids ? `&ids=${encodeURIComponent(ids.join(','))}` : ''}`;
+    return (await this.call(`/contacts/export?${query}`)).blob();
+  }
+
+  /** [{ ids, reasons }]: cards that look like one person, the fullest first. */
+  async contactDuplicates(person) {
+    return (await this.call(`/contacts/duplicates?person=${encodeURIComponent(person)}`)).json();
+  }
+
+  /** Folds the other cards into the first. Answers the merged card. */
+  async contactsMerge(person, ids) {
+    return (await this.post('/contacts/merge', { person, ids })).json();
+  }
+
+  /** [{ at, reason, count }]: earlier copies of the book, newest first. */
+  async contactHistory(person) {
+    return (await this.call(`/contacts/history?person=${encodeURIComponent(person)}`)).json();
+  }
+
+  async contactsRestore(person, at) {
+    return (await this.post('/contacts/restore', { person, at })).json();
+  }
+
+  /** A card's picture as an address the page can show, or null. Kept for the visit. */
+  async contactPhoto(person, id, version = 0) {
+    const key = `contact:${person}:${id}:${version}`;
+    if (this.art.has(key)) return this.art.get(key);
+    try {
+      const blob = await (await this.call(`/contacts/photo?person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}`)).blob();
+      this.art.set(key, URL.createObjectURL(blob));
+    } catch {
+      this.art.set(key, null);
+    }
+    return this.art.get(key);
+  }
+
+  /** Sets a card's picture from an image File, or takes it away with null. */
+  async contactPhotoSet(person, id, file) {
+    const query = `person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}`;
+    const init = { method: 'PUT', body: file || new Blob([]), headers: { 'Content-Type': file?.type || 'application/octet-stream' } };
+    return (await this.call(`/contacts/photo?${query}`, init)).json();
+  }
+
+  // ---- Comms: each person's texts, calls, email and chats (see castled/src/comms.rs) ----
+
+  /** { conversations, imports, importing, problem } */
+  async comms(person) {
+    return (await this.call(`/comms?person=${encodeURIComponent(person)}`)).json();
+  }
+
+  /** { conversation, messages, more }: the newest messages, or the ones before `before`. */
+  async commsThread(person, id, before = null) {
+    const query = `person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}${before ? `&before=${before}` : ''}`;
+    return (await this.call(`/comms/thread?${query}`)).json();
+  }
+
+  /** [{ conversation, message }] */
+  async commsSearch(person, q) {
+    return (await this.call(`/comms/search?person=${encodeURIComponent(person)}&q=${encodeURIComponent(q)}`)).json();
+  }
+
+  async commsDelete(person, id) {
+    await this.post('/comms/delete', { person, id });
+  }
+
+  /** An attachment (a picture, a recording) as an address the page can use. Kept for the visit. */
+  async commsFile(person, name) {
+    const key = `comms:${person}:${name}`;
+    if (this.art.has(key)) return this.art.get(key);
+    try {
+      const blob = await (await this.call(`/comms/file?person=${encodeURIComponent(person)}&name=${encodeURIComponent(name)}`)).blob();
+      this.art.set(key, URL.createObjectURL(blob));
+    } catch {
+      this.art.set(key, null);
+    }
+    return this.art.get(key);
+  }
+
+  /**
+   * Sends an export to the box; it is read in the background (watch comms().importing).
+   * The phone's time zone goes with it, for recordings named in local time.
+   */
+  async commsImport(person, file) {
+    const query = `person=${encodeURIComponent(person)}&name=${encodeURIComponent(file.name)}&offset=${new Date().getTimezoneOffset()}`;
+    return (await this.call(`/comms/import?${query}`, { method: 'PUT', body: file })).json();
+  }
+
   // ---- Arcade: the games folder on the box (box started with --arcade) ----
 
   async arcadeSystems() {
