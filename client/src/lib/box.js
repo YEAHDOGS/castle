@@ -443,6 +443,31 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.post('/security/audits/run', { id })).json();
   }
 
+  // ---- Presence: radar nodes on the walls (see castled/src/presence.rs, gatehouse/) ----
+
+  /** { nodes, rooms, events, now, targetLife, offlineAfter } */
+  async presence() {
+    return (await this.call('/presence')).json();
+  }
+
+  /** { node, key }: the key is shown once and the box never gives it out again. */
+  async presenceNodeAdd(node) {
+    return (await this.post('/presence/node/add', node)).json();
+  }
+
+  async presenceNodeUpdate(changes) {
+    return (await this.post('/presence/node/update', changes)).json();
+  }
+
+  async presenceNodeRemove(id) {
+    await this.post('/presence/node/remove', { id });
+  }
+
+  /** A new key for a node; the old one stops working. { key } */
+  async presenceNodeRekey(id) {
+    return (await this.post('/presence/node/rekey', { id })).json();
+  }
+
   // ---- Arcade: the games folder on the box (box started with --arcade) ----
 
   async arcadeSystems() {

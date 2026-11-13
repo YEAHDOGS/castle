@@ -4,6 +4,7 @@
 import { store } from './store.svelte.js';
 import { SECTIONS, DEFAULT_SECTION } from './sections.js';
 import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity, DemoTheater } from './demo-shell.js';
+import { DemoPresence } from './demo-presence.js';
 import { prefs } from './prefs.svelte.js';
 
 const SECTION_KEY = 'castle-section';
@@ -37,6 +38,7 @@ class Shell {
   demoBox = new DemoBox();
   demoSecurity = new DemoSecurity();
   demoTheater = new DemoTheater();
+  demoPresence = new DemoPresence();
 
   /** People on this box. Accounts exist only in the demo until the box grows them. */
   get users() {
@@ -108,6 +110,12 @@ class Shell {
   /** Where Security reads from, by the same rule. */
   get securitySource() {
     if (store.isDemo) return this.demoSecurity;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Where Security's Presence view reads its radar nodes from, by the same rule. */
+  get presenceSource() {
+    if (store.isDemo) return this.demoPresence;
     return store.boxUrl ? store.adapter : null;
   }
 
