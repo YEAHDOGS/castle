@@ -45,7 +45,10 @@ export function addressKey(address) {
  */
 export function peopleIndex(contacts) {
   const byKey = new Map();
-  for (const c of contacts || []) for (const k of contactKeys(c)) if (!byKey.has(k)) byKey.set(k, c);
+  // When two cards answer to the same number (a duplicate not merged yet), the fuller one,
+  // starred first, is the person: "Dad" with his picture, not an old "Bob Cruz".
+  const best = [...(contacts || [])].sort((a, b) => fullness(b) - fullness(a));
+  for (const c of best) for (const k of contactKeys(c)) if (!byKey.has(k)) byKey.set(k, c);
   return {
     /** The card for one number, address or name, or null. */
     find(address) {
@@ -67,6 +70,10 @@ export function peopleIndex(contacts) {
       return found;
     },
   };
+}
+
+function fullness(c) {
+  return (c.starred ? 10 : 0) + (c.photo ? 3 : 0) + (c.phones?.length || 0) + (c.emails?.length || 0) + (c.addresses?.length || 0) + (c.notes ? 1 : 0) + (c.birthday ? 1 : 0);
 }
 
 /** True when a conversation is with this person (one of its people is them). */

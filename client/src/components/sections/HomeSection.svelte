@@ -1,6 +1,6 @@
 <!-- HomeSection: the box at a glance. A running uptime clock, three live gauges for the
      machine it runs on, and a tile for every other section showing its state right now. A
-     tile opens its section. Spec card (top right) makes a picture of the box's numbers, to post. -->
+     tile opens its section. The Spec card tile, last, makes a picture of the box's numbers, to post. -->
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
@@ -181,22 +181,12 @@
   });
 </script>
 
-{#snippet actions()}
-  {#if source}
-    <button class="micro expo t-hover flex h-9 items-center gap-1.5 border border-hairline px-2.5 text-text-dim transition-colors hover:border-chiral/60 hover:text-white" onclick={() => (cardOpen = true)} title="A picture of the box's numbers, to post">
-      <IdCard class="h-3.5 w-3.5" />
-      <span class="hidden sm:inline">SPEC CARD</span>
-    </button>
-  {/if}
-{/snippet}
-
 <SpecCard open={cardOpen} onclose={() => (cardOpen = false)} />
 
 <SectionFrame
   title="Home"
   subtitle={vitals ? `${vitals.host || 'This box'} · ${vitals.os}` : 'The box at a glance'}
   tag={store.isDemo ? 'SAMPLE DATA' : ''}
-  {actions}
 >
   {#if !source}
     <Notice icon={House} title="NO BOX CONNECTED">
@@ -272,6 +262,17 @@
           </button>
         </li>
       {/each}
+      <!-- Not a section: a picture of the box's numbers, to post. -->
+      <li in:fly={itemIn(tiles.length)}>
+        <div class="flex h-full w-full items-center gap-4 border border-bridge/30 bg-bridge/[0.04] p-4">
+          <IdCard class="h-7 w-7 shrink-0 text-bridge" strokeWidth={1.25} />
+          <span class="min-w-0 flex-1">
+            <span class="block text-[15px] font-bold text-white">Spec card</span>
+            <span class="mt-0.5 block truncate text-[13px] text-text-dim">This box's numbers as a picture, to post</span>
+          </span>
+          <button class="micro expo t-hover h-9 shrink-0 bg-bridge px-3 font-bold text-black transition-opacity hover:opacity-90" onclick={() => (cardOpen = true)}>MAKE ONE</button>
+        </div>
+      </li>
     </ul>
   {/if}
 </SectionFrame>
