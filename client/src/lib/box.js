@@ -414,6 +414,11 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/system')).json();
   }
 
+  /** The box in a few numbers for the spec card: { processor, drives: { disks, total, oldestHours, ... } } */
+  async specs() {
+    return (await this.call('/specs')).json();
+  }
+
   // ---- Security: checks, the activity record, the token, audits ----
 
   async security() {

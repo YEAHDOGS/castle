@@ -66,6 +66,12 @@ impl System {
         Self { sys: Mutex::new(sys) }
     }
 
+    /// What the processor calls itself ("AMD Ryzen 5 2600 Six-Core Processor"), or empty.
+    pub fn processor(&self) -> String {
+        let Ok(guard) = self.sys.lock() else { return String::new() };
+        guard.as_ref().and_then(|sys| sys.cpus().first()).map(|cpu| cpu.brand().trim().to_string()).unwrap_or_default()
+    }
+
     pub fn vitals(&self, vault: &Path) -> Result<Vitals, String> {
         const UNAVAILABLE: &str = "vital signs are unavailable on this machine";
         let mut guard = self.sys.lock().map_err(|_| UNAVAILABLE.to_string())?;

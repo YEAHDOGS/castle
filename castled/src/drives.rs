@@ -5,12 +5,21 @@
 //! The speed test is the one thing here that touches a drive, and only when someone presses
 //! its button: it writes one test file, reads it back and deletes it (or, on a drive that
 //! cannot be written, reads files already there).
+//!
+//! Each internal and external disk is also asked about its own health with smartctl, when
+//! it is installed: how many hours it has been powered on, how warm it is, and whether it
+//! thinks it is failing. That is a question to the disk's firmware, not a read of its files,
+//! and a disk that is asleep is left asleep.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    process::{Command, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -34,6 +43,15 @@ const TEST_MIN: u64 = 32 * 1024 * 1024;
 const TEST_TIME: Duration = Duration::from_secs(3);
 /// Starts the name of the speed test's own file, so a left-over one is easy to recognise.
 pub const TEST_FILE_PREFIX: &str = ".castle-speedtest-";
+
+/// A disk is asked about its health this often. Power-on hours move slowly; a disk that
+/// starts failing shows up within the half hour.
+const SMART_EVERY: Duration = Duration::from_secs(30 * 60);
+/// smartctl gets this long per disk before it is stopped (a confused USB bridge can hang).
+const SMART_TIMEOUT: Duration = Duration::from_secs(20);
+const SMART_POLL: Duration = Duration::from_millis(50);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn now_millis() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -65,6 +83,9 @@ struct Raw {
     model: String,
     /// Changes when the drive is formatted; tells two drives with the same name apart.
     serial: String,
+    /// What smartctl is told to ask ("C:" on Windows, "/dev/sda" on Linux). Empty for a
+    /// drive that is not asked: discs, network and memory drives, sticks and cards.
+    device: String,
 }
 
 impl Raw {
@@ -302,6 +323,7 @@ mod win {
                 bus: bus.to_string(),
                 model,
                 serial: if media { format!("{serial:08X}") } else { String::new() },
+                device: if media && matches!(kind, "fixed" | "external") { format!("{letter}:") } else { String::new() },
             });
         }
         out
@@ -310,7 +332,27 @@ mod win {
 
 #[cfg(not(windows))]
 mod unix {
+    use std::path::Path;
+
     use super::Raw;
+
+    /// The whole disk a partition is on: "/dev/sda1" -> "/dev/sda", "/dev/nvme0n1p2" ->
+    /// "/dev/nvme0n1". None for what has no disk behind it worth asking (loop devices,
+    /// zram, device-mapper volumes, overlay and tmpfs).
+    pub fn whole_disk(dev: &str) -> Option<String> {
+        let real = std::fs::canonicalize(dev).ok()?;
+        let base = real.file_name()?.to_string_lossy().to_string();
+        if ["loop", "zram", "dm-", "ram", "sr"].iter().any(|p| base.starts_with(p)) {
+            return None;
+        }
+        let sys = Path::new("/sys/class/block").join(&base);
+        if sys.join("partition").exists() {
+            let disk = std::fs::canonicalize(&sys).ok()?;
+            let parent = disk.parent()?.file_name()?.to_string_lossy().to_string();
+            return Some(format!("/dev/{parent}"));
+        }
+        sys.exists().then(|| format!("/dev/{base}"))
+    }
 
     /// Changes when something is mounted or unmounted.
     pub fn fingerprint() -> u64 {
@@ -341,6 +383,8 @@ mod unix {
                     "fixed"
                 };
                 let label = disk.mount_point().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let serial = disk.name().to_string_lossy().to_string();
+                let device = if matches!(kind, "fixed" | "external") { whole_disk(&serial).unwrap_or_default() } else { String::new() };
                 Raw {
                     path,
                     label,
@@ -353,7 +397,8 @@ mod unix {
                     free: disk.available_space(),
                     bus: String::new(),
                     model: String::new(),
-                    serial: disk.name().to_string_lossy().to_string(),
+                    serial,
+                    device,
                 }
             })
             .collect()
@@ -426,6 +471,12 @@ pub struct Drive {
     pub first_seen: u64,
     pub plugged_in: u64,
     pub last_test: Option<SpeedResult>,
+    /// What the disk says about itself, once smartctl has asked. None until it has, and
+    /// for drives that are not asked.
+    pub health: Option<Health>,
+    /// Who smartctl asks about this drive; not sent to the app.
+    #[serde(skip)]
+    device: String,
 }
 
 /// A drive that has been plugged in before and is not now.
@@ -448,6 +499,27 @@ pub struct Report {
     pub gone: Vec<Gone>,
     /// When the drives were last looked at.
     pub at: u64,
+    /// smartctl is installed, so disks can be asked how they are.
+    pub smartctl: bool,
+}
+
+/// The box's drives in a few numbers, for the spec card. Says nothing about where anything is.
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Summary {
+    /// Internal and external disks with something on them.
+    pub disks: usize,
+    /// Their sizes added up.
+    pub total: u64,
+    pub free: u64,
+    /// The most power-on hours any of them has.
+    pub oldest_hours: Option<u64>,
+    /// How many have answered smartctl.
+    pub reporting: usize,
+    /// Disks that say they are failing, and disks with bad sectors or worn-out flash.
+    pub failing: usize,
+    pub worn: usize,
+    pub smartctl: bool,
 }
 
 #[derive(Default)]
@@ -465,6 +537,8 @@ pub struct Drives {
     book: Mutex<Book>,
     /// One speed test at a time: two at once would each measure half a drive.
     testing: Mutex<()>,
+    /// What each disk last said about its health.
+    smart: Arc<Smart>,
 }
 
 /// The name a drive is shown by: "MOVESPEED (E:)", "Local Disk (C:)", "DVD drive (D:)".
@@ -498,7 +572,13 @@ pub fn is_within(inner: &Path, outer: &Path) -> bool {
 impl Drives {
     pub fn open(file: PathBuf, vault: &Path) -> Self {
         let seen = std::fs::read(&file).ok().and_then(|raw| serde_json::from_slice(&raw).ok()).unwrap_or_default();
-        Self { file, vault: crate::plain_path(vault), book: Mutex::new(Book { seen, ..Book::default() }), testing: Mutex::new(()) }
+        Self {
+            file,
+            vault: crate::plain_path(vault),
+            book: Mutex::new(Book { seen, ..Book::default() }),
+            testing: Mutex::new(()),
+            smart: Arc::new(Smart::new(find_smartctl())),
+        }
     }
 
     fn save(&self, book: &mut Book) {
@@ -561,6 +641,8 @@ impl Drives {
                 first_seen: seen.first_seen,
                 plugged_in: seen.plugged_in,
                 last_test: seen.last_test.clone(),
+                health: None,
+                device: raw.device.clone(),
             });
         }
         for (key, seen) in book.seen.iter_mut() {
@@ -595,11 +677,42 @@ impl Drives {
         if stale || book.fingerprint != Some(fingerprint()) {
             self.rescan(&mut book);
         }
+        let devices: Vec<String> = book.present.iter().map(|d| d.device.clone()).collect();
+        drop(book);
+        Smart::refresh(&self.smart, devices);
+    }
+
+    /// The drives there now, each with what its disk last said about its health.
+    fn present_with_health(&self, book: &Book) -> Vec<Drive> {
+        let readings = self.smart.readings.lock().map(|r| r.clone()).unwrap_or_default();
+        book.present
+            .iter()
+            .cloned()
+            .map(|mut d| {
+                d.health = readings.get(&d.device).map(|(health, _)| health.clone());
+                // Linux does not name the disk behind a mount; the disk names itself.
+                if let Some(health) = d.health.as_ref().filter(|_| d.model.is_empty()) {
+                    d.model = health.model.clone();
+                }
+                d
+            })
+            .collect()
+    }
+
+    /// The drives in a few numbers, for the spec card.
+    pub fn summary(&self) -> Summary {
+        let Ok(mut book) = self.book.lock() else { return Summary::default() };
+        if book.scanned.is_none() {
+            self.rescan(&mut book);
+        }
+        summarize(&self.present_with_health(&book), self.smart.tool.is_some())
     }
 
     /// Every drive there now, and the ones seen before that are not.
     pub fn report(&self) -> Report {
-        let Ok(mut book) = self.book.lock() else { return Report { drives: Vec::new(), gone: Vec::new(), at: now_millis() } };
+        let Ok(mut book) = self.book.lock() else {
+            return Report { drives: Vec::new(), gone: Vec::new(), at: now_millis(), smartctl: self.smart.tool.is_some() };
+        };
         self.rescan(&mut book);
         let mut gone: Vec<Gone> = book
             .seen
@@ -617,7 +730,7 @@ impl Drives {
             .collect();
         gone.sort_by_key(|g| std::cmp::Reverse(g.last_seen));
         gone.truncate(MAX_GONE);
-        Report { drives: book.present.clone(), gone, at: now_millis() }
+        Report { drives: self.present_with_health(&book), gone, at: now_millis(), smartctl: self.smart.tool.is_some() }
     }
 
     /// Times the drive at `path` (one of the drives there now). `write` false reads only.
@@ -841,6 +954,249 @@ fn read_existing(root: &Path) -> Result<SpeedResult, String> {
     Ok(SpeedResult { at: now_millis(), mode: "read".into(), write_mbps: None, read_mbps: mbps(read, started.elapsed()), bytes: read })
 }
 
+// ---------------------------------------------------------------------------------------
+// Health: what each disk says about itself, asked with smartctl
+// ---------------------------------------------------------------------------------------
+
+/// The note for a disk that was asleep when asked. It keeps what it said last time.
+const ASLEEP: &str = "The disk is asleep, and Castle did not wake it. It is asked again later.";
+const NEEDS_ADMIN: &str = "Castle has to run as administrator (root on Linux) to ask this disk how it is.";
+const NO_ANSWERS: &str = "This disk does not answer health questions. Common behind USB enclosures and cheap adapters.";
+
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Health {
+    /// ok; worn (bad sectors, or an SSD past its rated life); failing (the disk itself
+    /// says so); or unknown (it did not answer, and `note` says why).
+    pub state: String,
+    pub power_on_hours: Option<u64>,
+    /// Degrees Celsius.
+    pub temperature: Option<i64>,
+    /// The disk's own overall verdict.
+    pub passed: Option<bool>,
+    /// Sectors moved aside or waiting to be (spinning disks), or media errors (NVMe).
+    pub bad_sectors: Option<u64>,
+    /// How much of its rated life an SSD says it has used, in percent. Can pass 100.
+    pub wear_percent: Option<u64>,
+    /// Why there is no reading, in plain words. Empty when there is one.
+    pub note: String,
+    /// When it was asked, milliseconds since 1970.
+    pub at: u64,
+    /// What the disk calls itself, for drives the system did not name. Not sent.
+    #[serde(skip)]
+    model: String,
+    /// Tells partitions of one disk apart from separate disks. Not sent.
+    #[serde(skip)]
+    serial: String,
+}
+
+fn unread(note: &str) -> Health {
+    Health { state: "unknown".into(), note: note.into(), at: now_millis(), ..Health::default() }
+}
+
+/// Reads what `smartctl -j` printed. Every field is optional: what a disk reports depends
+/// on what it is (SATA, NVMe, behind USB) and on the smartctl version.
+fn parse_smartctl(text: &str) -> Health {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return unread("smartctl gave an answer Castle could not read.") };
+    let exit = v["smartctl"]["exit_status"].as_u64().unwrap_or(0);
+    let said: Vec<&str> =
+        v["smartctl"]["messages"].as_array().map(|m| m.iter().filter_map(|m| m["string"].as_str()).collect()).unwrap_or_default();
+    let attribute = |id: u64| {
+        v["ata_smart_attributes"]["table"]
+            .as_array()
+            .and_then(|table| table.iter().find(|a| a["id"].as_u64() == Some(id)))
+            .and_then(|a| a["raw"]["value"].as_u64())
+    };
+    let nvme = &v["nvme_smart_health_information_log"];
+
+    let power_on_hours = v["power_on_time"]["hours"].as_u64().or_else(|| nvme["power_on_hours"].as_u64()).or_else(|| attribute(9));
+    let temperature = v["temperature"]["current"].as_i64().or_else(|| nvme["temperature"].as_i64());
+    // Bit 3 of the exit status: the disk's own check says it is failing.
+    let passed = if exit & 0x08 != 0 { Some(false) } else { v["smart_status"]["passed"].as_bool() };
+    // 5: reallocated sectors; 197: sectors waiting to be reallocated.
+    let bad_sectors = match (attribute(5), attribute(197)) {
+        (None, None) => nvme["media_errors"].as_u64(),
+        (moved, waiting) => Some(moved.unwrap_or(0) + waiting.unwrap_or(0)),
+    };
+    let wear_percent = nvme["percentage_used"].as_u64();
+    let model = v["model_name"].as_str().unwrap_or("").trim().to_string();
+    let serial = v["serial_number"].as_str().unwrap_or("").trim().to_string();
+
+    if power_on_hours.is_none() && passed.is_none() {
+        let words = said.join(" ");
+        let lower = words.to_lowercase();
+        let note = if lower.contains("standby") || lower.contains("sleep") {
+            ASLEEP.to_string()
+        } else if ["denied", "permission", "not permitted", "root", "administrator"].iter().any(|w| lower.contains(w)) {
+            NEEDS_ADMIN.to_string()
+        } else if ["unknown usb bridge", "unable to detect device type", "unsupported", "not support"].iter().any(|w| lower.contains(w)) {
+            NO_ANSWERS.to_string()
+        } else if words.is_empty() {
+            "The disk did not say how it is.".to_string()
+        } else {
+            words
+        };
+        return Health { model, serial, ..unread(&note) };
+    }
+
+    let state = if passed == Some(false) {
+        "failing"
+    } else if bad_sectors.unwrap_or(0) > 0 || wear_percent.unwrap_or(0) >= 100 {
+        "worn"
+    } else {
+        "ok"
+    };
+    Health {
+        state: state.into(),
+        power_on_hours,
+        temperature,
+        passed,
+        bad_sectors,
+        wear_percent,
+        note: String::new(),
+        at: now_millis(),
+        model,
+        serial,
+    }
+}
+
+/// smartctl, when it is installed: CASTLE_SMARTCTL, then the system's path, then where
+/// the smartmontools installer puts it.
+fn find_smartctl() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "smartctl.exe" } else { "smartctl" };
+    let mut places: Vec<PathBuf> = std::env::var_os("CASTLE_SMARTCTL").map(PathBuf::from).into_iter().collect();
+    if let Some(path) = std::env::var_os("PATH") {
+        places.extend(std::env::split_paths(&path).map(|dir| dir.join(exe)));
+    }
+    if cfg!(windows) {
+        for base in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(dir) = std::env::var_os(base) {
+                places.push(PathBuf::from(dir).join("smartmontools").join("bin").join(exe));
+            }
+        }
+    } else {
+        places.extend(["/usr/sbin/smartctl", "/usr/local/sbin/smartctl", "/sbin/smartctl"].map(PathBuf::from));
+    }
+    places.into_iter().find(|p| p.is_file())
+}
+
+/// Asks one disk. `-n standby` leaves a sleeping disk asleep rather than spinning it up
+/// to answer. No window opens on Windows, and a disk that hangs is given up on.
+fn ask_smartctl(tool: &Path, device: &str) -> Health {
+    let mut cmd = Command::new(tool);
+    cmd.args(["-j", "-i", "-H", "-A", "-n", "standby", device]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let Ok(mut child) = cmd.spawn() else { return unread("smartctl is installed but could not be started.") };
+    let mut out = child.stdout.take();
+    // Read while it runs, so a long answer cannot fill the pipe and stall it.
+    let reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(out) = out.as_mut() {
+            let _ = out.read_to_string(&mut text);
+        }
+        text
+    });
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < SMART_TIMEOUT => std::thread::sleep(SMART_POLL),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return unread("The disk took too long to answer.");
+            }
+        }
+    }
+    parse_smartctl(&reader.join().unwrap_or_default())
+}
+
+struct Smart {
+    tool: Option<PathBuf>,
+    /// device -> what it said, and when it was asked
+    readings: Mutex<HashMap<String, (Health, Instant)>>,
+    /// One round of asking at a time.
+    asking: AtomicBool,
+}
+
+/// Lets the next round start when this one ends, however it ends.
+struct RoundDone(Arc<Smart>);
+
+impl Drop for RoundDone {
+    fn drop(&mut self) {
+        self.0.asking.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Smart {
+    fn new(tool: Option<PathBuf>) -> Self {
+        Self { tool, readings: Mutex::new(HashMap::new()), asking: AtomicBool::new(false) }
+    }
+
+    /// Asks, in the background, each of `devices` not asked in the last SMART_EVERY. Never
+    /// waits for smartctl, so the drive list stays quick.
+    fn refresh(smart: &Arc<Smart>, devices: Vec<String>) {
+        let Some(tool) = smart.tool.clone() else { return };
+        let mut due: Vec<String> = {
+            let Ok(readings) = smart.readings.lock() else { return };
+            devices
+                .into_iter()
+                .filter(|d| !d.is_empty() && readings.get(d).is_none_or(|(_, at)| at.elapsed() >= SMART_EVERY))
+                .collect()
+        };
+        due.sort();
+        due.dedup();
+        if due.is_empty() || smart.asking.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let done = RoundDone(Arc::clone(smart));
+        std::thread::spawn(move || {
+            let smart = &done.0;
+            for device in due {
+                let mut health = ask_smartctl(&tool, &device);
+                if health.note == ASLEEP {
+                    let before = smart.readings.lock().ok().and_then(|r| r.get(&device).map(|(h, _)| h.clone()));
+                    if let Some(before) = before.filter(|h| h.note.is_empty()) {
+                        health = before;
+                    }
+                }
+                if let Ok(mut readings) = smart.readings.lock() {
+                    readings.insert(device, (health, Instant::now()));
+                }
+            }
+        });
+    }
+}
+
+/// Adds up the disks that stay (not sticks, cards or discs). Two drive letters on one disk
+/// count once, when the disk has said who it is.
+fn summarize(drives: &[Drive], smartctl: bool) -> Summary {
+    let disks: Vec<&Drive> = drives.iter().filter(|d| d.media && matches!(d.kind, "fixed" | "external")).collect();
+    // One entry per physical disk: by the serial it gave, or by the drive when it gave none.
+    let mut one_each: BTreeMap<String, Option<&Health>> = BTreeMap::new();
+    for d in &disks {
+        let health = d.health.as_ref().filter(|h| h.note.is_empty());
+        let who = d.health.as_ref().filter(|h| !h.serial.is_empty()).map_or_else(|| d.key.clone(), |h| h.serial.clone());
+        one_each.entry(who).or_insert(health);
+    }
+    let read: Vec<&Health> = one_each.values().flatten().copied().collect();
+    let count = |state: &str| read.iter().filter(|h| h.state == state).count();
+    Summary {
+        disks: one_each.len(),
+        total: disks.iter().map(|d| d.total).sum(),
+        free: disks.iter().map(|d| d.free).sum(),
+        oldest_hours: read.iter().filter_map(|h| h.power_on_hours).max(),
+        reporting: read.len(),
+        failing: count("failing"),
+        worn: count("worn"),
+        smartctl,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,5 +1272,134 @@ mod tests {
     #[test]
     fn a_nearly_full_drive_is_not_tested() {
         assert!(write_then_read(&[std::env::temp_dir()], 100 * 1024 * 1024).is_err());
+    }
+
+    /// Trimmed from what smartctl 7.4 prints for a SATA disk off eBay.
+    const OLD_HDD: &str = r#"{
+      "smartctl": { "version": [7, 4], "exit_status": 64, "messages": [] },
+      "device": { "name": "/dev/sda", "type": "sat" },
+      "model_name": "WDC WD120EMFZ-11A6JA0", "serial_number": "9RJ1ABCD",
+      "smart_status": { "passed": true },
+      "ata_smart_attributes": { "table": [
+        { "id": 5, "name": "Reallocated_Sector_Ct", "raw": { "value": 0 } },
+        { "id": 9, "name": "Power_On_Hours", "raw": { "value": 67012 } },
+        { "id": 197, "name": "Current_Pending_Sector", "raw": { "value": 0 } }
+      ] },
+      "power_on_time": { "hours": 67012 },
+      "temperature": { "current": 38 }
+    }"#;
+
+    const NVME: &str = r#"{
+      "smartctl": { "exit_status": 0 },
+      "model_name": "Samsung SSD 990 PRO 1TB", "serial_number": "S6Z1NJ0W",
+      "smart_status": { "passed": true },
+      "nvme_smart_health_information_log": { "temperature": 41, "percentage_used": 3, "power_on_hours": 2210, "media_errors": 0 },
+      "temperature": { "current": 41 },
+      "power_on_time": { "hours": 2210 }
+    }"#;
+
+    #[test]
+    fn an_old_disk_reports_its_hours() {
+        let h = parse_smartctl(OLD_HDD);
+        assert_eq!(h.state, "ok");
+        assert_eq!(h.power_on_hours, Some(67012));
+        assert_eq!(h.temperature, Some(38));
+        assert_eq!(h.passed, Some(true));
+        assert_eq!(h.bad_sectors, Some(0));
+        assert_eq!(h.model, "WDC WD120EMFZ-11A6JA0");
+        assert!(h.note.is_empty());
+    }
+
+    #[test]
+    fn an_nvme_disk_reports_wear() {
+        let h = parse_smartctl(NVME);
+        assert_eq!(h.state, "ok");
+        assert_eq!(h.power_on_hours, Some(2210));
+        assert_eq!(h.wear_percent, Some(3));
+        assert_eq!(h.bad_sectors, Some(0));
+    }
+
+    #[test]
+    fn bad_sectors_and_used_up_flash_are_worn() {
+        let sectors = OLD_HDD.replace(r#""id": 197, "name": "Current_Pending_Sector", "raw": { "value": 0 }"#, r#""id": 197, "raw": { "value": 8 }"#);
+        let h = parse_smartctl(&sectors);
+        assert_eq!((h.state.as_str(), h.bad_sectors), ("worn", Some(8)));
+        let flash = NVME.replace(r#""percentage_used": 3"#, r#""percentage_used": 104"#);
+        assert_eq!(parse_smartctl(&flash).state, "worn");
+    }
+
+    #[test]
+    fn a_disk_that_says_it_is_failing_is_failing() {
+        let verdict = OLD_HDD.replace(r#""passed": true"#, r#""passed": false"#);
+        assert_eq!(parse_smartctl(&verdict).state, "failing");
+        // The exit status alone is enough, even with no verdict in the answer.
+        let status = r#"{ "smartctl": { "exit_status": 8 }, "power_on_time": { "hours": 9 } }"#;
+        let h = parse_smartctl(status);
+        assert_eq!((h.state.as_str(), h.passed), ("failing", Some(false)));
+    }
+
+    #[test]
+    fn a_disk_that_did_not_answer_says_why() {
+        let denied = r#"{ "smartctl": { "exit_status": 2, "messages": [ { "string": "Smartctl open device: /dev/sda failed: Permission denied", "severity": "error" } ] } }"#;
+        assert_eq!(parse_smartctl(denied).note, NEEDS_ADMIN);
+        let asleep = r#"{ "smartctl": { "exit_status": 2, "messages": [ { "string": "Device is in STANDBY mode, exit(2)", "severity": "information" } ] } }"#;
+        assert_eq!(parse_smartctl(asleep).note, ASLEEP);
+        let bridge = r#"{ "smartctl": { "exit_status": 1, "messages": [ { "string": "/dev/sdb: Unknown USB bridge [0x152d:0x0578 (0x214)]", "severity": "error" } ] } }"#;
+        assert_eq!(parse_smartctl(bridge).note, NO_ANSWERS);
+        let h = parse_smartctl("not json at all");
+        assert_eq!(h.state, "unknown");
+        assert!(!h.note.is_empty());
+    }
+
+    fn disk(key: &str, total: u64, health: Option<Health>) -> Drive {
+        Drive {
+            key: key.into(),
+            path: String::new(),
+            name: String::new(),
+            label: String::new(),
+            kind: "fixed",
+            removable: false,
+            read_only: false,
+            media: true,
+            file_system: String::new(),
+            total,
+            free: total / 2,
+            bus: String::new(),
+            model: String::new(),
+            serial: String::new(),
+            vault: false,
+            first_seen: 0,
+            plugged_in: 0,
+            last_test: None,
+            health,
+            device: String::new(),
+        }
+    }
+
+    #[test]
+    fn the_summary_counts_disks_once_and_finds_the_oldest() {
+        let old = parse_smartctl(OLD_HDD);
+        let failing = parse_smartctl(&NVME.replace(r#""passed": true"#, r#""passed": false"#));
+        let drives = vec![
+            disk("c", 500, Some(failing.clone())),
+            disk("d", 500, Some(failing)), // a second partition of the same NVMe disk
+            disk("e", 12_000, Some(old)),
+            disk("f", 4_000, Some(unread(NEEDS_ADMIN))),
+            Drive { kind: "removable", ..disk("stick", 64, None) },
+        ];
+        let s = summarize(&drives, true);
+        assert_eq!(s.disks, 3);
+        assert_eq!(s.total, 17_000);
+        assert_eq!(s.oldest_hours, Some(67012));
+        assert_eq!(s.reporting, 2);
+        assert_eq!((s.failing, s.worn), (1, 0));
+    }
+
+    #[test]
+    fn without_smartctl_nothing_is_asked() {
+        let smart = Arc::new(Smart::new(None));
+        Smart::refresh(&smart, vec!["C:".into()]);
+        assert!(!smart.asking.load(Ordering::SeqCst));
+        assert!(smart.readings.lock().unwrap().is_empty());
     }
 }

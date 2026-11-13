@@ -1,10 +1,10 @@
 <!-- HomeSection: the box at a glance. A running uptime clock, three live gauges for the
      machine it runs on, and a tile for every other section showing its state right now. A
-     tile opens its section. -->
+     tile opens its section. Spec card (top right) makes a picture of the box's numbers, to post. -->
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
-  import { House, ArrowRight } from '@lucide/svelte';
+  import { House, ArrowRight, IdCard } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { SECTIONS } from '../../lib/sections.js';
@@ -12,6 +12,7 @@
   import { itemIn, reducedMotion } from '../../lib/motion.js';
   import SectionFrame from '../SectionFrame.svelte';
   import Notice from '../Notice.svelte';
+  import SpecCard from '../SpecCard.svelte';
 
   const HOME = 'home';
   const VITALS_MS = 2000;
@@ -35,6 +36,7 @@
   let statuses = $state({}); // section id -> one line about its state now
   let upMs = $state(null); // how long the box has been up, right now, in milliseconds
   let clock = null; // { base, at }: the uptime at one reading, and when this device took it
+  let cardOpen = $state(false);
 
   const source = $derived(shell.boxSource);
   const tiles = SECTIONS.filter((s) => s.id !== HOME);
@@ -179,10 +181,22 @@
   });
 </script>
 
+{#snippet actions()}
+  {#if source}
+    <button class="micro expo t-hover flex h-9 items-center gap-1.5 border border-hairline px-2.5 text-text-dim transition-colors hover:border-chiral/60 hover:text-white" onclick={() => (cardOpen = true)} title="A picture of the box's numbers, to post">
+      <IdCard class="h-3.5 w-3.5" />
+      <span class="hidden sm:inline">SPEC CARD</span>
+    </button>
+  {/if}
+{/snippet}
+
+<SpecCard open={cardOpen} onclose={() => (cardOpen = false)} />
+
 <SectionFrame
   title="Home"
   subtitle={vitals ? `${vitals.host || 'This box'} · ${vitals.os}` : 'The box at a glance'}
   tag={store.isDemo ? 'SAMPLE DATA' : ''}
+  {actions}
 >
   {#if !source}
     <Notice icon={House} title="NO BOX CONNECTED">

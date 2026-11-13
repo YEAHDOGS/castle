@@ -1,5 +1,7 @@
 <!-- ComputerView: the top of This computer. The vault, every drive, and the plugged-in
-     media with when it went in and how fast it is. A drive opens in the file browser. -->
+     media with when it went in and how fast it is. A drive opens in the file browser.
+     Disks also say how they are (smartctl, on the box): hours powered on, and a warning
+     when one says it is failing or is wearing out. -->
 <script>
   import { HardDrive, Usb, Disc3, MemoryStick, Network, Vault, Gauge, LoaderCircle, Clock3, ShieldOff, CornerLeftUp } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
@@ -8,6 +10,7 @@
   import { fmtSize } from '../lib/format.js';
   import { fmtStamp, fmtSince } from '../lib/computer.js';
   import { itemIn } from '../lib/motion.js';
+  import { healthWords, fmtHours, fmtYearsOn, VETERAN_HOURS } from '../lib/spec-card.js';
 
   const TEST_SIZE_MB = 256;
   const CLOCK_TICK_MS = 1000;
@@ -60,6 +63,28 @@
     <p class="micro mt-1.5 text-text-faint">{fmtSize(drive.free)} FREE OF {fmtSize(drive.total)}</p>
   {:else}
     <p class="micro mt-3 text-text-faint">{drive.kind === 'optical' ? 'NO DISC' : 'NO MEDIA'}</p>
+  {/if}
+{/snippet}
+
+{#snippet hours(drive)}
+  {#if drive.health?.powerOnHours != null}
+    {@const veteran = drive.health.powerOnHours >= VETERAN_HOURS}
+    <span
+      class="micro shrink-0 border px-1.5 py-px tabular-nums {veteran ? 'border-chiral/50 text-chiral' : 'border-hairline text-text-dim'}"
+      title={`Powered on for ${drive.health.powerOnHours.toLocaleString('en-US')} hours, about ${fmtYearsOn(drive.health.powerOnHours)}${drive.health.temperature != null ? `. ${drive.health.temperature} °C now` : ''}`}
+    >
+      {fmtHours(drive.health.powerOnHours)}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet health(drive)}
+  {@const words = healthWords(drive.health)}
+  {#if words}
+    <div class="mt-3 border-l-2 px-3 py-2 text-left {words.tone === 'bad' ? 'border-chiral bg-chiral/10' : words.tone === 'warn' ? 'border-chiral/50 bg-white/[0.03]' : 'border-hairline'}" role={words.tone === 'bad' ? 'alert' : undefined}>
+      <p class="micro {words.tone === 'quiet' ? 'text-text-faint' : 'text-chiral'}">{words.title}</p>
+      <p class="mt-0.5 text-[12px] leading-snug {words.tone === 'quiet' ? 'text-text-faint' : 'text-text-dim'}">{words.text}</p>
+    </div>
   {/if}
 {/snippet}
 
@@ -126,11 +151,13 @@
                     <h3 class="truncate text-[15px] font-semibold text-white">{drive.name}</h3>
                     <span class="micro border border-bridge/40 px-1.5 py-px text-bridge">{kindLabel(drive)}</span>
                     {#if drive.readOnly}<span class="micro border border-hairline px-1.5 py-px text-text-dim">READ ONLY</span>{/if}
+                    {@render hours(drive)}
                   </div>
                   <p class="micro mt-1 truncate text-text-faint">
                     {[drive.model, drive.bus, drive.fileSystem].filter(Boolean).join(' · ').toUpperCase() || '—'}
                   </p>
                   {@render usage(drive)}
+                  {@render health(drive)}
                 </div>
               </div>
 
@@ -186,6 +213,11 @@
     <!-- the drives that stay -->
     <section class="mt-7" aria-labelledby="drives-heading">
       <h2 id="drives-heading" class="micro mb-3 text-chiral">DRIVES</h2>
+      {#if computer.smartctl === false}
+        <p class="mb-3 text-[12px] text-text-faint">
+          Drive health needs smartctl on the box. Install smartmontools and each disk says how many hours it has been on, and whether it is failing.
+        </p>
+      {/if}
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {#each fixed as drive, i (drive.key)}
           {@const Icon = iconFor(drive)}
@@ -201,11 +233,13 @@
                 <div class="flex items-center gap-2">
                   <p class="truncate text-[14px] font-semibold text-white">{drive.name}</p>
                   {#if drive.vault}<span class="micro border border-chiral/40 px-1.5 py-px text-chiral">VAULT</span>{/if}
+                  {@render hours(drive)}
                 </div>
                 <p class="micro mt-0.5 truncate text-text-faint">{[drive.model, drive.bus, drive.fileSystem].filter(Boolean).join(' · ').toUpperCase()}</p>
               </div>
             </div>
             {@render usage(drive)}
+            {@render health(drive)}
             {#if drive.lastTest}
               <p class="micro mt-2 text-text-faint">
                 {drive.lastTest.writeMbps != null ? `${drive.lastTest.writeMbps} WRITE · ` : ''}{drive.lastTest.readMbps} READ MB/S

@@ -141,11 +141,13 @@ function personalNodes(person) {
 // ---- This computer: the machine the demo box pretends to run on ----
 
 const DEMO_VAULT = 'C:\\Castle';
-const DEMO_SERIALS = { c: '38FC6224', e: '5A1E09C3', f: 'C0FFEE42', d: '7D1B0A11', g: '0BADF00D' };
+const DEMO_SERIALS = { c: '38FC6224', e: '5A1E09C3', f: 'C0FFEE42', d: '7D1B0A11', g: '0BADF00D', h: '5EC0DE12' };
+const TB = 1e12;
 
 /**
- * A computer with a system drive, a USB stick, an SD card and a disc in the drive, plus a
- * stick that was plugged in last week. Its folders are nodes with "host:" ids, so the same
+ * A computer with a system drive, a second-hand 12 TB disk that has been powered on for
+ * 67,000 hours and has started growing bad sectors, a USB stick, an SD card and a disc in
+ * the drive, plus a stick that was plugged in last week. Its folders are nodes with "host:" ids, so the same
  * browser opens them.
  */
 export function demoComputer() {
@@ -192,6 +194,11 @@ export function demoComputer() {
     dir('C:\\Windows\\System32', { modified: now - 2 * DAY }),
     item('C:\\Windows\\explorer.exe', { mime: 'application/x-msdownload', size: 5.2 * MB, readOnly: true }),
 
+    // H: the eBay disk
+    dir('H:\\Backups', { modified: now - 1 * DAY }),
+    dir('H:\\ISOs', { modified: now - 40 * DAY }),
+    item('H:\\ISOs\\debian-13-amd64-netinst.iso', { mime: 'application/x-iso9660-image', size: 0.7 * GB, modified: now - 40 * DAY }),
+
     // E: a USB stick
     dir('E:\\Music', { modified: now - 3 * DAY }),
     dir('E:\\Backups', { modified: now - 8 * DAY }),
@@ -216,7 +223,10 @@ export function demoComputer() {
     serial: DEMO_SERIALS[letter.toLowerCase()], firstSeen: now - 200 * DAY, pluggedIn: now - 6 * DAY, lastTest: null, ...extra,
   });
   const drives = [
-    drive('C', { name: 'Local Disk (C:)', kind: 'fixed', fileSystem: 'NTFS', total: 1000 * GB, free: 412 * GB, bus: 'NVMe', model: 'Samsung SSD 990 PRO 1TB', vault: true }),
+    drive('C', { name: 'Local Disk (C:)', kind: 'fixed', fileSystem: 'NTFS', total: 1000 * GB, free: 412 * GB, bus: 'NVMe', model: 'Samsung SSD 990 PRO 1TB', vault: true,
+      health: { state: 'ok', powerOnHours: 2210, temperature: 41, passed: true, badSectors: 0, wearPercent: 3, note: '', at: now - 10 * MIN_MS } }),
+    drive('H', { name: 'TANK (H:)', label: 'TANK', kind: 'fixed', fileSystem: 'NTFS', total: 12 * TB, free: 3.1 * TB, bus: 'SATA', model: 'WDC WD120EMFZ-11A6JA0', firstSeen: now - 400 * DAY,
+      health: { state: 'worn', powerOnHours: 67012, temperature: 38, passed: true, badSectors: 8, wearPercent: null, note: '', at: now - 10 * MIN_MS } }),
     drive('D', { name: 'SUMMER FILMS (D:)', label: 'SUMMER FILMS', kind: 'optical', removable: true, readOnly: true, fileSystem: 'UDF', total: 4.4 * GB, free: 0, bus: 'SATA', model: 'HL-DT-ST DVDRAM GH24NSD1', firstSeen: now - 40 * HOUR, pluggedIn: now - 40 * MIN_MS }),
     drive('E', { name: 'KINGSTON (E:)', label: 'KINGSTON', kind: 'removable', removable: true, fileSystem: 'exFAT', total: 64 * GB, free: 51 * GB, bus: 'USB', model: 'Kingston DataTraveler 3.0', firstSeen: now - 61 * DAY, pluggedIn: now - 2 * HOUR,
       lastTest: { at: now - 9 * DAY, mode: 'write', writeMbps: 38.2, readMbps: 131.4, bytes: 256 * MB } }),
@@ -226,5 +236,5 @@ export function demoComputer() {
     { name: 'BACKUP_2TB (G:)', path: 'G:\\', kind: 'external', total: 2000 * GB, firstSeen: now - 300 * DAY, lastSeen: now - 7 * DAY,
       lastTest: { at: now - 7 * DAY, mode: 'write', writeMbps: 118.6, readMbps: 162.9, bytes: 256 * MB } },
   ];
-  return { vault: DEMO_VAULT, separator: '\\', drives, gone, nodes };
+  return { vault: DEMO_VAULT, separator: '\\', drives, gone, nodes, smartctl: true };
 }

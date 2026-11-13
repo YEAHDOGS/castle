@@ -753,6 +753,7 @@ async fn host_drives(State(st): State<Shared>) -> ApiResult<Json<serde_json::Val
             "drives": report.drives,
             "gone": report.gone,
             "at": report.at,
+            "smartctl": report.smartctl,
         })))
     })
     .await
@@ -1628,6 +1629,16 @@ async fn system_vitals(State(st): State<Shared>) -> ApiResult<Json<system::Vital
         .map_err(|msg| ApiError(StatusCode::CONFLICT, msg))
 }
 
+/// The box in a few numbers, for the spec card on Home: its processor, and its disks added
+/// up with the oldest one's power-on hours. No paths and no names, so unlike the drive list
+/// it needs no access to the computer's folders.
+async fn specs(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    tokio::task::spawn_blocking(move || serde_json::json!({ "processor": st.system.processor(), "drives": st.drives.summary() }))
+        .await
+        .map(Json)
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))
+}
+
 /// What this box is and how it was started: read-only facts for the Settings screen.
 async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
     let state = st.clone();
@@ -1993,6 +2004,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/settings", get(settings_get).put(settings_put))
         .route("/box", get(box_info))
         .route("/system", get(system_vitals))
+        .route("/specs", get(specs))
         .route("/security", get(security_overview))
         .route("/security/log", get(security_log))
         .route("/security/verify", post(security_verify))
