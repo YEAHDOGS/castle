@@ -5,6 +5,7 @@
   import { fly } from 'svelte/transition';
   import { fmtSize } from '../../lib/format.js';
   import { itemIn } from '../../lib/motion.js';
+  import { SHOWCASE, refused } from '../../lib/showcase.js';
   import { DEMO_MODELS, DEMO_AI_HARDWARE } from '../../lib/demo-shell.js';
   import SectionFrame from '../SectionFrame.svelte';
 
@@ -75,7 +76,7 @@
           {:else if state === 'ready'}
             <button
               class="expo t-hover micro h-8 border border-hairline px-3 font-bold text-white transition-colors hover:border-chiral/60"
-              onclick={() => (loadedId = model.id)}
+              onclick={() => (SHOWCASE ? refused() : (loadedId = model.id))}
             >
               LOAD
             </button>

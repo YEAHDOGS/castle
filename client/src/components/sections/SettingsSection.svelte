@@ -7,6 +7,7 @@
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { prefs } from '../../lib/prefs.svelte.js';
+  import { SHOWCASE, refused } from '../../lib/showcase.js';
   import { SETTING_GROUPS, SETTINGS, defaultsFor } from '../../lib/settings.js';
   import SectionFrame from '../SectionFrame.svelte';
   import madeByDogs from '../../assets/made-by-dogs-sticker.webp';
@@ -31,6 +32,7 @@
   const locked = (setting) => setting.where === 'box' && !source;
 
   async function change(setting, value) {
+    if (SHOWCASE) return refused(); // the read-only demo shows the settings but keeps them as they are
     if (setting.where === 'device') {
       prefs.set(setting.id, value);
       if (setting.id === 'storage.fileView') store.setViewMode(value);
@@ -246,7 +248,7 @@
                   {value}
                   disabled={off}
                   aria-label={setting.label}
-                  onchange={(e) => changeNumber(setting, e.currentTarget.value)}
+                  onchange={(e) => (SHOWCASE ? ((e.currentTarget.value = value ?? ""), refused()) : changeNumber(setting, e.currentTarget.value))}
                   class="h-9 w-24 border border-hairline bg-white/[0.03] px-2 text-right text-[14px] tabular-nums text-white focus:border-chiral/60 focus:outline-none"
                 />
                 <span class="micro w-14 text-text-faint">{setting.unit}</span>
@@ -260,7 +262,7 @@
                 aria-label={setting.label}
                 autocomplete="off"
                 spellcheck="false"
-                onchange={(e) => change(setting, e.currentTarget.value.trim())}
+                onchange={(e) => (SHOWCASE ? ((e.currentTarget.value = value ?? ""), refused()) : change(setting, e.currentTarget.value.trim()))}
                 class="h-9 w-full border border-hairline bg-white/[0.03] px-3 text-[14px] text-white placeholder:text-text-faint focus:border-chiral/60 focus:outline-none sm:w-64"
               />
             {/if}

@@ -76,3 +76,17 @@ A way to make data yours again
 | `swarm/` | Agent-team design notes. |
 
 **The idea:** Castle is a router replacement with built-in local network storage — a self-hosted Google Drive on your own LAN. Clonewars builds the compute nodes, arcade + saves cover the retro-gaming thread, and the sync server/app are the storage heart. Future: warehouse facilities for encrypted offsite backup.
+
+## The website and its demo
+
+castle.dogs.red is the landing page (`landing/`) with a read-only demo of the whole app at
+`/demo/`: every section with sample data, and every button that would run or change something
+says so instead. It is the client built with `npm run build:showcase` (see
+`client/src/lib/showcase.js`). To put the site together and publish it:
+
+```sh
+node scripts/build-site.mjs                                              # -> site-dist/
+npx wrangler pages deploy site-dist --project-name=castle --branch=master
+```
+
+The deploy replaces everything the site serves, so always deploy the whole `site-dist/`.

@@ -25,11 +25,14 @@
   import Toasts from './components/Toasts.svelte';
   import AskDialog from './components/AskDialog.svelte';
   import PadHints from './components/PadHints.svelte';
+  import ShowcaseBanner from './components/ShowcaseBanner.svelte';
+  import { SHOWCASE } from './lib/showcase.js';
 
   const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, theater: TheaterSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
   const Section = $derived(SECTION_VIEWS[shell.section] || StorageSection);
 
   onMount(() => {
+    if (SHOWCASE) document.title = 'Castle — Demo';
     store.init(); // no login wall: straight into the drive
     fullScreen.listen();
   });
@@ -50,3 +53,4 @@
 <AskDialog />
 <Toasts />
 <PadHints />
+{#if SHOWCASE}<ShowcaseBanner />{/if}

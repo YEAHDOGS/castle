@@ -1,8 +1,10 @@
 <!-- ModeSwitch: LIVE or DEMO, in every header. Live is your own box; Demo is sample data
-     that changes nothing. Switching keeps you in the same section. -->
+     that changes nothing. Switching keeps you in the same section. The showcase (the public
+     demo, see lib/showcase.js) has no Live: it shows a plain DEMO mark instead. -->
 <script>
   import { shell } from '../lib/shell.svelte.js';
   import { store } from '../lib/store.svelte.js';
+  import { SHOWCASE } from '../lib/showcase.js';
 
   const MODES = [
     { demo: false, label: 'LIVE' },
@@ -25,6 +27,9 @@
   }
 </script>
 
+{#if SHOWCASE}
+  <span class="micro flex h-10 shrink-0 items-center border border-bridge/40 px-3 font-bold text-bridge" title="A read-only demo with sample data">DEMO</span>
+{:else}
 <div class="relative flex h-10 shrink-0 items-stretch border border-hairline" role="group" aria-label="Live or demo data">
   <!-- the highlight slides between the two halves -->
   <span
@@ -48,3 +53,4 @@
     </button>
   {/each}
 </div>
+{/if}

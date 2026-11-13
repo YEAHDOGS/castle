@@ -4,6 +4,7 @@
   import { scale, fade } from 'svelte/transition';
   import { store } from '../lib/store.svelte.js';
   import { pop, reducedMotion } from '../lib/motion.js';
+  import { SHOWCASE, refused } from '../lib/showcase.js';
 
   let { onclose } = $props();
   let fileInput = $state(null);
@@ -11,6 +12,7 @@
 
   function pick(kind) {
     onclose();
+    if (SHOWCASE) return refused(); // no file picker in the read-only demo
     if (kind === 'folder') store.newFolder();
     else if (kind === 'file') fileInput?.click();
     else folderInput?.click();

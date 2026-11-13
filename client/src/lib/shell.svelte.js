@@ -6,6 +6,7 @@ import { SECTIONS, DEFAULT_SECTION } from './sections.js';
 import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoBox, DemoSecurity, DemoTheater } from './demo-shell.js';
 import { DemoPresence } from './demo-presence.js';
 import { prefs } from './prefs.svelte.js';
+import { SHOWCASE, readOnly } from './showcase.js';
 
 const SECTION_KEY = 'castle-section';
 const WRONG_PIN = 'Wrong PIN';
@@ -32,13 +33,15 @@ class Shell {
   userId = $state(null); // null = the first person in `users`
 
   // Demo stand-ins, kept for the whole visit so a pretend launch survives a section change.
-  demoArcade = new DemoArcade();
-  demoClones = new DemoClones();
-  demoNetwork = new DemoNetwork();
-  demoBox = new DemoBox();
-  demoSecurity = new DemoSecurity();
-  demoTheater = new DemoTheater();
-  demoPresence = new DemoPresence();
+  // Each goes through readOnly: in the showcase build only their reads work (showcase.js
+  // explains how to add a new one).
+  demoArcade = readOnly(new DemoArcade());
+  demoClones = readOnly(new DemoClones());
+  demoNetwork = readOnly(new DemoNetwork());
+  demoBox = readOnly(new DemoBox());
+  demoSecurity = readOnly(new DemoSecurity());
+  demoTheater = readOnly(new DemoTheater());
+  demoPresence = readOnly(new DemoPresence());
 
   /** People on this box. Accounts exist only in the demo until the box grows them. */
   get users() {
@@ -68,6 +71,7 @@ class Shell {
 
   /** Live or demo. People differ between the two, so the switch lands on the first one. */
   async setDemo(on) {
+    if (SHOWCASE) return; // the showcase is only ever the demo
     this.userId = null;
     this.userMenuOpen = false;
     await store.setDemo(on);
