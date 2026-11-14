@@ -46,11 +46,9 @@
 # every copy of it shares: %LOCALAPPDATA%\DOGS AI. See app/ai's README.)
 app/data/
 
-# The demo's images: scripts/demo-media.mjs builds media/, which is uploaded to
-# data.wearedogs.net/castle/ (its contents: arcade/, theater/, the credits). Only its credits are kept here.
-/media/*
-!/media/CREDITS.md
-!/media/credits.json
+# The demo's images and their credits: scripts/demo-media.mjs builds media/, whose contents are hosted at
+# data.wearedogs.net/castle/ (arcade/, theater/, CREDITS.md). Never committed.
+/media/
 
 # Rust build output (castled, app/src-tauri, app/ai/app/src-tauri)
 target/

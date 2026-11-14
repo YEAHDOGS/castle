@@ -6,7 +6,7 @@
 import { svgThumb } from './adapter.js';
 
 // The demo's posters, covers, stills and game art: public domain or freely licensed, built by
-// scripts/demo-media.mjs into media/ (see media/CREDITS.md) and hosted here.
+// scripts/demo-media.mjs into media/ (credits: data.wearedogs.net/castle/CREDITS.md) and hosted here.
 export const MEDIA_BASE = 'https://data.wearedogs.net/castle';
 const hostedImages = new Map();
 
@@ -71,7 +71,7 @@ export const DEMO_AI_HARDWARE = { gpu: 'GPU 24 GB', vramUsed: 19.4 * GB, vramTot
 // ---------------------------------------------------------------------------------------
 
 // The sample games are real ones that are free to show: homebrew and libretro's own games whose code and art are
-// under free licences. Their screenshots and box art are hosted with the site (see media/CREDITS.md).
+// under free licences. Their screenshots and box art are hosted with the site (credits: data.wearedogs.net/castle/CREDITS.md).
 const SYSTEM_TINTS = [
   ['#4a1a1a', '#0e0508'], ['#3a1a4a', '#0b0e1e'], ['#1a4a2b', '#0e1e12'], ['#2b3a8a', '#0e122b'],
   ['#8a5a2b', '#2b1a0e'], ['#123a4a', '#0e0b1e'],
@@ -727,7 +727,7 @@ export class DemoSecurity {
 // ---------------------------------------------------------------------------------------
 // Theater: real films, shows and albums that are free to show: public-domain films and cartoons, the Blender
 // open movies, Creative Commons music and photos. Their posters, stills and covers are hosted with the site
-// (see media/CREDITS.md). Paths, sizes, people's photo folders and home videos are made up.
+// (credits: data.wearedogs.net/castle/CREDITS.md). Paths, sizes, people's photo folders and home videos are made up.
 // ---------------------------------------------------------------------------------------
 
 const DEMO_TINTS = [

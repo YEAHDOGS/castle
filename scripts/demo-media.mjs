@@ -7,7 +7,7 @@
 //   node scripts/demo-media.mjs           fetch what is missing and rebuild media/
 //
 // What is fetched, from where and under which licence is listed below and written to media/CREDITS.md and
-// media/credits.json, which the licences ask for. Downloads are kept in app/data/demo-media-cache, so a rerun
+// media/credits.json, which the licences ask for: upload them with the images. media/ is never committed. Downloads are kept in app/data/demo-media-cache, so a rerun
 // only fetches new entries. Needs Node 22+ and ffmpeg on PATH.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";

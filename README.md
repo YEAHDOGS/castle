@@ -79,8 +79,7 @@ folder; everything that is part of the app lives in `app/`.
 | `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage, Arcade, Theater, Comms, Contacts, Clones, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
 | `os/` | Castle OS: the Arch-based install image and its tools. |
 | `landing/` | castle.dogs.red, the landing page. |
-| `media/` | The demo's images (posters, stills, album covers, photos and game art), all public domain or freely licensed, with their credits in `media/CREDITS.md`. `node scripts/demo-media.mjs` builds the folder; its contents are hosted at data.wearedogs.net/castle, and only the credits are committed. |
-| `scripts/` | Repo scripts, such as building the website and the demo's images. |
+| `scripts/` | Repo scripts, such as building the website, and `demo-media.mjs`, which builds the demo's images (all public domain or freely licensed) into `media/`, never committed: its contents are hosted at data.wearedogs.net/castle, with their credits in `CREDITS.md` there. |
 
 `start.sh` (or `start.cmd` on Windows) runs the whole thing for development: the daemon, the app and DOGS AI, rebuilding each as you edit it.
 
