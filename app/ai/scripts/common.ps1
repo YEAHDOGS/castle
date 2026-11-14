@@ -3,10 +3,12 @@ $ErrorActionPreference = 'Stop'
 
 $Repo     = Split-Path -Parent $PSScriptRoot
 $Stack    = Get-Content (Join-Path $Repo 'stack.json') -Raw | ConvertFrom-Json
-$Runtime  = Join-Path $Repo 'runtime'
+# Everything installed, downloaded or made lives in app/data/ai (git-ignored), or DOGS_AI_DATA.
+$Data     = if ($env:DOGS_AI_DATA) { $env:DOGS_AI_DATA } else { Join-Path (Join-Path (Split-Path -Parent $Repo) 'data') 'ai' }
+$Runtime  = Join-Path $Data 'runtime'
 $ComfyDir = Join-Path $Runtime 'ComfyUI'
 $FluxDir  = Join-Path $Runtime 'models\flux3-klein'
-$Outputs  = Join-Path $Repo 'outputs'
+$Outputs  = Join-Path $Data 'outputs'
 $ComfyUrl = "http://127.0.0.1:$($Stack.comfyui.port)"
 $VenvPy   = Join-Path $ComfyDir '.venv\Scripts\python.exe'
 

@@ -1,13 +1,13 @@
 # ==============================================================================
-# Castle -- build data\win11-pro-docker.iso for the windows Docker profile
+# Castle -- build app\data\clonewars\win11-pro-docker.iso for the windows Docker profile
 # ==============================================================================
-# Turns the Windows install folder (clonewars\data\win11-pro, the same one
+# Turns the Windows install folder (app\data\clonewars\win11-pro, the same one
 # start.ps1 uses for the QEMU win11-pro target) into an ISO that dockur/windows
 # can install unattended. See build-iso.sh for why the stock Castle ISO is not
 # usable as-is. Runs the build inside a throwaway dockurr/windows container, so
 # nothing is installed on the host and no admin rights are needed.
 #
-#   .\build-iso.ps1                        # data\win11-pro -> data\win11-pro-docker.iso
+#   .\build-iso.ps1                        # app\data\clonewars\win11-pro -> app\data\clonewars\win11-pro-docker.iso
 #   .\build-iso.ps1 -Source D:\win11 -Output D:\win11-docker.iso
 #
 # docker.ps1 -Profile windows calls this automatically when the ISO is missing.
@@ -15,8 +15,8 @@
 # through Docker Desktop's file sharing.
 # ==============================================================================
 param (
-    [string]$Source = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "data\win11-pro"),
-    [string]$Output = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "data\win11-pro-docker.iso")
+    [string]$Source = (Join-Path $(if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) "data") "clonewars" }) "win11-pro"),
+    [string]$Output = (Join-Path $(if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) "data") "clonewars" }) "win11-pro-docker.iso")
 )
 $ErrorActionPreference = "Stop"
 

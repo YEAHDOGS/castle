@@ -34,7 +34,7 @@ param (
     [Parameter()]
     [Switch]$Vnc,
 
-    # Copy data/copy into the guest (read-only USB share CASTLECOPY), install
+    # Copy app/data/clonewars/copy into the guest (read-only USB share CASTLECOPY), install
     # Wine there with scripts/setup-wine.sh and run the Windows programs it
     # finds -- all driven from the host through the QEMU guest agent. Targets
     # that support it carry SupportsCopy in targets.ps1 (EndeavourOS first).
@@ -42,7 +42,7 @@ param (
     [Alias("c")]
     [Switch]$Copy,
 
-    # Program(s) to run after the Wine install: a file name inside data/copy or
+    # Program(s) to run after the Wine install: a file name inside app/data/clonewars/copy or
     # a path inside the guest. Implies -Copy. Without it, -Copy runs every .exe.
     [Parameter()]
     [Alias("p")]
@@ -53,7 +53,7 @@ param (
     #            when there are any, OpenGOAL when a PS2 disc ISO is present
     #   wine     install Wine, run the payload's .exe/.msi files
     #   opengoal install OpenGOAL, build Jak and Daxter from the disc ISO in
-    #            data/copy, launch it (software OpenGL via llvmpipe)
+    #            app/data/clonewars/copy, launch it (software OpenGL via llvmpipe)
     [Parameter()]
     [String]$Setup = "auto",
 
@@ -94,15 +94,16 @@ $ModuleRoot = Join-Path $PSScriptRoot "modules"
 . (Join-Path $ModuleRoot "guest.ps1")
 . (Join-Path $ModuleRoot "profiles.ps1")
 
-$DataDir = Join-Path $PSScriptRoot "data"
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+$DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "data") "clonewars" }
 # CASTLE_COPY_DIR points one launch at its own payload folder, so several VMs
-# can be prepared at once without sharing data/copy.
+# can be prepared at once without sharing app/data/clonewars/copy.
 $CopyDir = if ($env:CASTLE_COPY_DIR) { $env:CASTLE_COPY_DIR } else { Join-Path $DataDir "copy" }
 # Files staged per launch carry the instance name, for the same reason.
 function Get-LaunchSuffix { if ([string]::IsNullOrEmpty($Instance)) { "" } else { "-$Instance" } }
 
 function Get-CopyPayloadFiles {
-    # Everything under data/copy except the folder's own README.
+    # Everything under app/data/clonewars/copy except the folder's own README.
     if (-not (Test-Path $CopyDir)) { return @() }
     return @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { -not ($_.Name -ieq "README.md" -and $_.DirectoryName -eq (Get-Item $CopyDir).FullName) })
 }
@@ -189,7 +190,7 @@ if ($DeleteDisk -or $DeleteIso -or $Purge) {
         Exit $LASTEXITCODE
     }
 
-    # Google emulator: the AVD lives in data/android-sdk; android.ps1 removes it.
+    # Google emulator: the AVD lives in app/data/clonewars/android-sdk; android.ps1 removes it.
     if ($Matched[0].Runtime -eq "avd") {
         & (Join-Path $PSScriptRoot "android.ps1") -Purge
         Exit $LASTEXITCODE
@@ -386,10 +387,10 @@ function Show-TargetDetails {
         $PayloadFiles = @(Get-CopyPayloadFiles)
         $PayloadStatus = if ($PayloadFiles.Count -gt 0) {
             $PayloadMB = "{0:N0}" -f (($PayloadFiles | Measure-Object -Property Length -Sum).Sum / 1MB)
-            "$($PayloadFiles.Count) file(s), $PayloadMB MB in data/copy -- boot asks whether to copy + install Wine"
+            "$($PayloadFiles.Count) file(s), $PayloadMB MB in app/data/clonewars/copy -- boot asks whether to copy + install Wine"
         }
         else {
-            "data/copy is empty (drop .exe files there; -Copy installs Wine and runs them)"
+            "app/data/clonewars/copy is empty (drop .exe files there; -Copy installs Wine and runs them)"
         }
         Write-Host "   * Copy Payload:  $PayloadStatus" -ForegroundColor White
     }
@@ -411,7 +412,7 @@ function Show-HelpDocs {
     Write-Host "     .\start.ps1                 Start this interactive prompting loop."
     Write-Host "     -Mirror <n|host|country>    Pick a download mirror without the prompt"
     Write-Host "                                 (targets with a mirror list, e.g. endeavouros)."
-    Write-Host "     -Copy | -c                  Copy data/copy into the VM, install Wine and run"
+    Write-Host "     -Copy | -c                  Copy app/data/clonewars/copy into the VM, install Wine and run"
     Write-Host "                                 every .exe in it (EndeavourOS; via the guest agent)."
     Write-Host "     -Program <name> | -p        Run only that program after the install (implies -Copy)."
     Write-Host "     -Setup auto|wine|opengoal   Guest setup script for -Copy (scripts/setup-<name>.sh; auto = by payload)."
@@ -422,12 +423,13 @@ function Show-HelpDocs {
     Write-Host "   SECURITY & TRUST PINNING:" -ForegroundColor White
     Write-Host "     * Remote Verification: Checks remote SHA hashes and GPG signatures."
     Write-Host "     * Local Trust Store: After first success, hashes are saved in"
-    Write-Host "       data\.castle_trust.json. Future boots re-verify against the local"
+    Write-Host "       app\data\clonewars\.castle_trust.json. Future boots re-verify against the local"
     Write-Host "       trust store to protect against bit rot or offline tampering."
     Write-Host ""
     Write-Host "   DIRECTORY STRUCTURE:" -ForegroundColor White
     Write-Host "     * start.ps1                 Unified CLI entry point."
-    Write-Host "     * data/                     Downloaded ISOs, virtual disks, and trust store."
+    Write-Host "     * ..\data\clonewars\       Downloaded ISOs, virtual disks, and trust store"
+    Write-Host "                                 (app\data\clonewars, or CASTLE_CLONEWARS_DATA)."
     Write-Host "     * modules/                  Modular helper scripts for network, targets,"
     Write-Host "                                 verification, hardware, and launch."
     Write-Host "     * scripts/                  Autoinstall configurations."
@@ -765,7 +767,7 @@ Write-Host "  Target: $($Iso.Name)" -ForegroundColor White
 Write-Host "  ================================================================" -ForegroundColor DarkGray
 
 # ==============================================================================
-# COPY PAYLOAD -- data/copy -> guest, Wine install, program launch
+# COPY PAYLOAD -- app/data/clonewars/copy -> guest, Wine install, program launch
 # ==============================================================================
 $RunAll = $false
 $Programs = @()
@@ -780,7 +782,7 @@ if ($Iso.SupportsCopy) {
     if (-not $Copy -and $CopyFiles.Count -gt 0 -and -not $Background) {
         # Interactive: the folder has something in it, ask before booting.
         Write-Host ""
-        Write-Host "  [COPY] data/copy holds $($CopyFiles.Count) file(s):" -ForegroundColor Cyan
+        Write-Host "  [COPY] app/data/clonewars/copy holds $($CopyFiles.Count) file(s):" -ForegroundColor Cyan
         foreach ($f in ($CopyFiles | Select-Object -First 12)) {
             $Rel = $f.FullName.Substring($CopyRoot.Length).TrimStart('\', '/')
             Write-Host ("     * {0}  ({1:N1} MB)" -f $Rel, ($f.Length / 1MB)) -ForegroundColor White
@@ -872,7 +874,7 @@ if ($Iso.SupportsCopy) {
         }
 
         if ($CopyFiles.Count -eq 0) {
-            Write-Host "  [COPY] data/copy is empty -- $Setup setup will still run in the VM." -ForegroundColor Yellow
+            Write-Host "  [COPY] app/data/clonewars/copy is empty -- $Setup setup will still run in the VM." -ForegroundColor Yellow
         }
         else {
             $What = if ($RunAll) { "run everything it finds" } elseif ($Programs.Count -gt 0) { "run $($Programs -join ', ')" } else { "install only" }
@@ -888,7 +890,7 @@ elseif ($Copy) {
 if (-not $Copy) { $ExtraCdroms = @(); $EffectiveCopyIso = $null; $EffectiveCopyDir = $null }
 
 # Scratch disk for -Copy runs: a sparse qcow2 next to the target's disk
-# (data/scratch/<target>-scratch.qcow2). The guest keeps the payload copy, the
+# (app/data/clonewars/scratch/<target>-scratch.qcow2). The guest keeps the payload copy, the
 # Wine prefix and game builds on it instead of in RAM, and it persists, so a
 # second run skips the rebuilds. CASTLE_VM_SCRATCH=0 keeps everything in RAM.
 $ScratchDisk = $null
@@ -1022,7 +1024,7 @@ else {
 $DiskSize = if ($Iso.DiskSize) { $Iso.DiskSize } else { "40G" }
 # Cloud images are never installed to: every VM disk is a linked clone. An
 # -Instance of a cloud target clones the target's finished "golden" disk when
-# one exists (data/<target>.qcow2, built by a plain `.\start.ps1 <target>` run),
+# one exists (app/data/clonewars/<target>.qcow2, built by a plain `.\start.ps1 <target>` run),
 # so it boots straight to the configured desktop and apps in seconds instead of
 # re-running the whole first-boot package install; without a golden disk it
 # falls back to the raw verified image. Shut the golden VM down before cloning

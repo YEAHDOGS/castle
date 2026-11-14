@@ -22,7 +22,7 @@
     one), its writable layer is its disk, so what a setup installs is kept
     and the second start skips it. -Temporary makes a throwaway (removed when
     it stops). The payload and the launch profile are staged into
-    data/containers/<name>/ before every start and mounted read-only, the
+    app/data/clonewars/containers/<name>/ before every start and mounted read-only, the
     scripts folder too; nothing on the host is writable from inside.
 
     start.ps1 hands container targets to this script, so profiles work:
@@ -31,7 +31,7 @@
     .\container.ps1 container-debian -Instance job-01        # make (or start) castle-job-01
     .\container.ps1 container-debian -Instance job-01 -Stop  # stop it (it is kept)
     .\container.ps1 container-debian -Instance job-01 -Remove
-    .\container.ps1 container-android -Instance phone-1 -Copy   # data\copy: APKs installed, the rest pushed
+    .\container.ps1 container-android -Instance phone-1 -Copy   # app\data\clonewars\copy: APKs installed, the rest pushed
     .\container.ps1 -List
 #>
 param (
@@ -40,7 +40,7 @@ param (
     [string]$Instance,
     [Alias("c")]
     [switch]$Copy,
-    # Folder whose files ride in as the payload (default: data/copy, or CASTLE_COPY_DIR).
+    # Folder whose files ride in as the payload (default: app/data/clonewars/copy, or CASTLE_COPY_DIR).
     [string]$CopyDir,
     # A castle-profile.env written by start.ps1 (packages and commands for the setup).
     [string]$ProfileEnv,
@@ -61,7 +61,8 @@ $ErrorActionPreference = "Stop"
 . (Join-Path (Join-Path $PSScriptRoot "modules") "targets.ps1")
 . (Join-Path (Join-Path $PSScriptRoot "modules") "containers.ps1")
 
-$DataDir = Join-Path $PSScriptRoot "data"
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+$DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "data") "clonewars" }
 $Label = "net.wearedogs.castle.unit"
 
 if ($List) {

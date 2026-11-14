@@ -16,7 +16,9 @@ const COMFY_URL = (process.env.COMFY_URL || "http://127.0.0.1:8188").replace(/\/
 const COMFY_AUTOSTART = process.env.COMFY_AUTOSTART || path.resolve(HERE, "../../scripts/start-comfyui.ps1");
 const OLLAMA_URL = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
 const VRAM_HANDOFF = process.env.VRAM_HANDOFF !== "0";
-const OUTPUTS = path.resolve(process.env.DOGS_AI_OUTPUTS || path.resolve(HERE, "../../outputs"));
+// Same place as the dogs server: app/data/ai/outputs in Castle, or DOGS_AI_DATA/outputs.
+const OUTPUTS = path.resolve(process.env.DOGS_AI_OUTPUTS
+  || path.join(process.env.DOGS_AI_DATA || path.resolve(HERE, "../../../data/ai"), "outputs"));
 const CLIENT_ID = randomUUID();
 
 const log = (...a) => console.error("[comfy-mcp]", ...a); // stdout is the MCP channel
@@ -150,7 +152,7 @@ server.registerTool("generate_image", {
     steps: z.number().int().min(4).max(16).default(16).describe("4-16; 8 for drafts."),
     count: z.number().int().min(1).max(4).default(1).describe("Number of images (batch)."),
     seed: z.number().int().min(0).optional().describe("Omit for random."),
-    save_to: z.string().optional().describe("Folder to save into (e.g. ./assets). Default: dogs-ai/outputs/generated/image."),
+    save_to: z.string().optional().describe("Folder to save into (e.g. ./assets). Default: app/data/ai/outputs/generated/image."),
     filename_prefix: z.string().regex(/^[\w-]+$/).default("flux3"),
   },
 }, async (a) => {

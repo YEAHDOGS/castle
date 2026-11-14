@@ -3,7 +3,7 @@
     Boot any ISO file in QEMU with a virtual disk of the size you choose.
 .DESCRIPTION
     Point it at an ISO (EndeavourOS, Ubuntu, Kali, Arch, anything bootable) and
-    a disk size. It creates a qcow2 of that size under data/adhoc/, boots the
+    a disk size. It creates a qcow2 of that size under app/data/clonewars/adhoc/, boots the
     installer from the ISO on the first run, and boots the installed disk on
     every later run (the ISO stays attached as a CD for repairs). No manifest
     entry, no download: this is for images you already have on disk.
@@ -24,9 +24,9 @@
 .PARAMETER DiskSize
     Virtual disk size: 5, 5G, 5GB, 10gb, 15G, 40G ... (default 10G).
 .PARAMETER Name
-    VM name; the disk is data/adhoc/<Name>.qcow2. Default: ISO base name + size.
+    VM name; the disk is app/data/clonewars/adhoc/<Name>.qcow2. Default: ISO base name + size.
 .PARAMETER Disk
-    Explicit qcow2 path instead of data/adhoc/<Name>.qcow2.
+    Explicit qcow2 path instead of app/data/clonewars/adhoc/<Name>.qcow2.
 .PARAMETER Fresh
     Delete the existing disk (and its NVRAM) first so the installer runs again.
 .PARAMETER BootFrom
@@ -87,11 +87,11 @@
 .PARAMETER DryRun
     Print the QEMU command line (after verification) and exit without launching.
 .EXAMPLE
-    .\boot-iso.ps1 .\data\endeavouros-Titan-Nova-2026.08.15.iso 10G
+    .\boot-iso.ps1 ..\data\clonewars\endeavouros-Titan-Nova-2026.08.15.iso 10G
     .\boot-iso.ps1 C:\isos\EndeavourOS_Titan-Nova-2026.08.15.iso 15gb -Sig C:\isos\EndeavourOS_Titan-Nova-2026.08.15.iso.sig -Sha512 C:\isos\EndeavourOS_Titan-Nova-2026.08.15.iso.sha512sum
     .\boot-iso.ps1 C:\isos\ubuntu-24.04.3-desktop-amd64.iso 15G -Sha256 C:\isos\SHA256SUMS -Sig C:\isos\SHA256SUMS.gpg
     .\boot-iso.ps1 C:\isos\kali-linux-2026.3-installer-amd64.iso 20G -Vga virtio -Audio -PortForward 2222:22
-    .\boot-iso.ps1 .\data\endeavouros-Titan-Nova-2026.08.15.iso 5G -Snapshot -Fresh -Firmware uefi
+    .\boot-iso.ps1 ..\data\clonewars\endeavouros-Titan-Nova-2026.08.15.iso 5G -Snapshot -Fresh -Firmware uefi
 #>
 param (
     [Parameter(Position = 0, Mandatory = $true)]
@@ -191,7 +191,8 @@ $Slug = ($IsoBase.ToLower() -replace '[^a-z0-9._-]+', '-').Trim('-')
 if ([string]::IsNullOrWhiteSpace($Name)) { $Name = "$Slug-$DiskSize" }
 $Name = ($Name -replace '[^A-Za-z0-9._-]+', '-').Trim('-')
 
-$DataDir = Join-Path $PSScriptRoot "data"
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+$DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "data") "clonewars" }
 $DiskPath = if ($Disk) { $Disk } else { Join-Path (Join-Path $DataDir "adhoc") "$Name.qcow2" }
 $DiskDir = Split-Path $DiskPath -Parent
 if (-not (Test-Path $DiskDir)) { New-Item -ItemType Directory -Path $DiskDir -Force | Out-Null }

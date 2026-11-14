@@ -1,11 +1,7 @@
-# Runtime (installed/downloaded by install.ps1, never committed)
-runtime/
-outputs/
+# The runtime, models and outputs live in app/data/ai (ignored at the top of the repo).
 node_modules/
 *.log
 .env
-models/*
-!models/.gitkeep
 
 # Old Electron packages (desktop builds now land in app/src-tauri/target/, ignored there)
 build/

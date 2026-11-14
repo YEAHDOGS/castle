@@ -31,7 +31,7 @@
         "COMFY_AUTOSTART": "__REPO__/scripts/start-comfyui.ps1",
         "OLLAMA_URL": "http://127.0.0.1:11434",
         "VRAM_HANDOFF": "1",
-        "DOGS_AI_OUTPUTS": "__REPO__/outputs"
+        "DOGS_AI_OUTPUTS": "__OUTPUTS__"
       },
       "enabled": true,
       "timeout": 900000

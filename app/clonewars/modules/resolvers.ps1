@@ -127,7 +127,7 @@ function Invoke-VersionPrompt {
     Write-Host "  [?] Multiple versions discovered for $($Target.Name)" -ForegroundColor Cyan
     Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
 
-    $DataDir = Join-Path (Split-Path $PSScriptRoot -Parent) "data"
+    $DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "data") "clonewars" }
     
     # Helper to check if disk exists for a version
     function Get-DiskStatus {

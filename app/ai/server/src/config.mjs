@@ -9,13 +9,16 @@ export const STACK = JSON.parse(readFileSync(path.join(REPO, "stack.json"), "utf
 
 const env = process.env;
 export const IS_WIN = process.platform === "win32";
-export const RUNTIME = path.join(REPO, "runtime");
+// Everything DOGS AI installs, downloads or makes lives outside its code, in app/data/ai inside
+// Castle (git-ignored), or DOGS_AI_DATA: runtime/ (ComfyUI, linked models, the database), models/, outputs/.
+export const DATA = path.resolve(env.DOGS_AI_DATA || path.join(REPO, "..", "data", "ai"));
+export const RUNTIME = path.join(DATA, "runtime");
 export const COMFY_DIR = path.join(RUNTIME, "ComfyUI");
-export const MODELS_DIR = path.resolve(env.DOGS_MODELS || path.join(REPO, "models"));
+export const MODELS_DIR = path.resolve(env.DOGS_MODELS || path.join(DATA, "models"));
 // Hard links to every scanned model file, grouped by ComfyUI folder. ComfyUI reads it via extra_model_paths.yaml.
 export const LINKED_DIR = path.join(RUNTIME, "models", "linked");
 export const EXTRA_PATHS_YAML = path.join(RUNTIME, "extra_model_paths.yaml");
-export const OUTPUTS = path.resolve(env.DOGS_AI_OUTPUTS || path.join(REPO, "outputs"));
+export const OUTPUTS = path.resolve(env.DOGS_AI_OUTPUTS || path.join(DATA, "outputs"));
 // Every generated file lands in outputs/generated/<kind>/; outputs/ also holds uploads (inputs/, characters/).
 export const GENERATED = "generated";
 export const WORKFLOWS_DIR = path.join(REPO, "workflows");

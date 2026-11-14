@@ -94,7 +94,7 @@ $IsoMatrix = @(
         # QEMU Profile
         DiskSize              = "40G"
         OsFamily              = "linux"
-        # start.ps1 -Copy: data/copy -> guest, scripts/setup-wine.sh via the
+        # start.ps1 -Copy: app/data/clonewars/copy -> guest, scripts/setup-wine.sh via the
         # guest agent (the ISO ships qemu-guest-agent and is Arch-based).
         SupportsCopy          = $true
         # Skip the ISO's 15-second boot menu: boot the "All GPUs" entry
@@ -348,7 +348,7 @@ $IsoMatrix = @(
     @{
         Id            = "docker-windows"
         Name          = "Windows 11 in Docker"
-        Description   = "Windows 11 Pro as a KVM VM inside a container (dockur/windows). Installs from data/win11-pro.iso, runs every .exe in scripts/wine-apps at the end of setup, shares that folder as Z:. Web viewer http://127.0.0.1:8006, RDP 127.0.0.1:3389."
+        Description   = "Windows 11 Pro as a KVM VM inside a container (dockur/windows). Installs from app/data/clonewars/win11-pro.iso, runs every .exe in scripts/wine-apps at the end of setup, shares that folder as Z:. Web viewer http://127.0.0.1:8006, RDP 127.0.0.1:3389."
         Runtime       = "docker"
         DockerProfile = "windows"
         OsFamily      = "windows"
@@ -563,7 +563,7 @@ $IsoMatrix = @(
     @{
         Id            = "android-avd"
         Name          = "Android 15 (Google emulator, Play Store)"
-        Description   = "Google's official Android Emulator with an Android 15 Google Play x86_64 image (runs ARM apps too). SDK lives in data/android-sdk. -Copy installs every .apk in data/copy and launches it."
+        Description   = "Google's official Android Emulator with an Android 15 Google Play x86_64 image (runs ARM apps too). SDK lives in app/data/clonewars/android-sdk. -Copy installs every .apk in app/data/clonewars/copy and launches it."
         Runtime       = "avd"
         OsFamily      = "android"
     },

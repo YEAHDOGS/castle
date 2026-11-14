@@ -33,8 +33,14 @@ fn looks_like_dogs(dir: &Path) -> bool {
     dir.join("server").join("bin").join("dogs.mjs").is_file() && dir.join("stack.json").is_file()
 }
 
+/// Castle's copy keeps its runtime in `data/ai` beside it (app/data/ai, git-ignored), or in
+/// DOGS_AI_DATA; a dogs-ai checkout of its own keeps it inside.
 fn has_runtime(dir: &Path) -> bool {
-    dir.join("runtime").join("ComfyUI").is_dir()
+    let data = match std::env::var_os("DOGS_AI_DATA") {
+        Some(d) if !d.is_empty() => PathBuf::from(d),
+        _ => dir.parent().unwrap_or(dir).join("data").join("ai"),
+    };
+    [data.join("runtime"), dir.join("runtime")].iter().any(|r| r.join("ComfyUI").is_dir())
 }
 
 /// Every place a copy of DOGS AI may be, in order.

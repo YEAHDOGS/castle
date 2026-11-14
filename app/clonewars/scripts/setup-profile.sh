@@ -3,7 +3,7 @@
 # Castle: apply a launch profile and nothing else.
 # ==============================================================================
 # The setup that runs for `start.ps1 -Profile <name>` when the profile names no
-# Setup of its own. It copies the payload (host data/copy) into ~/castle-copy,
+# Setup of its own. It copies the payload (host app/data/clonewars/copy) into ~/castle-copy,
 # installs the profile's packages, runs its root commands, and starts its user
 # commands inside the desktop session. A profile with an app-specific setup
 # (Setup = "penguin") gets the same steps from castle_profile_apply inside

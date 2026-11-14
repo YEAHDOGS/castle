@@ -42,6 +42,8 @@ RUN chmod +x /app/entrypoint.sh
 EXPOSE 8006
 
 # Declare mount point for persistent caching of ISOs and virtual disks
+# Disks and ISOs: the clonewars scripts look here instead of app/data/clonewars.
+ENV CASTLE_CLONEWARS_DATA=/app/data
 VOLUME /app/data
 
 # Run entrypoint script

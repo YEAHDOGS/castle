@@ -2,7 +2,7 @@
 # ==============================================================================
 # Castle: run penguin-autosurf (the Cart Surfer bot) in a Linux guest.
 # ==============================================================================
-# Payload (host data/copy): the project as penguin-autosurf.zip, or as an
+# Payload (host app/data/clonewars/copy): the project as penguin-autosurf.zip, or as an
 # unpacked folder. Anything holding main.py + games/cart_surfer counts.
 #
 # Usage (root):
@@ -80,7 +80,7 @@ if [ -z "$SRC" ]; then
   if [ -f "$PROJECT/main.py" ]; then
     echo "[i] No project in the payload; using the copy already in $PROJECT."
   else
-    echo "[-] No penguin-autosurf project found. Put penguin-autosurf.zip (or the folder) in data/copy on the host."
+    echo "[-] No penguin-autosurf project found. Put penguin-autosurf.zip (or the folder) in app/data/clonewars/copy on the host."
     exit 1
   fi
 else

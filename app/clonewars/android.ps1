@@ -1,18 +1,18 @@
 <#
 .SYNOPSIS
-    Castle -- Google's official Android Emulator (AVD), self-contained under data/.
+    Castle -- Google's official Android Emulator (AVD), self-contained under app/data/clonewars/.
 .DESCRIPTION
-    Installs a private Android SDK into data/android-sdk (nothing goes into
+    Installs a private Android SDK into app/data/clonewars/android-sdk (nothing goes into
     %LOCALAPPDATA% or ~/.android), creates an AVD, boots it with hardware
     acceleration (WHPX on Windows, KVM on Linux) and waits until Android reports
-    boot_completed. With -Copy every .apk in data/copy is installed and the new
+    boot_completed. With -Copy every .apk in app/data/clonewars/copy is installed and the new
     apps are launched.
 
     Downloads and how they are checked:
       * cmdline-tools: zip URL and SHA-1 read from Google's SDK manifest
         (dl.google.com/android/repository/repository2-3.xml, over HTTPS); the zip
         must match before it is unpacked, then its SHA-512 is pinned in
-        data/.castle_trust.json like every other clonewars download.
+        app/data/clonewars/.castle_trust.json like every other clonewars download.
       * platform-tools, emulator, system image: installed by sdkmanager, which
         checks each archive against the same signed-over-HTTPS manifests.
 
@@ -21,7 +21,7 @@
     reaches the guest as emulator-<port>.
 .EXAMPLE
     .\android.ps1                       # install on first run, then boot to the home screen
-    .\android.ps1 -Copy                 # same, then adb install every .apk in data/copy and launch it
+    .\android.ps1 -Copy                 # same, then adb install every .apk in app/data/clonewars/copy and launch it
     .\android.ps1 -Apk C:\x\app.apk     # install (and launch) one APK
     .\android.ps1 -Headless             # no window (CI / screenshots via adb)
     .\android.ps1 -Stop                 # clean shutdown of the Castle emulator
@@ -42,7 +42,7 @@ param (
     [Alias("c")]
     [switch]$Copy,
     [string[]]$Apk = @(),
-    # Also adb push the non-APK files of data/copy to /sdcard/Download/castle-copy.
+    # Also adb push the non-APK files of app/data/clonewars/copy to /sdcard/Download/castle-copy.
     [switch]$Push,
     [switch]$Headless,
     [switch]$Wipe,
@@ -69,7 +69,8 @@ $HostOs = if ($IsWin) { "windows" } elseif ($IsMacOS) { "macosx" } else { "linux
 $Exe = if ($IsWin) { ".exe" } else { "" }
 $Bat = if ($IsWin) { ".bat" } else { "" }
 
-$DataDir = Join-Path $PSScriptRoot "data"
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+$DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "data") "clonewars" }
 # CASTLE_COPY_DIR gives one launch a payload folder of its own (the Castle app sets it).
 $CopyDir = if ($env:CASTLE_COPY_DIR) { $env:CASTLE_COPY_DIR } else { Join-Path $DataDir "copy" }
 $Sdk = Join-Path $DataDir "android-sdk"
@@ -82,7 +83,7 @@ $StateDir = Join-Path $Sdk "castle"
 $PidFile = Join-Path $StateDir "$Name.pid"
 $PortFile = Join-Path $StateDir "$Name.port"
 
-# Keep every piece of Android state inside data/android-sdk: SDK, AVDs, adb
+# Keep every piece of Android state inside app/data/clonewars/android-sdk: SDK, AVDs, adb
 # keys, emulator prefs. The folder can be moved or deleted as a unit.
 $env:ANDROID_HOME = $Sdk
 $env:ANDROID_SDK_ROOT = $Sdk
@@ -399,7 +400,7 @@ Invoke-Adb -AdbArgs @("shell", "input", "keyevent", "KEYCODE_WAKEUP") -Quiet | O
 Invoke-Adb -AdbArgs @("shell", "wm", "dismiss-keyguard") -Quiet | Out-Null
 
 # ==============================================================================
-# PHASE 6 -- Payload: APKs (and optionally other files) from data/copy
+# PHASE 6 -- Payload: APKs (and optionally other files) from app/data/clonewars/copy
 # ==============================================================================
 $ApkFiles = @()
 if ($Copy -and (Test-Path $CopyDir)) { $ApkFiles += @(Get-ChildItem $CopyDir -Recurse -File -Filter *.apk | ForEach-Object FullName) }
@@ -421,7 +422,7 @@ if ($ApkFiles.Count -gt 0) {
     }
 }
 elseif ($Copy) {
-    Write-Host "  [i] -Copy: no .apk files in data/copy." -ForegroundColor DarkGray
+    Write-Host "  [i] -Copy: no .apk files in app/data/clonewars/copy." -ForegroundColor DarkGray
 }
 if ($Push -and (Test-Path $CopyDir)) {
     $Others = @(Get-ChildItem $CopyDir -Recurse -File | Where-Object { $_.Extension -ine ".apk" -and $_.Name -ine "README.md" -and $_.Name -ine "castle-tasks.sh" })
@@ -456,7 +457,7 @@ Write-Host ""
 Write-Host "  ================================================================" -ForegroundColor DarkGray
 Write-Host "  Android is running." -ForegroundColor Green
 Write-Host "  * adb:      $Adb -s $Serial shell" -ForegroundColor White
-Write-Host "  * Install:  .\android.ps1 -Apk path\to\app.apk   (or drop APKs in data\copy and use -Copy)" -ForegroundColor White
+Write-Host "  * Install:  .\android.ps1 -Apk path\to\app.apk   (or drop APKs in app\data\clonewars\copy and use -Copy)" -ForegroundColor White
 Write-Host "  * Network:  guest has internet through the host; the host is 10.0.2.2 inside Android" -ForegroundColor White
 Write-Host "  * Stop:     .\android.ps1 -Stop   (state is snapshotted; next boot resumes in seconds)" -ForegroundColor White
 Write-Host ""

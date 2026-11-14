@@ -13,7 +13,7 @@
 #   * platform-tools, emulator, system image: installed by Google's own tool,
 #     which checks each archive against the same manifests.
 # The SDK license is the one already accepted on the host: container.ps1
-# copies data/android-sdk/licenses into the build, and without it the build
+# copies app/data/clonewars/android-sdk/licenses into the build, and without it the build
 # stops.
 # ==============================================================================
 FROM debian:trixie-slim

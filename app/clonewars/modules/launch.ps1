@@ -83,7 +83,7 @@ function Test-QemuInstalled {
 function Get-TargetDiskName {
     <#
     .SYNOPSIS
-        Name of a target's default VM disk under data/. Cloud-image targets share
+        Name of a target's default VM disk under app/data/clonewars/. Cloud-image targets share
         one downloaded image between several targets, so their disks are keyed by
         target Id instead of by download file name.
     #>
@@ -355,7 +355,7 @@ function Get-DirectBootFiles {
         menu entry directly (QEMU -kernel/-initrd/-append), skipping the ISO's
         boot menu and its countdown. The entry is read from the ISO's own
         syslinux config (Target.DirectBoot = @{ Config; Label }) and the two
-        boot files are extracted once into data/kernels/<iso>/.
+        boot files are extracted once into app/data/clonewars/kernels/<iso>/.
     .OUTPUTS
         @{ Kernel; Initrd; Append } or $null when anything is missing (the
         caller then boots the ISO's menu as usual).
@@ -530,7 +530,7 @@ function Build-QemuArgs {
         [bool]$FirstBoot = $false,
         [bool]$Vnc = $false,
         [int]$VncDisplay = 0,
-        # Payload, one of two forms. CopyIso: an ISO image of data/copy (built
+        # Payload, one of two forms. CopyIso: an ISO image of app/data/clonewars/copy (built
         # with IMAPI2, any size) attached as a CD-ROM labelled CASTLECOPY.
         # CopyDir: the folder itself as a read-only virtual-FAT USB share
         # (fallback; 504 MB cap). Same label, so guests mount either the same way.
@@ -719,7 +719,7 @@ function Build-QemuArgs {
         )
     }
 
-    # The copy payload (data/copy) is a second share of the same kind. vvfat
+    # The copy payload (app/data/clonewars/copy) is a second share of the same kind. vvfat
     # simulates a fixed 504 MB FAT16 disk whatever fat-type is asked for, so
     # start.ps1 refuses bigger payloads up front instead of QEMU failing late.
     if (-not [string]::IsNullOrEmpty($CopyIso) -and (Test-Path $CopyIso)) {
@@ -958,7 +958,7 @@ function New-UnattendedWindowsIso {
     $IsWindowsOS = -not (($PSVersionTable.OS -like "*Linux*") -or ($IsLinux -eq $true) -or ($IsMacOS -eq $true))
     if (-not $IsWindowsOS) {
         Write-Host "  [FAIL] Unattended Windows ISO generation requires Windows (oscdimg.exe)." -ForegroundColor Red
-        Write-Host "     Generate the ISO on your Windows host, then copy it into clonewars/data/." -ForegroundColor DarkGray
+        Write-Host "     Generate the ISO on your Windows host, then copy it into app/data/clonewars/." -ForegroundColor DarkGray
         return $false
     }
 

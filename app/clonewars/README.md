@@ -47,7 +47,7 @@ To view a static registry of targets and cache statuses:
 ```
 
 ### Download-Only Firmware Targets
-Some targets are retro-handheld firmware images (ARM), which cannot boot in the x86 QEMU pipeline. For these, the pipeline downloads, cryptographically verifies, and caches the image in `data/`, then stops before disk provisioning — flash the verified file to an SD card (e.g. with balenaEtcher/Rufus):
+Some targets are retro-handheld firmware images (ARM), which cannot boot in the x86 QEMU pipeline. For these, the pipeline downloads, cryptographically verifies, and caches the image in `app/data/clonewars/`, then stops before disk provisioning — flash the verified file to an SD card (e.g. with balenaEtcher/Rufus):
 ```powershell
 .\start.ps1 minui     # MinUI launcher (Anbernic/Miyoo/Trimui) -- base .zip
 .\start.ps1 knulli    # Knulli CFW (Batocera-based) -- RG34XX SD image
@@ -61,23 +61,23 @@ Both resolve their versions from GitHub Releases and prompt you to pick one. Knu
 .\start.ps1 ubuntu-cloud-desktop      # first boot installs GNOME + Wine (~1.5 GB), reboots once, lands on the desktop with your apps running
 ```
 - Login is `castle` / `wearedogs` (same convention as the CachyOS scripts); SSH is port-forwarded from the host and the port is printed at boot (`ssh castle@127.0.0.1 -p 2222`).
-- The profiles live in `scripts/cloud-init/<server|desktop>/user-data`; edit them to change packages, users, or first-boot commands. A per-VM `meta-data` (instance id + hostname) is generated next to the disk under `data/seeds/`, so every `-Instance` clone gets its own hostname.
+- The profiles live in `scripts/cloud-init/<server|desktop>/user-data`; edit them to change packages, users, or first-boot commands. A per-VM `meta-data` (instance id + hostname) is generated next to the disk under `app/data/clonewars/seeds/`, so every `-Instance` clone gets its own hostname.
 - The seed is served to the guest as a read-only FAT volume labelled `CIDATA` straight from that folder — no ISO tooling needed on the host.
-- Both targets share one cached image (`data/ubuntu-noble-cloudimg-amd64.img`); VM disks are keyed by target id (`data/ubuntu-cloud.qcow2`).
+- Both targets share one cached image (`app/data/clonewars/ubuntu-noble-cloudimg-amd64.img`); VM disks are keyed by target id (`app/data/clonewars/ubuntu-cloud.qcow2`).
 - Cloud targets boot UEFI (OVMF): on this host's WHPX the legacy SeaBIOS/GRUB path hangs at "Booting from Hard Disk", the EFI path does not. All guests run plain WHPX with the default in-hypervisor irqchip: `kernel-irqchip=off` made the EndeavourOS live ISO take 30+ minutes on "Rebuild Dynamic Linker Cache" instead of reaching the desktop in ~2.5 minutes (`CASTLE_VM_IRQCHIP=off` re-enables it for experiments).
 
 #### Scratch disk, silent installers
-`-Copy` also attaches a sparse qcow2 (`data/scratch/<target>-scratch.qcow2`, grows only with use) as a second virtio disk with serial `castlescratch`. The guest scripts format it once (ext4, and only a disk with that serial is ever touched), then keep `~/castle-copy`, `~/.wine` and `~/opengoal` on it. Without it a live ISO holds all of that in RAM, which is what made an 8 GB guest OOM-kill the OpenGOAL compiler while a Wine installer was running. It persists across boots, so a second run finds the game already built and the apps already installed. `-DeleteDisk` / `-Purge` remove it with the target's disk; `CASTLE_VM_SCRATCH=0` keeps everything in RAM.
+`-Copy` also attaches a sparse qcow2 (`app/data/clonewars/scratch/<target>-scratch.qcow2`, grows only with use) as a second virtio disk with serial `castlescratch`. The guest scripts format it once (ext4, and only a disk with that serial is ever touched), then keep `~/castle-copy`, `~/.wine` and `~/opengoal` on it. Without it a live ISO holds all of that in RAM, which is what made an 8 GB guest OOM-kill the OpenGOAL compiler while a Wine installer was running. It persists across boots, so a second run finds the game already built and the apps already installed. `-DeleteDisk` / `-Purge` remove it with the target's disk; `CASTLE_VM_SCRATCH=0` keeps everything in RAM.
 
 Installers in the payload are handled without clicking: the Wine flow sniffs each file (Inno Setup, NSIS, InstallShield, `.msi`), runs it with that family's silent switches, waits for it, and then launches the Start Menu shortcut it created, so a setup `.exe` ends with the installed program on screen. A silent run that fails falls back to the installer's own wizard. Plain programs just start.
 #### Drop files in, get Wine and your programs running (EndeavourOS)
-`data/copy/` is a payload folder. Whatever is in it rides into the VM as a read-only CD-ROM labelled `CASTLECOPY` (an ISO image built on the host, any size), and one flag does the rest. `-Setup auto` is the default: it runs the Wine flow when the payload holds any `.exe`/`.msi` (installers included, they run like on Windows) and the OpenGOAL flow when a PS2 disc ISO is present, in that order:
+`app/data/clonewars/copy/` is a payload folder. Whatever is in it rides into the VM as a read-only CD-ROM labelled `CASTLECOPY` (an ISO image built on the host, any size), and one flag does the rest. `-Setup auto` is the default: it runs the Wine flow when the payload holds any `.exe`/`.msi` (installers included, they run like on Windows) and the OpenGOAL flow when a PS2 disc ISO is present, in that order:
 
 ```powershell
-.\start.ps1 endeavouros -Copy                    # boot, copy data/copy -> ~/castle-copy, then whatever the payload needs (-Setup auto)
+.\start.ps1 endeavouros -Copy                    # boot, copy app/data/clonewars/copy -> ~/castle-copy, then whatever the payload needs (-Setup auto)
 .\start.ps1 endeavouros -c -Setup wine           # force the Wine flow only: install Wine, run every .exe/.msi in the payload
-.\start.ps1 endeavouros -c -Program Setup.exe    # same, but run only that one (a name inside data/copy, or a path in the guest)
-.\start.ps1 endeavouros                          # interactive: asks the same question whenever data/copy is not empty
+.\start.ps1 endeavouros -c -Program Setup.exe    # same, but run only that one (a name inside app/data/clonewars/copy, or a path in the guest)
+.\start.ps1 endeavouros                          # interactive: asks the same question whenever app/data/clonewars/copy is not empty
 ```
 
 `scripts/setup-wine.sh` (on the `CASTLE` share) enables `[multilib]`, installs `wine wine-gecko wine-mono winetricks`, copies the share into the desktop user's home (`~/castle-copy`, writable, so installers can write next to their exe) and starts the programs inside that user's desktop session. The host never waits for a login: the EndeavourOS ISO ships `qemu-guest-agent` and the launcher already attaches its socket, so `start.ps1` waits for the agent to answer (up to 15 min), runs the script as root through it (`modules/guest.ps1`) and streams the log into your console. No guest agent (another distro, or an installed system without it)? The pipeline prints the one-liner to run inside the VM instead:
@@ -89,16 +89,16 @@ sudo mount -o ro /dev/disk/by-label/CASTLE /mnt && sudo bash /mnt/setup-wine.sh 
 Measured on this host: QEMU start to 7-Zip opening under Wine in about 80 seconds (direct boot, agent answering ~20 s in, 1 GB Wine install from the Worldwide mirrors). Two live-ISO quirks the script handles: the ISO ships `/etc/pacman.d/mirrorlist` with every server commented out (pacman says "no servers configured for repository"), so it enables the Worldwide block when nothing is active; and the root overlay is RAM, so it grows the archiso cow space to 8G first. Install EndeavourOS to the disk and the same flag works against the installed system, where Wine and `~/castle-copy` persist.
 
 #### Jak and Daxter from scratch: OpenGOAL
-`-Setup opengoal` swaps the Wine script for `scripts/setup-opengoal.sh`. Put the game disc `.iso` (a plain ISO9660 dump; unzip it) and, optionally, the official `opengoal-linux-<ver>.tar.gz` in `data/copy`, then:
+`-Setup opengoal` swaps the Wine script for `scripts/setup-opengoal.sh`. Put the game disc `.iso` (a plain ISO9660 dump; unzip it) and, optionally, the official `opengoal-linux-<ver>.tar.gz` in `app/data/clonewars/copy`, then:
 
 ```powershell
 .\start.ps1 endeavouros -c -Setup opengoal      # boot, mount the disc, extract + decompile + compile, launch the game
 ```
 
-How the payload gets in: `.iso` files in `data/copy` are attached to the VM as extra CD-ROMs (`/dev/sr1..`, any size; commas in the file name are escaped for QEMU). Everything else is packed into `data/seeds/copy-share.iso` with Windows' built-in IMAPI2 (ISO9660 + Joliet + UDF, exactly the size of its contents, a 1.3 GB payload takes about 3 s) and attached as another CD-ROM labelled `CASTLECOPY`; there is no size cap and reads run at disk speed. A zip that only wraps an ISO already extracted next to it is left out. On a non-Windows host the old virtual-FAT share is used instead (fixed 504 MB, over-cap files skipped). In the guest the script finds the disc by its `SYSTEM.CNF`, puts a writable overlayfs on top of the read-only mount (the extractor writes a `buildinfo.json` next to the game files), unpacks the release into `~/opengoal`, runs `extractor --extract/--decompile/--compile --proj-path data --folder <disc>` as the desktop user, and starts `gk -- -boot -fakeiso` in the KDE session with `LP_NUM_THREADS` set to every core. Without a tarball in the payload it fetches the latest Linux release from GitHub. Measured: disc detected as "Jak & Daxter: The Precursor Legacy (Black Label), NTSC-U", extract 1 s, decompile + compile about 40 s on 14 cores, Daxter on the Naughty Dog splash within ~3 minutes of `start.ps1`.
+How the payload gets in: `.iso` files in `app/data/clonewars/copy` are attached to the VM as extra CD-ROMs (`/dev/sr1..`, any size; commas in the file name are escaped for QEMU). Everything else is packed into `app/data/clonewars/seeds/copy-share.iso` with Windows' built-in IMAPI2 (ISO9660 + Joliet + UDF, exactly the size of its contents, a 1.3 GB payload takes about 3 s) and attached as another CD-ROM labelled `CASTLECOPY`; there is no size cap and reads run at disk speed. A zip that only wraps an ISO already extracted next to it is left out. On a non-Windows host the old virtual-FAT share is used instead (fixed 504 MB, over-cap files skipped). In the guest the script finds the disc by its `SYSTEM.CNF`, puts a writable overlayfs on top of the read-only mount (the extractor writes a `buildinfo.json` next to the game files), unpacks the release into `~/opengoal`, runs `extractor --extract/--decompile/--compile --proj-path data --folder <disc>` as the desktop user, and starts `gk -- -boot -fakeiso` in the KDE session with `LP_NUM_THREADS` set to every core. Without a tarball in the payload it fetches the latest Linux release from GitHub. Measured: disc detected as "Jak & Daxter: The Precursor Legacy (Black Label), NTSC-U", extract 1 s, decompile + compile about 40 s on 14 cores, Daxter on the Naughty Dog splash within ~3 minutes of `start.ps1`.
 
 Sound: every VM now carries an Intel HDA codec on the first host backend the QEMU build lists (Windows: DirectSound, then SDL; `CASTLE_VM_AUDIO=none` or a backend name overrides). PipeWire in the guest picks it up as the default sink and the script sets it to 100% (the live session starts at 40%); use the host mixer as the volume knob. Graphics are Mesa llvmpipe (software OpenGL 4.6; OpenGOAL needs 4.3). `-Gl` / `CASTLE_VM_GL=1` tries virtio-vga-gl with an SDL OpenGL display, but on this host's QEMU 11 build that deadlocks QEMU before the guest boots (QMP stops answering, one core spins), so it stays opt-in. The script is uploaded through the guest agent each run, so editing `scripts/setup-*.sh` takes effect on a running VM without a reboot.
-The EndeavourOS target also boots the ISO's "All GPUs" entry directly (`DirectBoot` in `targets.ps1`): the kernel and initramfs are pulled out of the ISO once with 7-Zip into `data/kernels/<iso>/` and handed to QEMU with that entry's own command line, so the 15-second boot menu never shows, and `systemd.mask=ldconfig.service` is appended so archiso's "Rebuild Dynamic Linker Cache" step (a needless ~19 s on every live boot, 30+ min under `kernel-irqchip=off`) is skipped. `CASTLE_VM_DIRECTBOOT=0` brings the menu back; without 7-Zip on the host the menu simply shows as before.
+The EndeavourOS target also boots the ISO's "All GPUs" entry directly (`DirectBoot` in `targets.ps1`): the kernel and initramfs are pulled out of the ISO once with 7-Zip into `app/data/clonewars/kernels/<iso>/` and handed to QEMU with that entry's own command line, so the 15-second boot menu never shows, and `systemd.mask=ldconfig.service` is appended so archiso's "Rebuild Dynamic Linker Cache" step (a needless ~19 s on every live boot, 30+ min under `kernel-irqchip=off`) is skipped. `CASTLE_VM_DIRECTBOOT=0` brings the menu back; without 7-Zip on the host the menu simply shows as before.
 #### Wine apps from a folder, from scratch, fast
 Put any Windows `.exe` files in `scripts/wine-apps/` (git-ignored). That folder is on the read-only USB share every VM gets (FAT label `CASTLE`), and the desktop profile launches every `.exe` in it under Wine (64-bit and 32-bit) at login, with the Mono/Gecko download prompts suppressed. Windows apps like to write next to their exe, so the launcher copies them into `~/wine-apps` first.
 
@@ -108,7 +108,7 @@ The fast path is **build once, clone many**:
 .\start.ps1 ubuntu-cloud-desktop -Instance job-01     # 2. seconds: linked clone of the golden disk, boots straight to the desktop with the apps up
 .\start.ps1 ubuntu-cloud-desktop -Instance job-02 -Background
 ```
-An `-Instance` of a cloud target automatically clones the target's finished disk (`data/ubuntu-cloud-desktop.qcow2`) when it exists and falls back to the raw image otherwise. Clones re-run only cloud-init's cheap per-instance steps and skip the first-boot reboot. Never boot the golden disk while clones depend on it. To rebuild the golden image (new profile, new base image), delete `data/ubuntu-cloud-desktop.qcow2` and its `.vars.fd`, then run step 1 again. Dropping a new `.exe` in the folder needs no rebuild: it is picked up at the next login of any VM.
+An `-Instance` of a cloud target automatically clones the target's finished disk (`app/data/clonewars/ubuntu-cloud-desktop.qcow2`) when it exists and falls back to the raw image otherwise. Clones re-run only cloud-init's cheap per-instance steps and skip the first-boot reboot. Never boot the golden disk while clones depend on it. To rebuild the golden image (new profile, new base image), delete `app/data/clonewars/ubuntu-cloud-desktop.qcow2` and its `.vars.fd`, then run step 1 again. Dropping a new `.exe` in the folder needs no rebuild: it is picked up at the next login of any VM.
 
 ### Launch profiles: one file for target, size, payload, installs and commands
 A profile says what a VM is for, so a launch is one short command instead of a long one plus a hand-written setup script:
@@ -126,14 +126,14 @@ A profile is a PowerShell data file (`.psd1`, plain data, nothing runs when it i
 @{
     Description  = "What this VM is for"
     Target       = "debian-x11"                 # target id from modules/targets.ps1
-    Instance     = "job-01"                     # own disk under data\instances
+    Instance     = "job-01"                     # own disk under app\data\clonewars\instances
     Background   = $true
     MemoryGB     = 4                            # exact guest RAM (no 4 GB floor)
     Cores        = 6
     Screen       = "1440x900"                   # guest screen mode (X11 guests)
     QemuArgs     = @("-rtc", "base=localtime")  # extra raw QEMU arguments, appended last
     Env          = @{ CASTLE_VM_AUDIO = "none" } # CASTLE_* knobs for this launch only
-    Payload      = @(                           # host folders packed into data\copy before boot
+    Payload      = @(                           # host folders packed into app\data\clonewars\copy before boot
         @{ Source = "..\..\..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
     )
     Packages     = @{ apt = @("htop"); pacman = @("htop") }   # the guest's own package manager picks its list
@@ -144,7 +144,7 @@ A profile is a PowerShell data file (`.psd1`, plain data, nothing runs when it i
 ```
 
 - **Payload.** `Source` is relative to the profile file. A git checkout is packed as git sees it (tracked and untracked files, ignored ones left out), so virtualenvs, build output and recordings stay behind; `Include` adds ignored files by name. Other folders are packed whole.
-- **How it reaches the guest.** `MemoryGB`, `Cores`, `QemuArgs` and `Env` shape the QEMU launch. Packages, commands and `Screen` are written to `data\seeds\profile\castle-profile.env`, uploaded through the guest agent as `/tmp/castle-profile.env`, and applied by `castle_profile_apply` in `scripts/castle-lib.sh`.
+- **How it reaches the guest.** `MemoryGB`, `Cores`, `QemuArgs` and `Env` shape the QEMU launch. Packages, commands and `Screen` are written to `app\data\clonewars\seeds\profile\castle-profile.env`, uploaded through the guest agent as `/tmp/castle-profile.env`, and applied by `castle_profile_apply` in `scripts/castle-lib.sh`.
 - **Setup scripts stay small.** `castle-lib.sh` carries what every setup needs on both Arch-based and Debian-based guests: `castle_wait_cloud_init`, `castle_user`, `castle_pkg_install` / `castle_need` (pacman or apt), `castle_mount_label`, `castle_wait_x11`, `castle_on_x`, `castle_in_session`, `castle_ensure_screen`. `scripts/setup-penguin.sh` is the worked example; `scripts/setup-profile.sh` is the generic one that only applies the profile.
 - `CASTLE_VM_RAM_GB` and `CASTLE_VM_CORES` set the same exact sizes without a profile.
 
@@ -166,19 +166,19 @@ Two targets, pick by what you need:
 | Android | 15, Google Play image | 13, GApps |
 | Runs ARM-only apps | yes (Google's ARM translation) | depends on the build's native bridge |
 | Graphics | host GPU (the emulator's own renderer) | software (SwiftShader); virgl hangs QEMU on this host |
-| Lives in | `data/android-sdk/` (SDK + AVD, nothing in `%LOCALAPPDATA%`) | `data/Bliss-*.iso` + an ext4 `/data` disk next to it |
+| Lives in | `app/data/clonewars/android-sdk/` (SDK + AVD, nothing in `%LOCALAPPDATA%`) | `app/data/clonewars/Bliss-*.iso` + an ext4 `/data` disk next to it |
 | Needs | Java 17+ once (Google's `avdmanager`), WHPX/KVM | WSL Ubuntu once (formats the ext4 disk), WHPX/KVM |
 
 ```powershell
 .\start.ps1 android-avd            # first run: SDK + Android 15 image (~2.5 GB), creates the AVD, boots to the home screen (~95 s cold, seconds after that via Quick Boot)
-.\start.ps1 android-avd -Copy      # same, then adb-installs every .apk in data\copy and launches it
+.\start.ps1 android-avd -Copy      # same, then adb-installs every .apk in app\data\clonewars\copy and launches it
 .\android.ps1 -Apk C:\path\app.apk # install + launch one APK into the running emulator
 .\android.ps1 -Stop                # clean shutdown (snapshot saved) ; -Wipe = factory reset ; -Purge = delete the AVD
 
 .\start.ps1 blissos -Background    # verified ISO (SourceForge SHA256), straight into Android, no installer
 ```
 - **Downloads and checks.** `android.ps1` reads the cmdline-tools zip name and SHA-1 from Google's SDK manifest over HTTPS, checks the zip and pins its SHA-512 in `.castle_trust.json`. The emulator, platform-tools and system image are installed by Google's own tool, which checks them against the same manifests. Installing them means accepting the [Android SDK License](https://developer.android.com/studio/terms): it asks once, or pass `-AcceptLicenses` (`CASTLE_ACCEPT_ANDROID_LICENSES=1`). Since cmdline-tools 23, `sdkmanager` forwards to Google's new "Android CLI", which announces usage metrics; `android.ps1` calls it directly with `--no-metrics`. Pick another image with `CASTLE_AVD_IMAGE` (e.g. `system-images;android-36;google_apis_playstore;x86_64`) and the RAM with `CASTLE_AVD_RAM_MB` (default 4096).
-- **Network.** Both get internet through the host's user-mode NAT; inside Android the host is `10.0.2.2`. The AVD shows up in `adb devices` as `emulator-5554`. BlissOS forwards its adbd to a free loopback port printed at boot (`adb connect 127.0.0.1:5655`); use `data\android-sdk\platform-tools\adb.exe` once the AVD target has installed it.
+- **Network.** Both get internet through the host's user-mode NAT; inside Android the host is `10.0.2.2`. The AVD shows up in `adb devices` as `emulator-5554`. BlissOS forwards its adbd to a free loopback port printed at boot (`adb connect 127.0.0.1:5655`); use `app\data\clonewars\android-sdk\platform-tools\adb.exe` once the AVD target has installed it.
 - **BlissOS boot.** Every boot loads the ISO's kernel/initrd directly with its "No HW Acceleration" entry (`nomodeset HWACCEL=0`) plus `DATA=vda SETUPWIZARD=0`. The VM disk is not installed to: it is a bare ext4 volume (formatted once through WSL, then never touched again) mounted as `/data`, so apps and settings persist. Without WSL it still boots, with `/data` in RAM. First boot is slow (several minutes while Android optimises apps under software rendering).
 
 ### Containers: the light engine for automations (`container.ps1`)
@@ -196,11 +196,11 @@ A VM boots a kernel, an init system and a desktop for every bot, and holds a fix
 .\container.ps1 container-debian -Instance job-01            # a plain container machine (castle-job-01)
 .\container.ps1 container-debian -Instance job-01 -Stop      # stop it; it is kept, the next start resumes it
 .\container.ps1 container-debian -Instance job-01 -Remove    # delete it, its "disk" with it
-.\container.ps1 container-android -Instance phone-1 -Copy    # Android: APKs from data\copy installed and opened
+.\container.ps1 container-android -Instance phone-1 -Copy    # Android: APKs from app\data\clonewars\copy installed and opened
 .\container.ps1 -List
 ```
 - **A container is a machine.** It is called `castle-<instance>` (`castle-<target>` without one). Its writable layer is its disk: what a setup installs stays, so the second start skips it. `CASTLE_VM_SNAPSHOT=1` (a temporary run from the app) makes a throwaway that is removed when it stops. Editing anything under `docker/<kind>/` gives the image a new tag, and a kept container made from an older image is made again on its next start.
-- **What goes in, read-only.** Before every start the payload and the launch profile are staged into `data/containers/<name>/` and mounted read-only, the scripts folder too. Nothing on the host is writable from inside. Memory and CPU are Docker limits (`MemoryGB`, `Cores`), not reservations.
+- **What goes in, read-only.** Before every start the payload and the launch profile are staged into `app/data/clonewars/containers/<name>/` and mounted read-only, the scripts folder too. Nothing on the host is writable from inside. Memory and CPU are Docker limits (`MemoryGB`, `Cores`), not reservations.
 - **Seeing it.** `docker exec <name> castle-screen` writes a PNG of the screen (the Castle app shows these, once a second). **Take control** in the app runs `castle-live start` inside the container: x11vnc plus a noVNC web viewer behind a new one-time password, on a port published to the host's `127.0.0.1` only. Nothing listens on it until then, and closing the viewer turns it off.
 - **No console windows.** The Castle box runs these scripts without a console, so every `docker`, `wsl`, `git` and `adb` call goes through `Invoke-Quiet` (`modules/quiet.ps1`), which starts it without a window. A plain `& docker ...` in a script the box runs opens a console window per call.
 - **Needs.** Docker Desktop on Windows (started minimized if it is installed but not running) or any Docker engine on Linux. `container-android` also needs KVM in the engine, which `container.ps1` sets up in Docker Desktop's VM before every start like `docker.ps1` does, and the Android SDK license already accepted on this box (`.\android.ps1 -InstallOnly` asks once; the license file is copied into the build).
@@ -209,11 +209,11 @@ A VM boots a kernel, an init system and a desktop for every bot, and holds a fix
 An automation on an Android target (`android-avd`, `container-android`) runs on the phone, never on the box. Each bot gets its own phone: an AVD of its own (`castle-<automation>-<bot>`, made by `android.ps1 -Name`) or a container of its own. The project's APKs are installed and opened, its other files land in `Download/castle-copy` (its `.git` and `.env` stay behind), and the tasks become `castle-tasks.sh`: the bot's fields as variables, then the tasks in order as commands for the phone's own shell (`am start ...`, `input tap 540 1200`, `input text ...`, `sleep 5`), looped when the automation restarts. ROOT tasks run through `su 0`, which the container's `google_apis` image has and the Play Store emulator does not. The script runs detached and logs to `/data/local/tmp/castle-automation.log` on the phone.
 
 ### Boot any ISO you already have (`boot-iso.ps1` / `boot-iso.sh`)
-Outside the manifest: point the script at any bootable ISO (EndeavourOS, Ubuntu, Kali, Arch, Windows ...) and a disk size, and it boots it in QEMU with a fresh qcow2 of that size under `data/adhoc/`. First run boots the installer from the ISO; later runs boot the installed disk with the ISO still attached as a CD. Same QEMU setup as the pipeline (WHPX/KVM with TCG fallback, virtio, OVMF with per-VM NVRAM, the `CASTLE` USB share, QMP and guest-agent sockets on Windows), plus knobs on top:
+Outside the manifest: point the script at any bootable ISO (EndeavourOS, Ubuntu, Kali, Arch, Windows ...) and a disk size, and it boots it in QEMU with a fresh qcow2 of that size under `app/data/clonewars/adhoc/`. First run boots the installer from the ISO; later runs boot the installed disk with the ISO still attached as a CD. Same QEMU setup as the pipeline (WHPX/KVM with TCG fallback, virtio, OVMF with per-VM NVRAM, the `CASTLE` USB share, QMP and guest-agent sockets on Windows), plus knobs on top:
 ```powershell
-.\boot-iso.ps1 .\data\endeavouros-Titan-Nova-2026.08.15.iso 10G                       # 5G / 10gb / 15GB ... all accepted
+.\boot-iso.ps1 ..\data\clonewars\endeavouros-Titan-Nova-2026.08.15.iso 10G                       # 5G / 10gb / 15GB ... all accepted
 .\boot-iso.ps1 C:\isos\kali-linux-2026.3-installer-amd64.iso 20G -Vga virtio -Audio -PortForward 2222:22 -Share C:\stuff
-.\boot-iso.ps1 .\data\endeavouros-Titan-Nova-2026.08.15.iso 5G -Snapshot -Fresh -Firmware uefi -Machine q35 -Cores 4 -Memory 4G
+.\boot-iso.ps1 ..\data\clonewars\endeavouros-Titan-Nova-2026.08.15.iso 5G -Snapshot -Fresh -Firmware uefi -Machine q35 -Cores 4 -Memory 4G
 .\boot-iso.ps1 <iso> 10G -DryRun                                                      # print the QEMU command line, launch nothing
 ```
 ```bash
@@ -230,7 +230,7 @@ To spin up multiple separate instances of the same target OS simultaneously, or 
   .\start.ps1 cachyos -Background
   ```
 - **Isolated Custom Instance Name (`-Instance`):**
-  Create a distinct VM disk under `data/instances/<instance-id>.qcow2` to run multiple distinct nodes side-by-side:
+  Create a distinct VM disk under `app/data/clonewars/instances/<instance-id>.qcow2` to run multiple distinct nodes side-by-side:
   ```powershell
   .\start.ps1 cachyos -Instance node-01
   .\start.ps1 cachyos -Instance node-02
@@ -238,13 +238,13 @@ To spin up multiple separate instances of the same target OS simultaneously, or 
 - **Instant Linked Clones (`-BaseDisk`):**
   Boot an instance backed by a read-only base disk template to save massive disk space and enable sub-second provisioning:
   ```powershell
-  .\start.ps1 cachyos -Instance node-03 -BaseDisk .\data\cachyos.qcow2
+  .\start.ps1 cachyos -Instance node-03 -BaseDisk ..\data\clonewars\cachyos.qcow2
   ```
   This is also the fast path to a Windows desktop: install `win11-pro` **once** (the unattended install is the slow part), then never install again -- every further machine is a linked clone of that finished disk and boots straight to the desktop in well under a minute. A UEFI base's NVRAM (`.vars.fd`) is copied alongside the clone so its boot entry is intact:
   ```powershell
-  .\start.ps1 win11-pro -Instance dev-01 -BaseDisk .\data\win11-pro.qcow2 -Background
+  .\start.ps1 win11-pro -Instance dev-01 -BaseDisk ..\data\clonewars\win11-pro.qcow2 -Background
   ```
-  Never boot the base disk again while clones depend on it -- a write to the base corrupts every clone. Treat `data\win11-pro.qcow2` as the golden image once it is installed.
+  Never boot the base disk again while clones depend on it -- a write to the base corrupts every clone. Treat `app\data\clonewars\win11-pro.qcow2` as the golden image once it is installed.
 - **Batch Swarm Launching:**
   Spin up a swarm of 10 VMs running simultaneously in the background with a single PowerShell line:
   ```powershell
@@ -263,10 +263,6 @@ clonewars/
 ├── start.ps1              # Core entry point, CLI loop, and pipeline runner
 ├── README.md              # Technical pipeline documentation (this file)
 ├── qemu-notes.md          # Architectural research notes
-├── data/                  # Cached assets (created automatically)
-│   ├── *.iso              # Cached installer images
-│   ├── *.qcow2            # VM virtual storage disks
-│   └── .castle_trust.json # Local trust pinnings database
 ├── modules/               # Modular script handlers
 │   ├── hardware.ps1       # CPU cores, RAM configuration, and WHPX detection
 │   ├── launch.ps1         # QEMU profile builder and launch engine
@@ -277,6 +273,21 @@ clonewars/
 └── scripts/               # Guest provisioning assets (attached to every VM as a USB drive)
     ├── cachyos/           # CachyOS post-install provisioner + smoke test
     └── cloud-init/        # NoCloud user-data profiles for the cloud-image targets
+```
+
+Everything the scripts download or create lives outside this folder, in `app/data/clonewars/`
+(git-ignored; `CASTLE_CLONEWARS_DATA` points them elsewhere):
+
+```text
+app/data/clonewars/
+├── *.iso                 # Cached installer images
+├── *.qcow2               # VM virtual storage disks
+├── .castle_trust.json    # Local trust pinnings database
+├── copy/                 # Payload that rides into a VM with -Copy (about 500 MB at most)
+├── instances/            # -Instance disks
+├── scratch/, seeds/      # Per-launch scratch disks and cloud-init seeds
+├── containers/           # What each container gets, staged before every start
+└── android-sdk/          # The Android Emulator's private SDK and AVDs
 ```
 
 ### Guest Provisioning Scripts
@@ -296,20 +307,20 @@ When a target is chosen, the engine executes a sequential 5-phase pipeline to tr
 
 ### Phase 1: Dynamic Version Discovery & ISO Acquisition
 1. If the target has a `ResolverType` (e.g. `HtmlDirectory`, `GitHub`, or `GitHubAsset`), the engine queries the remote server to find available release versions and prompts you to select one. `GitHubAsset` targets additionally resolve the concrete download asset from the release's asset list by regex — needed when asset filenames embed dates or codenames that do not match the release tag — and automatically wire up any companion `.sha256`/`.sha512`/`.md5` checksum assets plus the SHA256 digest GitHub computes for every release asset.
-2. If the chosen ISO is not found in `data/`, the pipeline initiates a secure download, streaming it chunk-by-chunk to prevent memory leaks and showing a console progress bar.
+2. If the chosen ISO is not found in `app/data/clonewars/`, the pipeline initiates a secure download, streaming it chunk-by-chunk to prevent memory leaks and showing a console progress bar.
 3. **Mirror selection:** targets that declare a mirror list get a mirror prompt before version discovery, grouped by region, with the target's `MirrorDefault` preselected so Enter behaves as before. The list is scraped live from the distro's download page (`MirrorPageUrl` + `MirrorSectionRegex`/`MirrorRowRegex`, named groups `region`, `country`, `name`, `url`) and falls back to the `Mirrors` snapshot in `modules/targets.ps1` when the page is down or its markup changed. A mirror's base is the directory of its ISO link; the checksum and GPG signature are fetched from that same base, so the ISO, `.sha512sum`/`.sha256` and `.sig` always come from the mirror you picked (the GPG key still comes from the keyserver). Every URL in such a target carries `$m` for the mirror base. Skip the prompt with `.\start.ps1 endeavouros -Mirror tuna` (list number, host, name or country substring) or `CASTLE_MIRROR=...`. Wired up for `endeavouros` (26 mirrors from https://endeavouros.com/download/); the mechanism is generic and other targets get it by adding the same keys.
 4. **Endpoint transparency:** every remote fetch (ISO, checksum manifests, GPG signature and keyserver, resolver queries) is preceded by a `[DNS] host -> ip (via <dns server>)` line. The address is never hardcoded: it is resolved at run time by querying the DNS server the host is actively using (the DNS client of the interface that owns the default route on Windows, the first `nameserver` in `/etc/resolv.conf` on Linux), bypassing the hosts file and resolver cache. If that query fails, the OS resolver is used and the line says so.
 
 ### Phase 2: Cryptographic Verification (Trust Pinning System)
 To ensure the pipeline is "sealed from madness," every image must pass rigorous integrity verification:
-1. **Trust Pinning:** Upon the first successful validation of a download (authenticated via remote SHA hash files or GPG signatures), the target's computed cryptographic signature is saved to the local trust store (`data/.castle_trust.json`).
+1. **Trust Pinning:** Upon the first successful validation of a download (authenticated via remote SHA hash files or GPG signatures), the target's computed cryptographic signature is saved to the local trust store (`app/data/clonewars/.castle_trust.json`).
 2. **Offline Pinning:** On subsequent boots, the pipeline verifies the ISO against this local database. This prevents man-in-the-middle attacks, DNS poisoning, and local bit-rot, allowing offline boots to remain cryptographically secure.
 3. **Multi-Algorithm Auditing:** Supports `SHA256`, `SHA512`, `SHA384`, `SHA1`, and `MD5`. If a target specifies multiple validation paths, the engine performs multi-checksum auditing — a static/pinned expected hash and remote checksum manifests are all checked cumulatively, and every configured layer must pass.
 
 ### Phase 3: Virtual Disk Provisioning
-The engine provisions a thin-provisioned copy-on-write virtual disk (`qcow2`) in the `data/` folder:
+The engine provisions a thin-provisioned copy-on-write virtual disk (`qcow2`) in the `app/data/clonewars/` folder:
 - **First Boot Detection:** If no disk exists, the engine runs `qemu-img` to create one and configures the VM to boot from the installer CD-ROM.
-- **Cloud Images:** For `ImageKind = "cloud"` targets the verified download *is* the disk: the VM disk is created as a linked clone backed by the image (grown to the target's `DiskSize`), no CD-ROM is attached, and the cloud-init seed folder is generated under `data/seeds/`.
+- **Cloud Images:** For `ImageKind = "cloud"` targets the verified download *is* the disk: the VM disk is created as a linked clone backed by the image (grown to the target's `DiskSize`), no CD-ROM is attached, and the cloud-init seed folder is generated under `app/data/clonewars/seeds/`.
 - **Subsequent Boots:** If a disk already exists, the VM boots directly from the local disk drive while keeping the ISO attached in the secondary slot for package retrieval or repairs.
 
 ### Phase 4: Hardware Detection & Profiling
@@ -322,7 +333,7 @@ The pipeline queries the host hardware configuration dynamically:
 Based on the target's `OsFamily` (Linux, Windows, macOS) and `Firmware` metadata, the engine builds tailored QEMU launching configurations:
 - **Linux:** Uses high-performance paravirtualized `virtio` disk interfaces and VGA graphics on plain WHPX (`kernel-irqchip=off` is off by default: it slowed Linux boots roughly 18x; set `CASTLE_VM_IRQCHIP=off` to try it).
 - **Windows:** Legacy `ide` disk and CD-ROM on the default machine type (Q35/AHCI was tried for speed but the installed system hangs on a black screen after the bootloader under WHPX; opt back in with `CASTLE_VM_MACHINE=q35`), `std` VGA, and boots UEFI targets (Windows 11) from the OVMF firmware bundled with QEMU. Once a UEFI Windows disk is installed the installer CD is no longer attached (the no-prompt unattended ISO would otherwise reinstall over it if the firmware ever picked it first).
-- **UEFI boot fallback:** `scripts/startup.nsh` rides on the USB share, and OVMF's shell runs it whenever no NVRAM boot entry works. It finds and launches `\EFI\Microsoft\Boot\bootmgfw.efi` (Windows never writes the generic `\EFI\BOOT\BOOTX64.EFI` the firmware looks for) or the Ubuntu/generic loaders, so Windows disks, fresh clones and lost NVRAM entries all still boot without a keypress. The firmware is loaded as `pflash` with a per-VM writable NVRAM (`data/<disk>.vars.fd`) so UEFI boot entries survive reboots; deleting a disk also deletes its NVRAM. There is no virtual TPM: the unattended `win11-*` installs apply the image from WinPE, which does not run setup's hardware checks.
+- **UEFI boot fallback:** `scripts/startup.nsh` rides on the USB share, and OVMF's shell runs it whenever no NVRAM boot entry works. It finds and launches `\EFI\Microsoft\Boot\bootmgfw.efi` (Windows never writes the generic `\EFI\BOOT\BOOTX64.EFI` the firmware looks for) or the Ubuntu/generic loaders, so Windows disks, fresh clones and lost NVRAM entries all still boot without a keypress. The firmware is loaded as `pflash` with a per-VM writable NVRAM (`app/data/clonewars/<disk>.vars.fd`) so UEFI boot entries survive reboots; deleting a disk also deletes its NVRAM. There is no virtual TPM: the unattended `win11-*` installs apply the image from WinPE, which does not run setup's hardware checks.
 - **macOS:** Boots experimental configurations utilizing Penryn CPU profiles and special guest machine interfaces via the KVM-OpenCore shim.
 
 ---
@@ -342,7 +353,7 @@ Based on the target's `OsFamily` (Linux, Windows, macOS) and `Firmware` metadata
    ```
    Without `.env`, the pipeline falls back to Microsoft's generic default install keys (unactivated). `.env` is git-ignored — never commit it. Building requires `oscdimg.exe` (`winget install Microsoft.OSCDIMG`) and a sibling `phoenix` checkout containing `win-install\autounattend.xml`.
 
-   Extract the retail ISO's contents into a folder named after the target, e.g. `data\win11-pro\` (it must contain `sources\install.wim`, `.esd`, or split `.swm` files and `efi\microsoft\boot\efisys_noprompt.bin`). On the next `.\start.ps1 win11-pro` the pipeline builds `data\win11-pro.iso` with the answer file injected, using the no-prompt UEFI boot sector so the install starts without a keypress, and applies the edition by name (`Windows 11 Pro`), not by image index. Install speed knobs applied automatically: dism's `/CheckIntegrity /Verify` are stripped from the apply step, and a disk that is still being installed to runs with `cache=unsafe` (flushes skipped) until the install finishes.
+   Extract the retail ISO's contents into a folder named after the target, e.g. `app\data\clonewars\win11-pro\` (it must contain `sources\install.wim`, `.esd`, or split `.swm` files and `efi\microsoft\boot\efisys_noprompt.bin`). On the next `.\start.ps1 win11-pro` the pipeline builds `app\data\clonewars\win11-pro.iso` with the answer file injected, using the no-prompt UEFI boot sector so the install starts without a keypress, and applies the edition by name (`Windows 11 Pro`), not by image index. Install speed knobs applied automatically: dism's `/CheckIntegrity /Verify` are stripped from the apply step, and a disk that is still being installed to runs with `cache=unsafe` (flushes skipped) until the install finishes.
 
 **Graphical UI:** `gui.ps1` launches a zero-dependency WPF front-end over the same pipeline (launch, background, VNC, disk/ISO cleanup, purge).
 
@@ -374,7 +385,7 @@ Both Docker profiles are also Castle targets, so `.\start.ps1 docker-windows` / 
 .\docker.ps1 -Profile windows -Logs     # follow the install log
 .\docker.ps1 -Profile windows -Down     # stop (keeps the VM disk volume); add -Purge to delete it
 ```
-- **Install media:** Microsoft's download endpoints answer 403 from some networks, so the profile installs from a local ISO bound in as `/custom.iso` via `docker/windows/compose.iso.yml`: `data/win11-pro-docker.iso`, or whatever `$env:CASTLE_WINDOWS_ISO` points at. Castle's own `win11-pro.iso` will not do: it is built for a FAT32 stick (split `install.swm` parts, Castle's `autounattend.xml`), which dockur cannot detect, so it falls back to a manual install without virtio drivers and Castle's answer file dies at diskpart. `docker/windows/build-iso.ps1` merges the split image back into `install.wim` and drops the answer file, inside a throwaway `dockurr/windows` container (no host tools, no admin); `docker.ps1` runs it automatically when the ISO is missing and `data/win11-pro/` exists. With no ISO at all, the container tries Microsoft's servers.
+- **Install media:** Microsoft's download endpoints answer 403 from some networks, so the profile installs from a local ISO bound in as `/custom.iso` via `docker/windows/compose.iso.yml`: `app/data/clonewars/win11-pro-docker.iso`, or whatever `$env:CASTLE_WINDOWS_ISO` points at. Castle's own `win11-pro.iso` will not do: it is built for a FAT32 stick (split `install.swm` parts, Castle's `autounattend.xml`), which dockur cannot detect, so it falls back to a manual install without virtio drivers and Castle's answer file dies at diskpart. `docker/windows/build-iso.ps1` merges the split image back into `install.wim` and drops the answer file, inside a throwaway `dockurr/windows` container (no host tools, no admin); `docker.ps1` runs it automatically when the ISO is missing and `app/data/clonewars/win11-pro/` exists. With no ISO at all, the container tries Microsoft's servers.
 - **Your apps:** `scripts/wine-apps/` is copied into the install as `C:\OEM\apps` and `docker/windows/oem/install.bat` runs each `.exe` once at the end of setup (silent switches for Discord and Mullvad, PuTTY copied to the desktop, anything else runs as-is and may show a wizard in the web viewer; log at `C:\OEM\install.log`). The live folder is also the `Shared` desktop folder / drive `Z:`.
 - **Access:** web viewer at `http://127.0.0.1:8006` (no login of its own, hence loopback only), or RDP to `127.0.0.1:3389` with the login from `docker/windows/.env`. Sizing lives in `compose.yml` (8 GB RAM, 4 cores, 48 GB disk). The disk is a Docker named volume on purpose: as a bind mount on NTFS the image loses its sparseness and all 48 GB get allocated on the host.
 - **KVM on Docker Desktop:** needs Windows 11 with the WSL2 backend. Docker Desktop's VM has the `kvm_intel`/`kvm_amd` modules but does not load them or create `/dev/kvm` (and can leave a stray `/dev/kvm` directory); `docker.ps1` fixes both inside the `docker-desktop` distro before every `up`. Docker Desktop restarts undo it, which is why the script repeats it each time.
@@ -398,7 +409,7 @@ docker build -t castle-vm .
 ### 3. Run the Container (Interactive Menu)
 Launch the container interactively. We mount a host directory to `/app/data` to ensure downloaded ISOs, virtual disks, and the trust store persist between container runs:
 ```bash
-docker run -it --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/data" castle-vm
+docker run -it --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/../data/clonewars:/app/data" castle-vm
 ```
 - Open `http://localhost:8006/vnc.html` in your web browser.
 - Select your target (e.g. CachyOS) and confirm boot.
@@ -407,7 +418,7 @@ docker run -it --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/dat
 ### 4. Run a Direct Background Instance
 You can bypass the menu and spin up an isolated background VM node directly:
 ```bash
-docker run -d --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/data" castle-vm cachyos -Instance docker-node-01 -Vnc
+docker run -d --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/../data/clonewars:/app/data" castle-vm cachyos -Instance docker-node-01 -Vnc
 ```
 
 > [!TIP]
@@ -422,5 +433,5 @@ docker run -d --device /dev/kvm -p 127.0.0.1:8006:8006 -v "$(pwd)/data:/app/data
 
 - **Ambiguous Target ID:** If you type a fuzzy name (e.g. `ubuntu`) that matches both `ubuntu` (Desktop) and `ubuntu-server`, the CLI will prompt you to be more specific.
 - **WHPX Accelerator Error:** If QEMU fails to boot saying it cannot initialize WHPX, check if Hyper-V or another hypervisor (like VirtualBox or VMware) is locking host virtualization resources, or run the optional feature enablement command above.
-- **Boots back to installer:** If a VM keeps booting to the ISO install disk after installation, it is because it is still in the "First Boot" stage or you have deleted/moved the virtual disk. The pipeline determines boot priority automatically based on the existence of the `data/<target-id>.qcow2` file.
+- **Boots back to installer:** If a VM keeps booting to the ISO install disk after installation, it is because it is still in the "First Boot" stage or you have deleted/moved the virtual disk. The pipeline determines boot priority automatically based on the existence of the `app/data/clonewars/<target-id>.qcow2` file.
 - **NoVNC screen is blank:** Ensure the VNC parameter (`-Vnc`) is active or passed when invoking the container. QEMU must run headlessly with a VNC display bound to bridge with NoVNC.

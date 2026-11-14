@@ -8,7 +8,10 @@
 //!     number of bots, each with its own sign-in and its own disk, so several run at once.
 //!
 //! Every launch is `start.ps1` in the clonewars folder, given a profile this module writes.
-//! A unit runs in one of three engines: a QEMU VM (its disk under data/), a container
+//! What the scripts download and create (disks, ISOs, the Android SDK, payloads) is in its
+//! data folder: `data/clonewars` beside the clonewars folder (`app/data/clonewars` in a
+//! checkout), or CASTLE_CLONEWARS_DATA. The scripts look in the same place.
+//! A unit runs in one of three engines: a QEMU VM (its disk in the data folder), a container
 //! (`container.ps1`: Docker, one image shared by all, the container is the disk), or
 //! Google's Android emulator (`android.ps1`, one AVD per unit). Android automations run
 //! their tasks on the phone (`castle-tasks.sh`), never on the box.
@@ -82,7 +85,7 @@ struct Target {
     cloud: bool,
     /// Packages, commands and files can be put into this guest from the host.
     inject: bool,
-    /// File name of its disk under data/; `*` stands for a version.
+    /// File name of its disk in the data folder; `*` stands for a version.
     disk: String,
     /// File name of the image it downloads.
     iso: String,
@@ -193,7 +196,7 @@ struct Machine {
 struct Unit {
     key: String,
     target: String,
-    /// Its own disk under data/instances; None means the target's main disk.
+    /// Its own disk in the data folder's instances/; None means the target's main disk.
     instance: Option<String>,
     engine: Engine,
 }
@@ -503,7 +506,7 @@ fn penguin() -> AutomationDef {
         name: "Penguin AutoSurf".into(),
         description: "Signs in to Club Penguin Journey and plays Cart Surfer on a loop for coins.".into(),
         target: "debian-x11".into(),
-        source: "../../penguin-autosurf".into(),
+        source: "../../../penguin-autosurf".into(),
         setup: "penguin".into(),
         memory_gb: 4,
         cores: 8,
@@ -682,7 +685,10 @@ impl Clones {
     }
 
     fn data(&self) -> PathBuf {
-        self.dir.join("data")
+        match std::env::var_os("CASTLE_CLONEWARS_DATA") {
+            Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+            _ => self.dir.parent().unwrap_or(&self.dir).join("data").join("clonewars"),
+        }
     }
 
     fn file_key(key: &str) -> String {
@@ -1196,7 +1202,7 @@ impl Clones {
         }
         if is_git_address(source) {
             let name = slug(source.trim_end_matches('/').trim_end_matches(".git").rsplit('/').next().unwrap_or("project"));
-            return Some(self.dir.join("../..").join(if name.is_empty() { "project".to_string() } else { name }));
+            return Some(self.data().join("projects").join(if name.is_empty() { "project".to_string() } else { name }));
         }
         let path = PathBuf::from(source);
         Some(if path.is_absolute() { path } else { self.dir.join(path) })
@@ -1832,7 +1838,7 @@ mod tests {
 
     #[test]
     fn the_control_port_is_read_from_the_vm_command_line() {
-        let line = r#"qemu-system-x86_64.exe -m 4G -qmp tcp:127.0.0.1:4445,server=on,wait=off -drive file=C:\x\data\debian-x11.qcow2"#;
+        let line = r#"qemu-system-x86_64.exe -m 4G -qmp tcp:127.0.0.1:4445,server=on,wait=off -drive file=C:\x\data\clonewars\debian-x11.qcow2"#;
         assert_eq!(qmp_port(line), Some(4445));
         assert_eq!(qmp_port("qemu-system-x86_64.exe -m 4G"), None);
     }

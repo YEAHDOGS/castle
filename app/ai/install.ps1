@@ -57,8 +57,8 @@ Exec { uv pip install --python $VenvPy torch torchvision torchaudio --index-url 
 Exec { uv pip install --python $VenvPy -r (Join-Path $ComfyDir 'requirements.txt') } 'ComfyUI requirements'
 Exec { & $VenvPy -c "import torch; print('    torch', torch.__version__, 'cuda', torch.cuda.is_available())" } 'torch check'
 
-# Point ComfyUI at the FLUX download folder (keeps the HF repo layout, no copying) and at runtime/models/linked,
-# where the dogs server hard-links every model it finds (project models/ folder, every user's HF cache).
+# Point ComfyUI at the FLUX download folder (keeps the HF repo layout, no copying) and at runtime/models/linked
+# (both in app/data/ai), where the dogs server hard-links every model it finds (app/data/ai/models, every user's HF cache).
 $fluxFwd = $FluxDir -replace '\\', '/'
 $linkedFwd = (Join-Path $Runtime 'models\linked') -replace '\\', '/'
 @"

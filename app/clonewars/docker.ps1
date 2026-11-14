@@ -38,6 +38,9 @@ $ErrorActionPreference = "Stop"
 # Invoke-Quiet / Enable-DockerKvm: docker and wsl run without console windows (the Castle
 # box starts this script with no console, and a plain & docker would open one per call).
 . (Join-Path (Join-Path $PSScriptRoot "modules") "containers.ps1")
+
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+$DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "data") "clonewars" }
 $ProfileDir = Join-Path (Join-Path $PSScriptRoot "docker") $Profile
 $Compose = Join-Path $ProfileDir "compose.yml"
 $EnvFile = Join-Path $ProfileDir ".env"
@@ -62,8 +65,8 @@ $Profiles = @{
         # compose.iso.yml and no download is attempted. Override with $env:CASTLE_WINDOWS_ISO.
         # Not Castle's win11-pro.iso: that one is split-WIM + Castle's answer file,
         # which dockur cannot drive. docker\windows\build-iso.ps1 makes this one
-        # from data\win11-pro and is run automatically when the file is missing.
-        Iso      = if ($env:CASTLE_WINDOWS_ISO) { $env:CASTLE_WINDOWS_ISO } else { Join-Path $PSScriptRoot "data\win11-pro-docker.iso" }
+        # from app\data\clonewars\win11-pro and is run automatically when the file is missing.
+        Iso      = if ($env:CASTLE_WINDOWS_ISO) { $env:CASTLE_WINDOWS_ISO } else { Join-Path $DataDir "win11-pro-docker.iso" }
         IsoBuild = Join-Path $ProfileDir "build-iso.ps1"
     }
 }
@@ -102,8 +105,8 @@ $ComposeArgs = @("compose", "--project-directory", $ProfileDir, "-f", $Compose, 
 if ($P.Iso) {
     $Starting = -not ($Down -or $Logs -or $Shell)
     if ($Starting -and -not (Test-Path $P.Iso) -and -not $env:CASTLE_WINDOWS_ISO -and $P.IsoBuild -and
-        (Test-Path (Join-Path $PSScriptRoot "data\win11-pro\sources"))) {
-        Write-Host "  [*] No $($P.Iso) yet; building it from data\win11-pro (5-15 min, one time)..." -ForegroundColor Yellow
+        (Test-Path (Join-Path (Join-Path $DataDir "win11-pro") "sources"))) {
+        Write-Host "  [*] No $($P.Iso) yet; building it from app\data\clonewars\win11-pro (5-15 min, one time)..." -ForegroundColor Yellow
         & $P.IsoBuild -Output $P.Iso
         if ($LASTEXITCODE -ne 0) { Exit $LASTEXITCODE }
     }

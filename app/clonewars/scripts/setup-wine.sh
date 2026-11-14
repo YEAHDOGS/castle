@@ -5,7 +5,7 @@
 # Usage (root):
 #   setup-wine.sh                          install Wine only
 #   setup-wine.sh /path/to/app.exe         install Wine, then run that program
-#   setup-wine.sh --copy                   also copy the CASTLECOPY share (host data/copy) into ~/castle-copy
+#   setup-wine.sh --copy                   also copy the CASTLECOPY share (host app/data/clonewars/copy) into ~/castle-copy
 #   setup-wine.sh --copy --all             ...and run every .exe that was copied
 #   setup-wine.sh --copy --program NAME    ...and run NAME (a file inside ~/castle-copy, or a path)
 #

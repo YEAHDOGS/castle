@@ -5,12 +5,9 @@
 //   node scripts/build-site.mjs              build the demo, then put the site together
 //   node scripts/build-site.mjs --no-build   reuse app/dist-showcase as it is
 //
-// The result is site-dist/ (not committed). Deploying it is one command, run from the repo
-// root with a Cloudflare login or CLOUDFLARE_API_TOKEN that can edit Pages:
-//
-//   npx wrangler pages deploy site-dist --project-name=castle --branch=master
-//
-// That replaces everything castle.dogs.red serves, so always deploy the whole folder.
+// The result is site-dist/ (not committed), to look at before you push. Nothing uploads it by
+// hand: the Cloudflare Pages project "castle" is connected to the repo and runs this same build
+// on every push, so a push to master is the deploy and other branches get preview addresses.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, rmSync, mkdirSync, readFileSync } from 'node:fs';
@@ -43,4 +40,4 @@ mkdirSync(out, { recursive: true });
 cpSync(landing, out, { recursive: true });
 cpSync(showcase, join(out, 'demo'), { recursive: true });
 console.log(`build-site: ${out} is ready (landing at /, the demo at /demo/)`);
-console.log('deploy:     npx wrangler pages deploy site-dist --project-name=castle --branch=master');
+console.log('deploy:     push to master (Cloudflare Pages builds it from git)');

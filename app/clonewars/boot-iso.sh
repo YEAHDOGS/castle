@@ -3,7 +3,7 @@
 # Castle VM -- boot any ISO in QEMU with a disk of the size you choose (Linux)
 # ==============================================================================
 # Point it at an ISO (EndeavourOS, Ubuntu, Kali, Arch, anything bootable) and a
-# disk size. It creates a qcow2 of that size under data/adhoc/, boots the
+# disk size. It creates a qcow2 of that size under app/data/clonewars/adhoc/, boots the
 # installer from the ISO on the first run, and boots the installed disk on
 # every later run (the ISO stays attached as a CD for repairs). Standalone: no
 # manifest, no download -- for images you already have on disk.
@@ -18,7 +18,7 @@
 #   ./boot-iso.sh <iso> [size] [options]
 #     size              5, 5G, 5GB, 10gb, 15G, 40G ...   (default 10G)
 #   disk:
-#     --name NAME       VM name; disk is data/adhoc/NAME.qcow2 (default <iso>-<size>)
+#     --name NAME       VM name; disk is app/data/clonewars/adhoc/NAME.qcow2 (default <iso>-<size>)
 #     --disk PATH       explicit qcow2 path
 #     --fresh           delete the existing disk (+ NVRAM) so the installer runs again
 #     --boot cd|disk    force boot device (default: CD on a blank disk, disk afterwards)
@@ -55,16 +55,17 @@
 #     --dry-run         print the QEMU command line and exit
 #
 # Examples:
-#   ./boot-iso.sh data/endeavouros-Titan-Nova-2026.08.15.iso 10G
+#   ./boot-iso.sh ../data/clonewars/endeavouros-Titan-Nova-2026.08.15.iso 10G
 #   ./boot-iso.sh ~/isos/EndeavourOS_Titan-Nova-2026.08.15.iso 15gb --sig ~/isos/EndeavourOS_Titan-Nova-2026.08.15.iso.sig --sha512 ~/isos/EndeavourOS_Titan-Nova-2026.08.15.iso.sha512sum
 #   ./boot-iso.sh ~/isos/ubuntu-24.04.3-desktop-amd64.iso 15G --sha256 ~/isos/SHA256SUMS --sig ~/isos/SHA256SUMS.gpg
 #   ./boot-iso.sh ~/isos/kali-linux-2026.3-installer-amd64.iso 20G --vga virtio --audio --forward 2222:22
-#   ./boot-iso.sh data/endeavouros-Titan-Nova-2026.08.15.iso 5G --snapshot --fresh --uefi
+#   ./boot-iso.sh ../data/clonewars/endeavouros-Titan-Nova-2026.08.15.iso 5G --snapshot --fresh --uefi
 # ==============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_DIR="$SCRIPT_DIR/data"
+# Disks, ISOs and downloads: app/data/clonewars (git-ignored), or CASTLE_CLONEWARS_DATA.
+DATA_DIR="${CASTLE_CLONEWARS_DATA:-$(dirname "$SCRIPT_DIR")/data/clonewars}"
 SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 
 die()  { echo "  [FAIL] $*" >&2; exit 1; }

@@ -14,7 +14,7 @@
 # drops Castle's autounattend.xml, so dockur detects the edition, injects its
 # drivers and runs its own unattended setup (which also runs /oem/install.bat).
 #
-#   /src  Windows install folder, read-only (clonewars/data/win11-pro)
+#   /src  Windows install folder, read-only (app/data/clonewars/win11-pro)
 #   /out  destination folder; the ISO is written as $ISO_NAME
 set -euo pipefail
 SRC=/src

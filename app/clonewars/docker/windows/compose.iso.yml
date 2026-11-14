@@ -3,7 +3,7 @@
 # ==============================================================================
 # docker.ps1 adds this file automatically when the ISO exists. Microsoft's
 # download endpoints answer 403 from some networks, so a local ISO is the
-# reliable path. WINDOWS_ISO comes from docker.ps1 (default: clonewars/data/win11-pro.iso).
+# reliable path. WINDOWS_ISO comes from docker.ps1 (default: app/data/clonewars/win11-pro.iso).
 services:
   windows:
     volumes:

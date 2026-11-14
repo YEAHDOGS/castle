@@ -11,14 +11,18 @@ same API is what an outside assistant calls later ("I need an image of skyscrape
                                          |
                               ComfyUI :8188 (runtime/ComfyUI)  ->  outputs/
                                          |
-         models: ./models  +  every user's ~/.cache/huggingface/hub  +  runtime/models
+         models: models/  +  every user's ~/.cache/huggingface/hub  +  runtime/models
 ```
+
+Everything installed, downloaded or generated lives outside this folder, in `app/data/ai/` (git-ignored;
+`DOGS_AI_DATA` points it elsewhere): `runtime/` (ComfyUI, linked models, the database), `models/` and
+`outputs/`. The paths below are inside it.
 
 | Piece | What | Where |
 |---|---|---|
 | `dogs` CLI + API | Scans models, queues jobs, talks to ComfyUI, downloads from Hugging Face | `server/` (Node 22+, no dependencies) |
 | DOGS AI app | Prompt, pick a model, see results; desktop app or web page | `app/` (Svelte 5, Tailwind 4, Tauri 2) |
-| ComfyUI `v0.42.5` | Runs the models | `runtime/ComfyUI` (git-ignored) |
+| ComfyUI `v0.42.5` | Runs the models | `app/data/ai/runtime/ComfyUI` (git-ignored) |
 | opencode + Qwen3.5 (Ollama) | Agentic coding with local models (see [Coding agent](#coding-agent-opencode)) | global, `opencode/`, `mcp/comfy-mcp` |
 
 ## Install (Windows)
@@ -128,7 +132,7 @@ dogs models import <model id>               copy a model in when its files are o
 
 `dogs` scans, on every refresh:
 
-1. **`models/`** in this project. Drop plain `.safetensors` / `.gguf` files here, or cut and paste whole
+1. **`app/data/ai/models/`**. Drop plain `.safetensors` / `.gguf` files here, or cut and paste whole
    Hugging Face cache folders (`models--org--name`).
 2. **Every user profile's Hugging Face cache**: `C:\Users\*\.cache\huggingface\hub` (plus `HF_HOME` /
    `HF_HUB_CACHE`). `hf download` saves into the cache of whoever ran it, often an admin account, so all of
@@ -223,7 +227,7 @@ when it opens and restarts it if it stops, so you never start it by hand. While 
 Generation history (prompt, model, parameters, seed, timestamps, output files) lives in **SQLite** at
 `runtime/dogs.db`, through Node's built-in `node:sqlite` (no dependency, no database server; also works on a
 Raspberry Pi). Every generated file (app, CLI, API and the opencode `/image` tools) is a plain file in
-`outputs/generated/<image|video|audio>/` in this project folder; `outputs/inputs/` holds uploaded start frames and
+`outputs/generated/<image|video|audio>/` in `app/data/ai`; `outputs/inputs/` holds uploaded start frames and
 `outputs/characters/` character uploads. Files from older versions in `outputs/<kind>/` are moved there (and
 their history updated) the next time the engine starts. All database access is in `server/src/db.mjs` with plain SQL, so a
 later move to Cloudflare Workers + D1 (also SQLite) swaps that one file, and `outputs/` maps to R2. There is no
@@ -312,7 +316,8 @@ install.ps1, stack.json     installer and pinned versions
 server/                     dogs CLI (bin/dogs.mjs) and API (src/): scan, families, comfy, jobs, db, llm, hub, api
 app/                        DOGS AI app: src/ (Svelte), src-tauri/ (Tauri desktop shell, Rust)
 workflows/                  your own ComfyUI API-format workflows (optional)
-models/                     drop models here (git-ignored)
 mcp/comfy-mcp, opencode/, ollama/, scripts/   coding agent setup and PowerShell helpers
-runtime/, outputs/          ComfyUI, linked models, database; outputs/generated/ has every generated file (git-ignored)
 ```
+
+And in `app/data/ai/` (git-ignored): `models/` (drop models here), `runtime/` (ComfyUI, linked models,
+database) and `outputs/` (`outputs/generated/` has every generated file).

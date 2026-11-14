@@ -15,7 +15,7 @@
 #   @{
 #       Description  = "What this VM is for"
 #       Target       = "debian-x11"        # target id from modules/targets.ps1
-#       Instance     = "job-01"            # own disk under data/instances
+#       Instance     = "job-01"            # own disk under app/data/clonewars/instances
 #       Background   = $true               # windowed QEMU, return to the shell
 #       MemoryGB     = 4                   # exact guest RAM
 #       Cores        = 4                   # exact guest CPU count
@@ -23,7 +23,7 @@
 #       QemuArgs     = @("-rtc", "base=localtime")   # extra raw QEMU arguments
 #       Env          = @{ CASTLE_VM_AUDIO = "none" } # CASTLE_* knobs for this launch
 #
-#       # Host folders packed into data/copy before boot. A git checkout is
+#       # Host folders packed into app/data/clonewars/copy before boot. A git checkout is
 #       # packed as git sees it (tracked + untracked, ignored files left out);
 #       # Include adds ignored files by name (a .env, say).
 #       Payload      = @(
@@ -180,7 +180,7 @@ function Update-CastleProfilePayload {
         if (-not (Test-Path $CopyDir)) { New-Item -ItemType Directory -Path $CopyDir -Force | Out-Null }
         $Destination = Join-Path $CopyDir $As
         $Count = New-CastlePayloadZip -Source $Source -Destination $Destination -Include @($Item.Include)
-        Write-Host ("  [PROFILE] Packed {0} file(s) from {1} -> data\copy\{2} ({3:N1} MB)" -f $Count, (Get-Item -LiteralPath $Source).FullName, $As, ((Get-Item $Destination).Length / 1MB)) -ForegroundColor Cyan
+        Write-Host ("  [PROFILE] Packed {0} file(s) from {1} -> app\data\clonewars\copy\{2} ({3:N1} MB)" -f $Count, (Get-Item -LiteralPath $Source).FullName, $As, ((Get-Item $Destination).Length / 1MB)) -ForegroundColor Cyan
     }
     return $true
 }

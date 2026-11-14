@@ -9,7 +9,7 @@
 Write-Step 'opencode global config'
 $tplDir  = Join-Path $Repo 'opencode'
 $repoFwd = $Repo -replace '\\', '/'
-$text    = (Get-Content (Join-Path $tplDir 'opencode.template.json') -Raw).Replace('__REPO__', $repoFwd)
+$text    = (Get-Content (Join-Path $tplDir 'opencode.template.json') -Raw).Replace('__OUTPUTS__', ($Outputs -replace '\\', '/')).Replace('__REPO__', $repoFwd)
 $cfg     = $text | ConvertFrom-Json
 
 # Inline "@file:<path relative to opencode/>" prompts so the rendered config is self-contained.

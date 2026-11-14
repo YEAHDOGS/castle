@@ -8,8 +8,8 @@ mapped network drive, but the apps do not depend on it.
 ## Run it
 
 ```powershell
-cd castled
-cargo run -- --data .\castle-data --web ..\app\dist
+cd app\castled
+cargo run -- --data ..\data\castle --web ..\dist
 ```
 
 It prints a link ending in `#connect=<token>`. Open it and the app is connected.
@@ -18,7 +18,7 @@ app's Connect screen (the server icon in the top bar).
 
 | Flag | Default | Environment |
 |---|---|---|
-| `--data` vault directory | `./castle-data` | `CASTLE_DATA_DIR` |
+| `--data` vault directory | `../data/castle` (app/data/castle, git-ignored) | `CASTLE_DATA_DIR` |
 | `--bind` address and port | `127.0.0.1:8787` | `CASTLE_BIND` |
 | `--web` built Castle app to serve at `/` | none | `CASTLE_WEB_DIR` |
 | `--clonewars` Castle's `clonewars` folder, to run automations | none | `CASTLE_CLONEWARS_DIR` |

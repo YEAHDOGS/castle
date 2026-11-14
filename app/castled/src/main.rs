@@ -61,7 +61,9 @@ use tower_http::{
 };
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
-const DEFAULT_DATA_DIR: &str = "./castle-data";
+/// For `cargo run` in app/castled this is app/data/castle, which git ignores. The desktop app
+/// and start.sh always pass --data (the vault the owner chose, ~/Castle by default).
+const DEFAULT_DATA_DIR: &str = "../data/castle";
 /// Everything the daemon keeps for itself lives here, hidden from every listing.
 const META_DIR: &str = ".castle";
 const TRASH_PREFIX: &str = "trash:";

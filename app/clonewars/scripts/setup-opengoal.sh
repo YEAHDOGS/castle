@@ -8,10 +8,10 @@
 #   setup-opengoal.sh --copy --program X   same; X is ignored (kept for the shared flag vocabulary)
 #
 # Inputs, all optional but you need a game disc from somewhere:
-#   ~/castle-copy/opengoal-linux-*.tar.gz  the official Linux release (data/copy on the host);
+#   ~/castle-copy/opengoal-linux-*.tar.gz  the official Linux release (app/data/clonewars/copy on the host);
 #                                          without it the latest release is fetched from GitHub
 #   /dev/sr1..                             game ISOs the host attached as extra CD-ROMs (any *.iso in
-#                                          data/copy is attached this way -- too big for the FAT share)
+#                                          app/data/clonewars/copy is attached this way -- too big for the FAT share)
 #   ~/castle-copy/*.iso                    a small ISO that did fit the share
 #
 # From the host:  .\start.ps1 endeavouros -c -Setup opengoal
@@ -115,7 +115,7 @@ if [ -z "$GAME_SRC" ]; then
   for iso in "$COPY_DST"/*.iso; do GAME_SRC="$iso"; echo "[+] Game ISO: $iso"; break; done
 fi
 if [ -z "$GAME_SRC" ]; then
-  echo "[-] No game disc found: put the Jak and Daxter .iso in data/copy on the host (it is attached as a CD-ROM)."
+  echo "[-] No game disc found: put the Jak and Daxter .iso in app/data/clonewars/copy on the host (it is attached as a CD-ROM)."
   exit 2
 fi
 

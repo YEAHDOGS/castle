@@ -314,7 +314,7 @@ function Get-OrCreateHmacKey {
 }
 
 function Get-PinnedTrustStore {
-    $DataDir = Join-Path $PSScriptRoot "..\data"
+    $DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "data") "clonewars" }
     $TrustFile = Join-Path $DataDir ".castle_trust.json"
     $SigFile = Join-Path $DataDir ".castle_trust.sig"
 
@@ -353,13 +353,14 @@ function Get-PinnedTrustStore {
 
 function Save-PinnedTrustStore {
     param ([hashtable]$TrustStore)
-    $DataDir = Join-Path $PSScriptRoot "..\data"
+    $DataDir = if ($env:CASTLE_CLONEWARS_DATA) { $env:CASTLE_CLONEWARS_DATA } else { Join-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "data") "clonewars" }
     $TrustFile = Join-Path $DataDir ".castle_trust.json"
     $SigFile = Join-Path $DataDir ".castle_trust.sig"
 
     $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
     $KeyFile = Join-Path $HomeDir ".castle_vm_key"
 
+    if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
     $JsonData = ($TrustStore | ConvertTo-Json).Trim()
     $JsonData | Set-Content $TrustFile -Force
 
