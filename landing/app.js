@@ -1,7 +1,6 @@
-// DOGS style: y-scroll-snap panels + active dot tracking.
+// DOGS style: full-screen panels + active dot tracking.
 // Castle waitlist: two-step (email -> confirmation code).
 (function () {
-  document.documentElement.classList.add('snap');
 
   // active dot follows the visible panel
   var dots = document.querySelectorAll('.dots a');
