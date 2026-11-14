@@ -5,6 +5,26 @@
 
 import { svgThumb } from './adapter.js';
 
+// The demo's posters, covers, stills and game art: public domain or freely licensed, built by
+// scripts/demo-media.mjs into media/ (see media/CREDITS.md) and hosted here.
+export const MEDIA_BASE = 'https://data.wearedogs.net/castle/media';
+const hostedImages = new Map();
+
+/** A hosted image's address once it has loaded; `fallback` when it cannot (not uploaded yet, offline). */
+function hosted(file, fallback) {
+  const url = `${MEDIA_BASE}/${file}`;
+  if (!hostedImages.has(url)) {
+    hostedImages.set(url, new Promise((done) => {
+      if (typeof Image === 'undefined') return done(false);
+      const img = new Image();
+      img.onload = () => done(true);
+      img.onerror = () => done(false);
+      img.src = url;
+    }));
+  }
+  return hostedImages.get(url).then((ok) => (ok ? url : fallback));
+}
+
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
 const MINUTE = 60000;
@@ -50,45 +70,58 @@ export const DEMO_AI_HARDWARE = { gpu: 'GPU 24 GB', vramUsed: 19.4 * GB, vramTot
 // Arcade: shaped like the reference drive (RetroArch playlists + standalone emulators)
 // ---------------------------------------------------------------------------------------
 
-const TITLE_FIRST = ['Sky', 'Iron', 'Pixel', 'Turbo', 'Moon', 'Crystal', 'Shadow', 'Rocket', 'Thunder', 'Neon', 'Star', 'Jungle'];
-const TITLE_SECOND = ['Runner', 'Quest', 'Racers', 'Knights', 'Kart', 'Legends', 'Brawl', 'Odyssey', 'Tactics', 'Harvest', 'Circuit', 'Dungeon'];
+// The sample games are real ones that are free to show: homebrew and libretro's own games whose code and art are
+// under free licences. Their screenshots and box art are hosted with the site (see media/CREDITS.md).
 const SYSTEM_TINTS = [
   ['#4a1a1a', '#0e0508'], ['#3a1a4a', '#0b0e1e'], ['#1a4a2b', '#0e1e12'], ['#2b3a8a', '#0e122b'],
   ['#8a5a2b', '#2b1a0e'], ['#123a4a', '#0e0b1e'],
 ];
+const KB = 1024;
+// art: which hosted image is the game's cover (its box art, or its title screen where a game has no box);
+// snap: it has an in-game screenshot. art and snap below are [hosted file, placeholder if it cannot load].
 const DEMO_SYSTEM_SPECS = [
-  { short: 'NES', name: 'Nintendo - Nintendo Entertainment System', emulator: 'RetroArch', games: 9, each: 0.3 * MB },
-  { short: 'SNES', name: 'Nintendo - Super Nintendo Entertainment System', emulator: 'RetroArch', games: 24, each: 2 * MB },
-  { short: 'N64', name: 'Nintendo - Nintendo 64', emulator: 'RetroArch', games: 18, each: 19 * MB },
-  { short: 'GameCube', name: 'Nintendo - GameCube', emulator: 'RetroArch', games: 14, each: 760 * MB },
-  { short: 'GBA', name: 'Nintendo - Game Boy Advance', emulator: 'RetroArch', games: 12, each: 12 * MB },
-  { short: 'PS1', name: 'Sony - PlayStation', emulator: 'RetroArch', games: 7, each: 520 * MB, discs: true },
-  { short: 'PS2', name: 'Sony - PlayStation 2', emulator: 'PCSX2', games: 8, each: 2.7 * GB, noArt: true, discs: true },
-  { short: 'PSP', name: 'Sony - PlayStation Portable', emulator: 'PPSSPP', games: 6, each: 1.2 * GB, noArt: true },
+  { short: 'NES', slug: 'nes', name: 'Nintendo - Nintendo Entertainment System', emulator: 'RetroArch', games: [
+    { slug: 'super-tilt-bro', title: 'Super Tilt Bro. (World)', size: 512 * KB, art: 'title', snap: true, url: 'https://github.com/sgadrat/super-tilt-bro', about: 'Super Tilt Bro. is a platform fighting game for the NES by Sylvain Gadrat, where two fighters try to knock each other off the stage. It is free software (WTFPL).' },
+    { slug: 'nova-the-squirrel', title: 'Nova the Squirrel (World)', size: 256 * KB, art: 'title', snap: true, url: 'https://github.com/NovaSquirrel/NovaTheSquirrel', about: 'Nova the Squirrel is a platformer for the NES by NovaSquirrel, released as free software under the GPL.' },
+    { slug: 'thwaite', title: 'Thwaite (World)', size: 32 * KB, art: 'title', snap: true, url: 'https://github.com/pinobatch/thwaite-nes', about: 'Thwaite is a missile-defence game for the NES by Damian Yerrick: aim crosshairs to shoot down missiles before they hit the houses of a small town. It is free software under the GPL.' },
+    { slug: 'concentration-room', title: 'Concentration Room (World)', size: 32 * KB, art: 'title', snap: true, url: 'https://github.com/pinobatch/croom-nes', about: 'Concentration Room is a card-matching memory game for the NES by Damian Yerrick. It is free software under the GPL.' },
+    { slug: 'robotfindskitten', title: 'robotfindskitten (World)', size: 16 * KB, art: 'title', snap: true, url: 'https://github.com/pinobatch/rfk-nes', about: 'robotfindskitten is a "Zen simulation": robot searches a screen full of strange objects until it finds kitten. This NES port by Damian Yerrick is free software (zlib licence).' },
+    { slug: 'double-action-blaster-guys', title: 'DABG - Double Action Blaster Guys (World)', size: 64 * KB, art: 'title', snap: true, url: 'https://github.com/NovaSquirrel/DABG', about: 'Double Action Blaster Guys is an action game for the NES by NovaSquirrel, made for the 2014 NESdev competition. It is free software (zlib licence).' },
+  ] },
+  { short: 'GB', slug: 'gb', name: 'Nintendo - Game Boy', emulator: 'RetroArch', games: [
+    { slug: 'tobu-tobu-girl', title: 'Tobu Tobu Girl (World)', size: 128 * KB, art: 'title', snap: false, url: 'https://github.com/SimonLarsen/tobutobugirl', about: 'Tobu Tobu Girl is an arcade platformer for the Game Boy by Tangram Games, bouncing ever higher into the sky. Its code (MIT) and art (CC BY 4.0) are free.' },
+  ] },
+  { short: 'DOOM', slug: 'doom', name: 'DOOM', emulator: 'RetroArch', games: [
+    { slug: 'freedoom-phase-1', title: 'Freedoom - Phase 1', size: 28 * MB, art: 'title', snap: true, url: 'https://freedoom.github.io/', about: 'Freedoom: Phase 1 is a free game for Doom engines: four episodes in the style of the original Doom, with all-new levels, art and music under a BSD licence.' },
+    { slug: 'freedoom-phase-2', title: 'Freedoom - Phase 2', size: 31 * MB, art: 'title', snap: true, url: 'https://freedoom.github.io/', about: 'Freedoom: Phase 2 is a free game for Doom engines: a 32-level campaign in the style of Doom II, with all-new levels, art and music under a BSD licence.' },
+    { slug: 'freedm', title: 'Freedoom - FreeDM', size: 19 * MB, art: 'title', snap: false, url: 'https://freedoom.github.io/', about: "FreeDM is the Freedoom project's set of deathmatch levels for multiplayer Doom engines, under a BSD licence." },
+  ] },
+  { short: 'Dinothawr', slug: 'dinothawr', name: 'Dinothawr', emulator: 'RetroArch', games: [
+    { slug: 'dinothawr', title: 'Dinothawr', size: 6 * MB, art: 'boxart', snap: true, url: 'https://github.com/libretro/Dinothawr', about: 'Dinothawr is a block-pushing puzzle game on slippery ice: a dinosaur has to free its friends, who are frozen solid. It was made for libretro; its code is GPL and its art CC BY-SA.' },
+  ] },
+  { short: 'Mr. Boom', slug: 'mrboom', name: 'MrBoom', emulator: 'RetroArch', games: [
+    { slug: 'mr-boom', title: 'Mr.Boom', size: 3 * MB, art: 'boxart', snap: true, url: 'https://github.com/libretro/mrboom-libretro', about: 'Mr. Boom is a Bomberman-style game for up to ten players by Remdy Software, first released in 1997 and now a libretro core under the MIT licence.' },
+  ] },
 ];
 
 function demoGames(spec, systemIndex) {
-  return Array.from({ length: spec.games }, (_, i) => {
-    const title = `${TITLE_FIRST[(i * 5 + systemIndex * 3) % TITLE_FIRST.length]} ${TITLE_SECOND[(i * 7 + systemIndex) % TITLE_SECOND.length]}${i >= TITLE_SECOND.length ? ` ${Math.floor(i / TITLE_SECOND.length) + 1}` : ''} (USA)`;
+  return spec.games.map((game, i) => {
     const tint = SYSTEM_TINTS[(i + systemIndex) % SYSTEM_TINTS.length];
-    const size = Math.round(spec.each * (0.7 + ((i * 37) % 60) / 100));
-    // On disc-based systems every fifth game comes on several discs, shown as one game.
-    const discCount = spec.discs && i % 5 === 1 ? 2 + (i % 3) : 1;
     return {
       id: i,
-      title,
-      size: size * discCount,
+      title: game.title,
+      size: game.size,
       present: true,
-      hasBoxart: !spec.noArt && i % 9 !== 8,
-      hasSnap: !spec.noArt,
-      discs: Array.from({ length: discCount }, (_, d) => ({ label: discCount > 1 ? `Disc ${d + 1}` : '', size, present: true })),
-      art: svgThumb(spec.short, tint[0], tint[1]),
-      snap: svgThumb(`${spec.short} · IN GAME`, tint[1], tint[0]),
+      hasBoxart: !!game.art,
+      hasSnap: game.snap,
+      discs: [{ label: '', size: game.size, present: true }],
+      art: game.art ? [`arcade/${spec.slug}/${game.art}/${game.slug}.png`, svgThumb(spec.short, tint[0], tint[1])] : null,
+      snap: game.snap ? [`arcade/${spec.slug}/snap/${game.slug}.png`, svgThumb(`${spec.short} · IN GAME`, tint[1], tint[0])] : null,
+      about: game.about,
+      url: game.url,
     };
   });
 }
-
-const DEMO_GENRES = ['platformer', 'role-playing game', 'racing game', 'puzzle game', 'action-adventure', 'fighting game'];
 
 /** The demo arcade, answering the same calls a box does. */
 const DEMO_SAVED_GAMES = 3; // games per system that have sample saves
@@ -203,8 +236,8 @@ export class DemoArcade {
 
   async arcadeArt(system, game, kind = 'boxart') {
     const found = (await this.arcadeGames(system))[game];
-    if (kind === 'snap') return found?.hasSnap ? found.snap : null;
-    return found?.hasBoxart ? found.art : null;
+    if (kind === 'snap') return found?.hasSnap ? hosted(...found.snap) : null;
+    return found?.hasBoxart ? hosted(...found.art) : null;
   }
 
   async arcadePlay(system, game, disc = 0) {
@@ -213,18 +246,11 @@ export class DemoArcade {
     return { started: `${found?.title || ''}${label ? ` (${label})` : ''}`, demo: true };
   }
 
-  /** A made-up description, so the demo's cards read like a real box's. */
+  /** What the game's own project says about it, as a real box's card shows Wikipedia's. */
   async arcadeAbout(system, game) {
-    const spec = this.library.find((s) => s.spec.name === system)?.spec;
     const found = (await this.arcadeGames(system))[game];
-    if (!found || !spec) return null;
-    const name = found.title.replace(/ \(.*$/, '');
-    const genre = DEMO_GENRES[(game + spec.short.length) % DEMO_GENRES.length];
-    return {
-      title: name,
-      extract: `${name} is a sample ${genre} for the ${spec.short}. This description is sample text: on a real box, Castle asks Wikipedia about a game the first time its card is opened and keeps the answer.`,
-      url: 'https://en.wikipedia.org/wiki/Video_game',
-    };
+    if (!found) return null;
+    return { title: found.title.replace(/ \(.*$/, ''), extract: found.about, url: found.url };
   }
 
   /** Sample saves: the first few games of each system, some with a save state as well. */
@@ -699,8 +725,9 @@ export class DemoSecurity {
 }
 
 // ---------------------------------------------------------------------------------------
-// Theater: a made-up library of films, shows, albums, photos and home videos. Every title,
-// name and summary here is invented sample data.
+// Theater: real films, shows and albums that are free to show: public-domain films and cartoons, the Blender
+// open movies, Creative Commons music and photos. Their posters, stills and covers are hosted with the site
+// (see media/CREDITS.md). Paths, sizes, people's photo folders and home videos are made up.
 // ---------------------------------------------------------------------------------------
 
 const DEMO_TINTS = [
@@ -708,27 +735,72 @@ const DEMO_TINTS = [
   ['#3a1a5a', '#08050e'], ['#1a5a52', '#050e0d'], ['#5a2b1a', '#0e0805'], ['#24245a', '#05050e'],
 ];
 const DEMO_FILMS = [
-  { title: 'Night Harbor', year: 2019, genres: ['Thriller', 'Mystery'], minutes: 118, cast: ['Ada Brennan', 'Tomas Ruiz', 'Lena Okafor'], director: 'Mira Holt', overview: 'A harbour pilot finds a ship that should not exist and a crew that will not say where it came from.' },
-  { title: 'The Glass Orchard', year: 2021, genres: ['Drama'], minutes: 104, cast: ['Ruth Calder', 'Ivo Marsh'], director: 'Sanne Vos', overview: 'Three sisters return to the family greenhouse the summer it is sold.' },
-  { title: 'Signal Lost', year: 2016, genres: ['Science fiction'], minutes: 131, cast: ['Kai Moreno', 'Hana Ito', 'Peter Lund'], director: 'Oren Bakr', overview: 'A relay station at the edge of the solar system goes quiet. The repair crew finds out why.' },
-  { title: 'Dust and Neon', year: 2023, genres: ['Action', 'Crime'], minutes: 97, cast: ['Jo Varga', 'Nils Achebe'], director: 'Tess Arden', overview: 'A courier with one night left on her licence takes the job everyone else refused.' },
-  { title: 'Paper Moons', year: 2012, genres: ['Animation', 'Family'], minutes: 88, cast: ['Ellie Park', 'Ben Szabo'], director: 'Uma Reyes', overview: 'A girl who folds paper animals wakes up to find them gone, and a trail of paper footprints.' },
-  { title: 'Northbound', year: 2018, genres: ['Horror'], minutes: 109, cast: ['Greta Lind', 'Sol Mensah'], director: 'Arne Falk', overview: 'The last train of the winter leaves the station with one more passenger than tickets.', adultsOnly: true },
+  { slug: 'metropolis', title: 'Metropolis', year: 1927, genres: ['Science fiction', 'Drama'], minutes: 153, cast: ['Brigitte Helm', 'Gustav Fröhlich', 'Alfred Abel', 'Rudolf Klein-Rogge'], director: 'Fritz Lang', overview: "In a towering city of the future, the son of the city's master falls for a woman who speaks for the workers below, while an inventor builds a machine in her likeness." },
+  { slug: 'nosferatu', title: 'Nosferatu', year: 1922, genres: ['Horror'], minutes: 94, cast: ['Max Schreck', 'Gustav von Wangenheim', 'Greta Schröder'], director: 'F. W. Murnau', overview: 'An estate agent travels to the Carpathian mountains to sell a house to Count Orlok, who follows him home and brings death with him.' },
+  { slug: 'the-general', title: 'The General', year: 1926, genres: ['Comedy', 'Action'], minutes: 78, cast: ['Buster Keaton', 'Marion Mack'], director: 'Buster Keaton, Clyde Bruckman', overview: 'When Union spies steal his locomotive with his sweetheart aboard, a Southern railway engineer chases them alone.' },
+  { slug: 'sherlock-jr', title: 'Sherlock Jr.', year: 1924, genres: ['Comedy'], minutes: 45, cast: ['Buster Keaton', 'Kathryn McGuire'], director: 'Buster Keaton', overview: 'A cinema projectionist who wants to be a detective is framed for a theft, falls asleep at work and dreams himself into the film on the screen.' },
+  { slug: 'the-kid', title: 'The Kid', year: 1921, genres: ['Comedy', 'Drama'], minutes: 68, cast: ['Charlie Chaplin', 'Jackie Coogan', 'Edna Purviance'], director: 'Charlie Chaplin', overview: 'The Tramp finds an abandoned baby and raises him, until the authorities come to take the boy away.' },
+  { slug: 'the-gold-rush', title: 'The Gold Rush', year: 1925, genres: ['Comedy', 'Adventure'], minutes: 95, cast: ['Charlie Chaplin', 'Georgia Hale', 'Mack Swain'], director: 'Charlie Chaplin', overview: 'The Lone Prospector heads to the Klondike in search of gold, and finds a blizzard, a hungry partner and a dance-hall girl instead.' },
+  { slug: 'safety-last', title: 'Safety Last!', year: 1923, genres: ['Comedy'], minutes: 70, cast: ['Harold Lloyd', 'Mildred Davis'], director: 'Fred C. Newmeyer, Sam Taylor', overview: 'A department-store clerk trying to impress his girlfriend ends up having to climb the outside of the store’s tall building himself.' },
+  { slug: 'the-phantom-of-the-opera', title: 'The Phantom of the Opera', year: 1925, genres: ['Horror'], minutes: 93, cast: ['Lon Chaney', 'Mary Philbin', 'Norman Kerry'], director: 'Rupert Julian', overview: 'A masked figure haunting the Paris Opera House falls for a young singer and will stop at nothing to make her a star.' },
+  { slug: 'the-cabinet-of-dr-caligari', title: 'The Cabinet of Dr. Caligari', year: 1920, genres: ['Horror'], minutes: 76, cast: ['Werner Krauss', 'Conrad Veidt', 'Lil Dagover'], director: 'Robert Wiene', overview: 'A travelling showman and the sleepwalker he exhibits arrive in a German town, and a string of murders begins.' },
+  { slug: 'his-girl-friday', title: 'His Girl Friday', year: 1940, genres: ['Comedy'], minutes: 92, cast: ['Cary Grant', 'Rosalind Russell', 'Ralph Bellamy'], director: 'Howard Hawks', overview: 'A newspaper editor learns his ex-wife and best reporter is about to remarry, and lures her back for one last story.' },
+  { slug: 'detour', title: 'Detour', year: 1945, genres: ['Crime', 'Film noir'], minutes: 68, cast: ['Tom Neal', 'Ann Savage'], director: 'Edgar G. Ulmer', overview: 'A nightclub pianist hitchhiking to Los Angeles takes a lift that goes very wrong, then picks up the wrong passenger.' },
+  { slug: 'doa', title: 'D.O.A.', year: 1950, genres: ['Film noir'], minutes: 83, cast: ['Edmond O’Brien', 'Pamela Britton'], director: 'Rudolph Maté', overview: 'A man learns he has been poisoned and has only days to live, and spends them finding out who killed him.' },
+  { slug: 'plan-9-from-outer-space', title: 'Plan 9 from Outer Space', year: 1957, genres: ['Science fiction', 'Horror'], minutes: 79, cast: ['Gregory Walcott', 'Mona McKinnon', 'Tor Johnson', 'Vampira', 'Bela Lugosi'], director: 'Ed Wood', overview: 'Aliens raise the dead to stop humanity from building a doomsday weapon.' },
+  { slug: 'the-little-shop-of-horrors', title: 'The Little Shop of Horrors', year: 1960, genres: ['Comedy', 'Horror'], minutes: 72, cast: ['Jonathan Haze', 'Jackie Joseph', 'Mel Welles', 'Jack Nicholson'], director: 'Roger Corman', overview: 'A clumsy florist’s clerk raises a strange plant that brings in customers, and develops a taste for human blood.' },
+  { slug: 'carnival-of-souls', title: 'Carnival of Souls', year: 1962, genres: ['Horror'], minutes: 78, cast: ['Candace Hilligoss', 'Sidney Berger'], director: 'Herk Harvey', overview: 'After surviving a car accident, a church organist starts a new job in another town and is drawn to an abandoned lakeside pavilion.' },
+  { slug: 'charade', title: 'Charade', year: 1963, genres: ['Mystery', 'Romance'], minutes: 113, cast: ['Cary Grant', 'Audrey Hepburn', 'Walter Matthau'], director: 'Stanley Donen', overview: 'In Paris, a widow is pursued by several men who want the fortune her murdered husband stole, and she cannot tell which of them to trust.' },
+  { slug: 'night-of-the-living-dead', title: 'Night of the Living Dead', year: 1968, genres: ['Horror'], minutes: 96, cast: ['Duane Jones', 'Judith O’Dea'], director: 'George A. Romero', overview: 'Strangers barricade themselves in a farmhouse in rural Pennsylvania as the dead rise and close in.', adultsOnly: true },
+  { slug: 'elephants-dream', title: 'Elephants Dream', year: 2006, genres: ['Animation', 'Science fiction'], minutes: 11, cast: ['Tygo Gernandt', 'Cas Jansen'], director: 'Bassam Kurdali', overview: 'Two men explore a vast, strange machine that one of them knows well and the other does not understand at all. The first Blender open movie.' },
+  { slug: 'big-buck-bunny', title: 'Big Buck Bunny', year: 2008, genres: ['Animation', 'Comedy'], minutes: 10, cast: [], director: 'Sacha Goedegebure', overview: 'A large, gentle rabbit is pushed too far by three bullying rodents and plans his revenge.' },
+  { slug: 'sita-sings-the-blues', title: 'Sita Sings the Blues', year: 2008, genres: ['Animation', 'Musical'], minutes: 82, cast: ['Annette Hanshaw', 'Reena Shah', 'Aseem Chhabra'], director: 'Nina Paley', overview: 'The Ramayana, told through Sita’s eyes and the 1920s songs of Annette Hanshaw, alongside a modern story of a marriage falling apart.' },
+  { slug: 'sintel', title: 'Sintel', year: 2010, genres: ['Animation', 'Fantasy'], minutes: 15, cast: ['Halina Reijn', 'Thom Hoffman'], director: 'Colin Levy', overview: 'A lonely young woman searches the world for the baby dragon she raised, who was taken from her.' },
+  { slug: 'tears-of-steel', title: 'Tears of Steel', year: 2012, genres: ['Science fiction'], minutes: 12, cast: ['Derek de Lint', 'Sergio Hasselbaink', 'Vanja Rukavina', 'Denise Rebergen', 'Rogier Schippers'], director: 'Ian Hubert', overview: 'In a future Amsterdam, a group of scientists tries to save the world from robots by restaging a breakup.' },
+  { slug: 'cosmos-laundromat', title: 'Cosmos Laundromat', year: 2015, genres: ['Animation', 'Comedy'], minutes: 12, cast: ['Pierre Bokma', 'Reinout Scholten van Aschat'], director: 'Mathieu Auvray', overview: 'On a desolate island, a suicidal sheep meets a mysterious salesman who offers him the gift of a lifetime.' },
+  { slug: 'spring', title: 'Spring', year: 2019, genres: ['Animation', 'Fantasy'], minutes: 8, cast: [], director: 'Andy Goralczyk', overview: 'A shepherd girl and her dog face ancient spirits in order to keep the cycle of life going.' },
 ];
+// Episodes: [number, name, year first shown]. Gaps are episodes this library does not have.
 const DEMO_SHOWS = [
-  { show: 'Kitchen Wars', seasons: [4, 3], genres: ['Reality', 'Food'], overview: 'Twelve home cooks, one kitchen, and a judge who has never said "good".', cast: ['Rosa Quint as Host', 'Dev Malik as Judge'] },
-  { show: 'The Long Road', seasons: [6], genres: ['Drama', 'Western'], overview: 'A family drives cattle across a dry country in the last year anyone will let them.', cast: ['Hal Brody as Amos', 'June Tao as Clara'] },
+  {
+    show: 'Superman', slug: 'superman', year: 1941, minutes: 9, genres: ['Animation', 'Action'],
+    overview: 'Theatrical cartoons from Fleischer and then Famous Studios in which Superman, as Clark Kent of the Daily Planet, takes on mad scientists, robots, monsters and saboteurs.',
+    cast: ['Bud Collyer as Superman / Clark Kent', 'Joan Alexander as Lois Lane', 'Jackson Beck as the narrator'],
+    seasons: [
+      [[1, 'Superman', 1941], [2, 'The Mechanical Monsters', 1941], [3, 'Billion Dollar Limited', 1942], [4, 'The Arctic Giant', 1942], [5, 'The Bulleteers', 1942], [6, 'The Magnetic Telescope', 1942], [7, 'Electric Earthquake', 1942], [8, 'Volcano', 1942], [9, 'Terror on the Midway', 1942]],
+      [[2, 'Showdown', 1942], [4, 'Destruction, Inc.', 1942], [5, 'The Mummy Strikes', 1943], [7, 'The Underground World', 1943], [8, 'Secret Agent', 1943]],
+    ],
+  },
+  {
+    show: 'Popeye the Sailor', slug: 'popeye-the-sailor', year: 1936, minutes: 17, genres: ['Animation', 'Comedy'],
+    overview: 'The Fleischer two-reel Technicolor specials, in which Popeye takes on Sindbad the Sailor, and then Abu Hassan and his forty thieves.',
+    cast: ['Jack Mercer as Popeye', 'Mae Questel as Olive Oyl', 'Gus Wickie as Sindbad / Abu Hassan'],
+    seasons: [[[1, 'Popeye the Sailor Meets Sindbad the Sailor', 1936], [2, 'Popeye the Sailor Meets Ali Baba’s Forty Thieves', 1937]]],
+  },
+  {
+    show: 'The Beverly Hillbillies', slug: 'the-beverly-hillbillies', year: 1962, minutes: 26, genres: ['Comedy'],
+    overview: 'After oil is found on his land, mountaineer Jed Clampett moves his family to a mansion in Beverly Hills, next door to the banker who looks after their money.',
+    cast: ['Buddy Ebsen as Jed Clampett', 'Irene Ryan as Granny', 'Donna Douglas as Elly May Clampett', 'Max Baer Jr. as Jethro Bodine', 'Raymond Bailey as Milburn Drysdale'],
+    seasons: [
+      [[2, 'Getting Settled', 1962], [7, 'The Servants', 1962], [10, 'Pygmalion and Elly', 1962], [17, 'Jed’s Dilemma', 1963], [18, 'Jed Saves the Drysdales’ Marriage', 1963], [25, 'The Family Tree', 1963]],
+      [[3, 'Granny’s Garden', 1963], [5, 'The Clampett Look', 1963], [7, 'Chickadee Returns', 1963]],
+    ],
+  },
 ];
+// Tracks: [title, seconds].
 const DEMO_ALBUMS = [
-  { artist: 'Low Hum', album: 'Tidal', year: 2024, genre: 'Ambient', tracks: ['Shoreline', 'Undertow', 'Salt', 'Slack Water', 'Riptide', 'Low Tide', 'Pier', 'Lanterns'] },
-  { artist: 'Marrow', album: 'Signals', year: 2020, genre: 'Electronic', tracks: ['Carrier', 'Static Bloom', 'Handshake', 'Long Wave', 'Echo Room', 'Sign Off'] },
+  { slug: 'the-animal-economy', artist: 'MonoCulture', album: 'The Animal Economy', year: 2006, genre: 'IDM', tracks: [['Peace City', 159], ['The New Rasputin', 165], ['My Cancer for a Kingdom', 228], ['Parco Girls', 257], ['Cause and Consequence', 319], ['Syntig (Shuji Monomix)', 247], ['Tone Service (Mi Casa Su Casa Monomix)', 248], ['Haragei (with Shudo Horns)', 187], ['Saori', 161]] },
+  { slug: 'the-four-seasons', artist: 'Memphis', album: 'The Four Seasons', year: 2011, genre: 'Ambient', tracks: [['Spring I', 277], ['Spring II', 228], ['Spring III', 420], ['Summer I', 228], ['Summer II', 238], ['Summer III', 477], ['Autumn I', 305], ['Autumn II', 262], ['Autumn III', 378], ['Winter I', 165], ['Winter II (Safe Passage)', 231], ['Winter III', 546]] },
+  { slug: 'experiments-at-the-edge-of-time', artist: 'Softspace', album: 'Experiments at the Edge of Time', year: 2006, genre: 'Ambient', tracks: [['Candle Flicker', 345], ['Subliminal', 429], ['Loons', 523], ['Observatory One', 512], ['Sun', 169], ['Smiling Eyes', 176], ['Summer Longings', 157], ['Contemplation', 218], ['Improvised One', 220], ['Off Her Lips', 299], ['Shadowed Forest', 327]] },
+  { slug: 'paramo', artist: 'Callejas', album: 'Páramo', year: 2021, genre: 'Dub techno', tracks: [['Páramo 1', 325], ['Páramo 2', 302], ['Páramo 2 (Brendon Moeller Dub Remix)', 384], ['Páramo 2 (Magdalena Remix)', 403], ['Páramo 1 (Archaic Revival Remix)', 483], ['Páramo 1 (Eviru Dibad Remix)', 383]] },
 ];
-const DEMO_PHOTO_ALBUMS = [['Beach 2026', 12], ['Birthday', 8]];
+// [folder, hosted folder, photos in it]
+const DEMO_PHOTO_ALBUMS = [['Beach 2026', 'beach-2026', 12], ['Birthday', 'birthday', 8]];
 const DEMO_VIDEOS = ['First steps', 'Road trip day 1', 'Road trip day 2', 'School play', 'Snow day'];
 const DEMO_PLAY_NOTE = 'Sample library: there is no file to play';
 const POSTER_LINE_CHARS = 11;
 
-/** A made-up poster: the title large and wrapped, over a gradient. Tall for films and shows, square for albums. */
+/** A placeholder poster, while a hosted one loads or when it cannot: the title large and wrapped, over a gradient. */
 function posterSvg(title, kicker, [c1, c2], shape) {
   const w = 400;
   const h = shape === 'square' ? 400 : 600;
@@ -766,18 +838,19 @@ export class DemoTheater {
     ];
     const base = { show: '', season: 0, episode: 0, artist: '', album: '', track: 0, genre: '', folder: '', size: 0, cover: false, subtitles: [], tags: [], adultsOnly: false, year: 0 };
     const items = [];
-    DEMO_FILMS.forEach((f, i) => items.push({ ...base, id: `film-${i}`, library: 'films', kind: 'movie', title: f.title, year: f.year, path: `D:\\Media\\Films\\${f.title} (${f.year}).mkv`, size: (4 + i) * GB, modified: now - (i + 1) * 9 * DAY, added: now - (i + 1) * 9 * DAY, adultsOnly: !!f.adultsOnly, subtitles: i % 2 ? [] : [{ label: 'en', file: '' }] }));
-    DEMO_SHOWS.forEach((s, si) =>
-      s.seasons.forEach((count, season) => {
-        for (let e = 1; e <= count; e++) {
-          items.push({ ...base, id: `ep-${si}-${season + 1}-${e}`, library: 'shows', kind: 'episode', title: `Episode ${e}`, show: s.show, season: season + 1, episode: e, path: `D:\\Media\\Shows\\${s.show}\\Season ${season + 1}\\E${e}.mp4`, size: 900 * MB, modified: now - (season * 10 + e) * DAY, added: now - (season * 10 + e) * DAY });
-        }
-      })
+    DEMO_FILMS.forEach((f, i) => items.push({ ...base, id: `film-${f.slug}`, library: 'films', kind: 'movie', title: f.title, year: f.year, path: `D:\\Media\\Films\\${f.title} (${f.year}).mkv`, size: Math.round((0.6 + f.minutes / 60) * GB), modified: now - (i + 1) * 4 * DAY, added: now - (i + 1) * 4 * DAY, adultsOnly: !!f.adultsOnly, subtitles: i % 2 ? [] : [{ label: 'en', file: '' }] }));
+    DEMO_SHOWS.forEach((s) =>
+      s.seasons.forEach((episodes, season) =>
+        episodes.forEach(([e, name, year], n) => {
+          const code = `S${String(season + 1).padStart(2, '0')}E${String(e).padStart(2, '0')}`;
+          items.push({ ...base, id: `ep-${s.slug}-${season + 1}-${e}`, library: 'shows', kind: 'episode', title: name, show: s.show, season: season + 1, episode: e, year, path: `D:\\Media\\Shows\\${s.show}\\Season ${season + 1}\\${s.show} - ${code}.mp4`, size: s.minutes * 22 * MB, modified: now - (season * 10 + n + 1) * DAY, added: now - (season * 10 + n + 1) * DAY });
+        })
+      )
     );
-    DEMO_ALBUMS.forEach((a, ai) =>
-      a.tracks.forEach((title, t) => items.push({ ...base, id: `track-${ai}-${t}`, library: 'music', kind: 'track', title, artist: a.artist, album: a.album, track: t + 1, year: a.year, genre: a.genre, folder: a.album, path: `D:\\Media\\Music\\${a.artist}\\${a.album}\\${t + 1} ${title}.flac`, size: 28 * MB, modified: now - 40 * DAY, added: now - 40 * DAY }))
+    DEMO_ALBUMS.forEach((a) =>
+      a.tracks.forEach(([title, seconds], t) => items.push({ ...base, id: `track-${a.slug}-${t + 1}`, library: 'music', kind: 'track', title, artist: a.artist, album: a.album, track: t + 1, year: a.year, genre: a.genre, folder: a.album, path: `D:\\Media\\Music\\${a.artist}\\${a.album}\\${String(t + 1).padStart(2, '0')} ${title}.flac`, size: Math.round(seconds * 0.11 * MB), modified: now - 40 * DAY, added: now - 40 * DAY }))
     );
-    DEMO_PHOTO_ALBUMS.forEach(([folder, count], pi) => {
+    DEMO_PHOTO_ALBUMS.forEach(([folder, , count], pi) => {
       for (let n = 1; n <= count; n++) items.push({ ...base, id: `photo-${pi}-${n}`, library: 'photos', kind: 'photo', title: `IMG ${String(n).padStart(4, '0')}`, folder, path: `C:\\Users\\alex\\Pictures\\${folder}\\IMG_${n}.jpg`, size: 4 * MB, modified: now - (pi * 20 + n) * HOUR, added: now - (pi * 20 + n) * HOUR });
     });
     DEMO_VIDEOS.forEach((title, i) => items.push({ ...base, id: `video-${i}`, library: 'home', kind: 'video', title, folder: '2026', path: `D:\\Media\\Home videos\\2026\\${title}.mp4`, size: 1.2 * GB, modified: now - (i + 2) * DAY, added: now - (i + 2) * DAY }));
@@ -805,17 +878,26 @@ export class DemoTheater {
     if (kind === 'poster') {
       if (item.kind === 'photo' || item.kind === 'video') return null;
       const title = item.show || item.album || item.title;
-      const kicker = item.kind === 'track' ? item.artist.toUpperCase() : item.kind === 'episode' ? 'A SAMPLE SERIES' : String(item.year);
-      return posterSvg(title, kicker, this.#tint(title), item.kind === 'track' ? 'square' : 'tall');
+      const kicker = item.kind === 'track' ? item.artist.toUpperCase() : item.kind === 'episode' ? 'SERIES' : String(item.year);
+      const placeholder = posterSvg(title, kicker, this.#tint(title), item.kind === 'track' ? 'square' : 'tall');
+      if (item.kind === 'movie') return hosted(`theater/posters/${DEMO_FILMS.find((f) => f.title === item.title).slug}.jpg`, placeholder);
+      if (item.kind === 'episode') return hosted(`theater/posters/${DEMO_SHOWS.find((s) => s.show === item.show).slug}.jpg`, placeholder);
+      return hosted(`theater/covers/${DEMO_ALBUMS.find((a) => a.album === item.album).slug}.jpg`, placeholder);
     }
     const [a, b] = this.#tint(item.id);
-    return svgThumb(item.title.toUpperCase(), a, b);
+    const placeholder = svgThumb(item.title.toUpperCase(), a, b);
+    if (item.kind === 'episode') return hosted(`theater/stills/${DEMO_SHOWS.find((s) => s.show === item.show).slug}-s${item.season}e${item.episode}.jpg`, placeholder);
+    if (item.kind === 'photo') {
+      const [, folder] = DEMO_PHOTO_ALBUMS.find(([name]) => name === item.folder);
+      return hosted(`theater/photos/${folder}/${item.title.slice(-2)}.jpg`, placeholder);
+    }
+    return placeholder;
   }
 
   async theaterDetails(id) {
     const item = this.items.find((i) => i.id === id);
     if (!item) throw new Error('That is no longer in Theater');
-    const probe = item.kind === 'photo' ? null : { seconds: item.kind === 'track' ? 214 + item.track * 7 : item.kind === 'episode' ? 2640 : item.kind === 'video' ? 95 : 0, width: 1920, height: 1080, video: item.kind === 'track' ? '' : 'h264', audio: item.kind === 'track' ? 'flac' : 'aac', bitrate: 8e6 };
+    const probe = item.kind === 'photo' ? null : { seconds: item.kind === 'video' ? 95 : 0, width: 1920, height: 1080, video: item.kind === 'track' ? '' : 'h264', audio: item.kind === 'track' ? 'flac' : 'aac', bitrate: 8e6 };
     if (item.kind === 'movie') {
       const f = DEMO_FILMS.find((x) => x.title === item.title);
       probe.seconds = f.minutes * 60;
@@ -823,10 +905,13 @@ export class DemoTheater {
     }
     if (item.kind === 'episode') {
       const s = DEMO_SHOWS.find((x) => x.show === item.show);
-      return { details: { title: s.show, year: 2022, overview: s.overview, cast: s.cast, director: '', genres: s.genres, runtimeMinutes: 44, url: '', source: 'Sample data' }, episode: { name: `${item.title} of season ${item.season}`, overview: 'An invented episode summary for the sample library.', aired: '2022-03-01', runtimeMinutes: 44 }, probe, poster: true };
+      probe.seconds = s.minutes * 60;
+      return { details: { title: s.show, year: s.year, overview: s.overview, cast: s.cast, director: '', genres: s.genres, runtimeMinutes: s.minutes, url: '', source: 'Sample data' }, episode: { name: item.title, overview: '', aired: String(item.year), runtimeMinutes: s.minutes }, probe, poster: true };
     }
     if (item.kind === 'track') {
-      return { details: { title: item.album, year: item.year, overview: '', cast: [], director: item.artist, genres: [item.genre], runtimeMinutes: 0, url: '', source: 'Sample data' }, episode: null, probe, poster: true };
+      const a = DEMO_ALBUMS.find((x) => x.album === item.album);
+      probe.seconds = a.tracks[item.track - 1][1];
+      return { details: { title: item.album, year: item.year, overview: '', cast: [], director: item.artist, genres: [item.genre], runtimeMinutes: Math.round(a.tracks.reduce((sum, [, sec]) => sum + sec, 0) / 60), url: '', source: 'Sample data' }, episode: null, probe, poster: true };
     }
     return { details: null, episode: null, probe, poster: false };
   }
