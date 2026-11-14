@@ -57,12 +57,8 @@ header.site {
 .nav nav a { text-decoration: none; color: var(--ink-soft); }
 .nav nav a:hover { color: var(--accent); }
 
-/* ---- full-screen panels */
-.panel {
-  min-height: 100vh; min-height: 100svh;
-  display: flex; align-items: center;
-  padding: calc(var(--header-h) + 2rem) 0 3rem;
-}
+/* ---- sections: one continuous page, natural height */
+.panel { padding: 4.5rem 0; }
 .panel.alt { background: var(--surface); }
 .panel.dark { background: var(--ink); color: var(--cream); }
 .wrap { width: 100%; max-width: 72rem; margin: 0 auto; padding: 0 1.5rem; }
@@ -228,7 +224,6 @@ pre.dog { font-family: ui-monospace, monospace; color: var(--ink-soft); line-hei
   .grid { grid-template-columns: 1fr; gap: 1rem; }
   .fields { flex-direction: column; align-items: stretch; }
   button { width: 100%; }
-  .panel { padding-top: calc(var(--header-h) + 1.5rem); }
   .timeline { flex-direction: column; gap: 1.35rem; margin-top: 2rem; }
   .timeline li { padding: 0 0 0 1.65rem; }
   .timeline li::before { top: 0.4rem; bottom: -1.35rem; left: 5px; right: auto; width: 2px; height: auto; }
@@ -238,19 +233,18 @@ pre.dog { font-family: ui-monospace, monospace; color: var(--ink-soft); line-hei
   .foot { flex-direction: column; align-items: flex-start; }
 }
 
-/* ---- hero (top panel): Castle / Data Sovereignty / $299 / waitlist */
-.panel.hero {
-  position: relative; overflow: hidden;
-  background: #0d0d0b; color: var(--cream);
-  padding-left: 0; padding-right: 0;
+/* ---- hero: name, one line, demo button, art, waitlist card */
+.hero { padding: calc(var(--header-h) + 3rem) 0 4.5rem; }
+.hero-line {
+  font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em;
+  font-size: clamp(1.35rem, 3vw, 1.9rem); margin: 0 0 1rem;
 }
-.hero-copy { position: relative; z-index: 2; }
-.hero h1 { color: var(--cream); }
-.price {
-  font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em;
-  font-size: clamp(2rem, 5vw, 3rem); color: var(--cream); margin: 0 0 1.75rem;
+.waitlist-card {
+  background: var(--ink); color: var(--cream);
+  border-radius: var(--radius); padding: 2rem; margin-top: 2.5rem; max-width: 44rem;
 }
-.waitlist-title { color: var(--cream); }
+.waitlist-card .waitlist-title { color: var(--cream); margin-top: 0; }
+.waitlist-card form[data-waitlist] { margin-top: 0.5rem; }
 .counter-line {
   font-family: var(--font-display); font-size: 0.95rem; color: var(--mid);
   margin: 1.25rem 0 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
@@ -280,20 +274,15 @@ pre.dog { font-family: ui-monospace, monospace; color: var(--ink-soft); line-hei
 .spin-tilt img { object-fit: cover; }
 
 /* landscape / tablet / desktop: full-bleed 4K scene, copy overlaid */
-.hero-visual { position: absolute; inset: 0; z-index: 1; }
-.hero-visual .spin-tilt img { transform: scale(1.08); } /* hide tilt edges */
-.hero-visual::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, rgba(10,10,8,0.85) 0%, rgba(10,10,8,0.5) 45%, rgba(10,10,8,0.18) 100%);
+.hero-visual {
+  position: relative; margin: 2.5rem 0 0; border-radius: var(--radius);
+  overflow: hidden; aspect-ratio: 16/8; background: #0d0d0b;
 }
+.hero-visual .spin-tilt { height: 100%; }
 
 /* portrait / mobile: stacked — copy above, Castle visual below, light asset */
 @media (orientation: portrait) {
-  .panel.hero { flex-direction: column; justify-content: center; align-items: stretch; }
-  .hero-copy { order: 1; }
-  .hero-visual { order: 2; position: relative; height: 38svh; margin-top: 2rem; overflow: hidden; }
-  .hero-visual .spin-tilt img { transform: none; }
-  .hero-visual::after { background: linear-gradient(180deg, rgba(10,10,8,0.35) 0%, rgba(10,10,8,0) 40%); }
+  .hero-visual { aspect-ratio: 4/3; }
 }
 
 /* ---- slim tail panel (footer lives here now) */
@@ -307,42 +296,21 @@ pre.dog { font-family: ui-monospace, monospace; color: var(--ink-soft); line-hei
 .demo-line { margin: 1.75rem 0 0; display: flex; align-items: center; gap: 0.6rem 1rem; flex-wrap: wrap; }
 .demo-cta {
   font-family: var(--font-display); font-weight: 600; font-size: 1rem; text-decoration: none;
-  padding: 0.75rem 1.5rem; border: 1.5px solid var(--cream); border-radius: 10px; color: var(--cream);
+  padding: 0.75rem 1.5rem; border: 1.5px solid var(--accent); border-radius: 10px;
+  background: var(--accent); color: #141413;
   display: inline-flex; align-items: center; gap: 0.5rem; transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
-.demo-cta:hover { background: var(--cream); color: var(--ink); transform: translateY(-1px); }
+.demo-cta:hover { background: var(--ink); border-color: var(--ink); color: var(--cream); transform: translateY(-1px); }
 .demo-note { font-family: var(--font-display); font-size: 0.9rem; color: var(--mid); }
 @media (max-width: 640px) { .demo-cta { width: 100%; justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { .demo-cta { transition: none; } }
 
 /* ---- Kickstarter: a small line under the price */
-.price.with-ks { margin-bottom: 0.5rem; }
 .kickstarter-line {
-  font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; color: var(--cream);
-  margin: 0 0 1.75rem; display: inline-flex; align-items: center; gap: 0.55rem;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; color: var(--ink-soft);
+  margin: 0 0 0.5rem; display: inline-flex; align-items: center; gap: 0.55rem;
 }
 .ks-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
-
-/* ---- the test-development warning across the bottom of every page. Calm, not loud:
-   dark like the footer, the word "Warning" in the accent. body leaves room for it. */
-body { padding-bottom: calc(2.75rem + env(safe-area-inset-bottom)); }
-.test-strip {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: flex; align-items: center; gap: 0.75rem;
-  min-height: 2.75rem; padding: 0.45rem 1rem calc(0.45rem + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--ink) 94%, transparent); color: var(--mid);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  font-family: var(--font-display); font-size: 0.8rem; line-height: 1.3;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-}
-.test-strip p { margin: 0; flex: 1; min-width: 0; }
-.test-strip strong { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-.test-strip-icon { color: var(--accent); font-size: 1rem; }
-.test-strip a {
-  flex-shrink: 0; color: var(--cream); text-decoration: none; font-weight: 600;
-  padding: 0.3rem 0.7rem; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px;
-}
-.test-strip a:hover { color: var(--ink); background: var(--cream); }
 
 /* ---- phones: the header keeps Demo and GitHub; Docs and Privacy stay in the footer */
 @media (max-width: 560px) {
