@@ -1,8 +1,8 @@
 //! AI is DOGS AI: local image, video, audio and chat generation, with its own app. Its code
-//! lives in this repository under `ai/` (imported from the dogs-ai project), and the box runs
+//! lives in this repository under `app/ai/` (imported from the dogs-ai project), and the box runs
 //! its server, which also serves its app. Castle's AI section shows that app as it is.
 //!
-//! Which copy runs: CASTLE_AI_DIR when set; otherwise Castle's own `ai/` folder, or a
+//! Which copy runs: CASTLE_AI_DIR when set; otherwise Castle's own `app/ai/` folder, or a
 //! `dogs-ai` checkout beside Castle. A copy that already has its runtime (ComfyUI) installed
 //! is preferred, so models downloaded before are there.
 //!
@@ -49,6 +49,7 @@ fn candidates() -> Vec<PathBuf> {
     for start in [std::env::current_exe().ok(), std::env::current_dir().ok()].into_iter().flatten() {
         for dir in start.ancestors() {
             found.push(dir.join("ai"));
+            found.push(dir.join("app").join("ai"));
             found.push(dir.join("dogs-ai"));
         }
     }

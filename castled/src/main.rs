@@ -61,9 +61,9 @@ use tower_http::{
 };
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
-/// For `cargo run` in app/castled this is app/data/castle, which git ignores. The desktop app
+/// For `cargo run` in castled/ this is app/data/castle, which git ignores. The desktop app
 /// and start.sh always pass --data (the vault the owner chose, ~/Castle by default).
-const DEFAULT_DATA_DIR: &str = "../data/castle";
+const DEFAULT_DATA_DIR: &str = "../app/data/castle";
 /// Everything the daemon keeps for itself lives here, hidden from every listing.
 const META_DIR: &str = ".castle";
 const TRASH_PREFIX: &str = "trash:";
@@ -1516,7 +1516,8 @@ fn clonewars_candidates() -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::env::var("CASTLE_CLONEWARS_DIR").ok().map(PathBuf::from).into_iter().collect();
     let starts = [std::env::current_exe().ok(), std::env::current_dir().ok()];
     for start in starts.into_iter().flatten() {
-        found.extend(start.ancestors().map(|dir| dir.join("clonewars")));
+        // In a checkout the daemon is castled/ and Clones is app/clonewars beside it.
+        found.extend(start.ancestors().flat_map(|dir| [dir.join("clonewars"), dir.join("app").join("clonewars")]));
     }
     found
 }

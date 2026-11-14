@@ -8,8 +8,8 @@ mapped network drive, but the apps do not depend on it.
 ## Run it
 
 ```powershell
-cd app\castled
-cargo run -- --data ..\data\castle --web ..\dist
+cd castled
+cargo run -- --data ..\app\data\castle --web ..\app\dist
 ```
 
 It prints a link ending in `#connect=<token>`. Open it and the app is connected.
@@ -18,7 +18,7 @@ app's Connect screen (the server icon in the top bar).
 
 | Flag | Default | Environment |
 |---|---|---|
-| `--data` vault directory | `../data/castle` (app/data/castle, git-ignored) | `CASTLE_DATA_DIR` |
+| `--data` vault directory | `../app/data/castle` (app/data/castle, git-ignored) | `CASTLE_DATA_DIR` |
 | `--bind` address and port | `127.0.0.1:8787` | `CASTLE_BIND` |
 | `--web` built Castle app to serve at `/` | none | `CASTLE_WEB_DIR` |
 | `--clonewars` Castle's `clonewars` folder, to run automations | none | `CASTLE_CLONEWARS_DIR` |
@@ -192,11 +192,11 @@ the token file's permissions (Unix only), and whether the vault's disk is encryp
 (BitLocker on Windows, a `crypt` layer under the mount on Linux). Three more are listed
 as not built: accounts, Castle's own file encryption, and a copy of the record elsewhere.
 
-**Audits** are the bash scripts in [`../security/audits`](../security/audits), compiled
+**Audits** are the bash scripts in [`audits/`](audits), compiled
 into the binary and fed to `bash` on standard input, so there is no script on disk to
 swap. They only read. They need a Linux box; elsewhere the list is returned with
 `available: false`. Without root some columns are blank (process names behind open
-ports, other accounts' crontabs). `bash security/audits/test.sh` runs them all and checks
+ports, other accounts' crontabs). `bash castled/audits/test.sh` runs them all and checks
 the shape of their output.
 
 ## Tests

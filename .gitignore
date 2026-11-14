@@ -41,14 +41,11 @@
 # ---- Everything live or generated: app/data ----------------------------------
 # One folder for all of it, never committed:
 #   app/data/clonewars  Clones' disks, ISOs, Android SDK, containers, payloads (tens of GB)
-#   app/data/castle     the vault `cargo run` uses in app/castled
+#   app/data/castle     the vault `cargo run` uses in castled/
 #   app/data/ai         DOGS AI's runtime (ComfyUI), models and outputs
 app/data/
 
-# Local VM disks kept beside the checkout
-qemu/
-
-# Rust build output (app/castled, app/src-tauri, app/ai/app/src-tauri)
+# Rust build output (castled, app/src-tauri, app/ai/app/src-tauri)
 target/
 
 # Left over from before client/ became app/: build output only

@@ -340,7 +340,7 @@ struct AuditScript {
 
 macro_rules! audit {
     ($id:literal, $label:literal, $about:literal) => {
-        AuditScript { id: $id, label: $label, about: $about, script: include_str!(concat!("../../security/audits/", $id, ".sh")) }
+        AuditScript { id: $id, label: $label, about: $about, script: include_str!(concat!("../audits/", $id, ".sh")) }
     };
 }
 

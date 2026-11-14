@@ -10,7 +10,7 @@
 # app, and keeps both following your edits until you press Ctrl+C:
 #   interface (app/src)         changes appear in the open app and browser at once
 #   app shell (app/src-tauri)   the app rebuilds and reopens itself
-#   box daemon (app/castled/src)       the box rebuilds and restarts within a few seconds
+#   box daemon (castled/src)           the box rebuilds and restarts within a few seconds
 # The same live interface is in the browser at http://localhost:1420.
 #
 # With --release it instead builds everything once, starts it and returns: the box in
@@ -55,7 +55,7 @@ elif grep -qi microsoft /proc/version 2>/dev/null && command -v cmd.exe >/dev/nu
     exec cmd.exe /c "$(wslpath -w "$ROOT/start.cmd")" "$@"
 fi
 
-DAEMON_DIR="$ROOT/app/castled"
+DAEMON_DIR="$ROOT/castled"
 CLIENT_DIR="$ROOT/app"
 WEB_DIR="$CLIENT_DIR/dist"
 
@@ -254,7 +254,7 @@ build_ai_app() {
     (cd "$AI_APP_DIR" && npm run build) || say 'DOGS AI did not build, so AI stays off.'
 }
 
-DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$ROOT/app/security/audits")
+DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$DAEMON_DIR/audits")
 WEB_SOURCES=("$CLIENT_DIR/src" "$CLIENT_DIR/index.html" "$CLIENT_DIR/package.json" "$CLIENT_DIR/public")
 APP_SOURCES=("${WEB_SOURCES[@]}" "$CLIENT_DIR/src-tauri/src" "$CLIENT_DIR/src-tauri/Cargo.toml" "$CLIENT_DIR/src-tauri/tauri.conf.json")
 
@@ -381,7 +381,7 @@ fi
 # Live mode (the default): everything runs from source and follows your edits.
 #   interface (app/src)         changes appear in the open app and browser at once
 #   app shell (app/src-tauri)   the app rebuilds and reopens itself
-#   box daemon (app/castled/src)       the box rebuilds and restarts within a few seconds
+#   box daemon (castled/src)           the box rebuilds and restarts within a few seconds
 # This stays in the foreground. Ctrl+C ends the app and the watching; the box keeps running.
 #===============================================================================
 need_cargo; need_npm

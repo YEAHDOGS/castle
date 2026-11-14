@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test.sh -- runs every audit the way the box does (fed to bash on standard input) and
 # checks each prints a header and rows with the same number of columns.
-# Usage: bash security/audits/test.sh [--show]
+# Usage: bash castled/audits/test.sh [--show]
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 show="${1:-}"

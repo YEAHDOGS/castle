@@ -31,7 +31,7 @@ it's the honest backlog.
 
 - [ ] Castle secrets vault + token system as first-class services
       (today they're CLI tools in /opt/castle)
-- [ ] The box daemon (`app/castled`, Rust) as a system service on Castle OS
+- [ ] The box daemon (`castled/`, Rust) as a system service on Castle OS
 - [ ] QEMU/hypervisor bits from `app/clonewars/` (Windows-oriented today;
       needs a Linux-native rethink)
 - [ ] DOGS ID gate integration for the local admin UI (when it exists)

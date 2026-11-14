@@ -1,6 +1,6 @@
 // Builds the box daemon (castled) and puts it where the desktop app bundles it from:
 // src-tauri/binaries/castled-<target triple>[.exe]. Run before `tauri dev` or `tauri build`.
-// The daemon's source is app/castled/ in this repo (or in CASTLE_REPO, a checkout, if set).
+// The daemon's source is castled/ at the top of this repo (or in CASTLE_REPO, a checkout, if set).
 // Usage: node scripts/daemon.js
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CASTLE_REPO = resolve(process.env.CASTLE_REPO || join(ROOT, '..'));
-const DAEMON_DIR = join(CASTLE_REPO, 'app', 'castled');
+const DAEMON_DIR = join(CASTLE_REPO, 'castled');
 const OUT_DIR = join(ROOT, 'src-tauri', 'binaries');
 const EXE = process.platform === 'win32' ? '.exe' : '';
 
