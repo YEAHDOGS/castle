@@ -15,11 +15,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
-  scroll-snap-type: y proximity;
   scroll-padding-top: 0;
-}
-@media (min-width: 768px) and (min-height: 560px) {
-  html.snap { scroll-snap-type: y mandatory; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
@@ -61,10 +57,9 @@ header.site {
 .nav nav a { text-decoration: none; color: var(--ink-soft); }
 .nav nav a:hover { color: var(--accent); }
 
-/* ---- full-screen snap panels */
+/* ---- full-screen panels */
 .panel {
   min-height: 100vh; min-height: 100svh;
-  scroll-snap-align: start;
   display: flex; align-items: center;
   padding: calc(var(--header-h) + 2rem) 0 3rem;
 }
