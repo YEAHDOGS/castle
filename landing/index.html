@@ -56,11 +56,40 @@
       <div class="wrap hero-copy">
         <p class="eyebrow">DOGS &middot; Data Sovereignty</p>
         <h1>Castle</h1>
-        <p class="price with-ks">Can&rsquo;t put a price on brilliance.</p>
         <p class="kickstarter-line"><span class="ks-dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
         <p class="demo-line">
-          <a class="demo-cta" href="./demo/">Check out the demo <span aria-hidden="true">&rarr;</span></a>
+          <a class="demo-cta" href="./demo/">Click here to view the demo</a>
         </p>
+        <h2 id="waitlist-h" class="waitlist-title">Join the waitlist</h2>
+                <form data-waitlist novalidate>
+                  <div class="step" data-step="email">
+                    <div class="fields">
+                      <div>
+                        <label for="email">Email address</label>
+                        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
+                      </div>
+                      <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
+                    </div>
+                    <p class="field-error" id="email-error" aria-live="polite"></p>
+                    <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
+                  </div>
+                  <div class="step" data-step="code" hidden>
+                    <div class="fields">
+                      <div>
+                        <label for="code">Confirmation code</label>
+                        <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
+                      </div>
+                      <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
+                    </div>
+                    <p class="field-error" id="code-error" aria-live="polite"></p>
+                    <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
+                  </div>
+                  <div class="step" data-step="done" hidden>
+                    <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
+                    <p class="note">We'll email you when Castle wakes up from its nap.</p>
+                  </div>
+                </form>
+                <p class="counter-line" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
         <p><a class="scroll-hint light" href="#roadmap">See the plan</a></p>
       </div>
       <div class="hero-visual spin-stage" data-spin-stage>
