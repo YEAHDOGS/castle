@@ -8,13 +8,13 @@
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#faf9f5">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="canonical" href="https://castle.wearedogs.net/">
+  <link rel="canonical" href="https://castle.dogs.red/">
   <meta property="og:site_name" content="Castle">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Castle — Your data, your keep">
   <meta property="og:description" content="Castle is a way to make data yours again — a personal keep for your data with a portal, a drawbridge, and distributed nodes. Work in progress — more information estimated by 2027.">
-  <meta property="og:url" content="https://castle.wearedogs.net/">
-  <meta property="og:image" content="https://castle.wearedogs.net/og.png">
+  <meta property="og:url" content="https://castle.dogs.red/">
+  <meta property="og:image" content="https://castle.dogs.red/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Castle — Your data, your keep — work in progress, more information by 2027">
@@ -37,8 +37,9 @@
         <a class="project" href="./">Castle</a>
       </div>
       <nav aria-label="Primary">
-        <a href="./docs.html">Docs</a>
-        <a href="./privacy.html">Privacy</a>
+        <a href="./demo/">Demo</a>
+        <a class="nav-wide" href="./docs.html">Docs</a>
+        <a class="nav-wide" href="./privacy.html">Privacy</a>
         <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
       </nav>
     </div>
@@ -56,37 +57,11 @@
       <div class="wrap hero-copy">
         <p class="eyebrow">DOGS &middot; Data Sovereignty</p>
         <h1>Castle</h1>
-        <p class="price" aria-label="Price: 299 dollars">$299</p>
-        <h2 id="waitlist-h" class="waitlist-title">Join the waitlist</h2>
-        <form data-waitlist novalidate>
-          <div class="step" data-step="email">
-            <div class="fields">
-              <div>
-                <label for="email">Email address</label>
-                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
-              </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
-            </div>
-            <p class="field-error" id="email-error" aria-live="polite"></p>
-            <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
-          </div>
-          <div class="step" data-step="code" hidden>
-            <div class="fields">
-              <div>
-                <label for="code">Confirmation code</label>
-                <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
-              </div>
-              <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
-            </div>
-            <p class="field-error" id="code-error" aria-live="polite"></p>
-            <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
-          </div>
-          <div class="step" data-step="done" hidden>
-            <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
-            <p class="note">We'll email you when Castle wakes up from its nap.</p>
-          </div>
-        </form>
-        <p class="counter-line" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
+        <p class="price with-ks" aria-label="Price: 299 dollars">$299</p>
+        <p class="kickstarter-line"><span class="ks-dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
+        <p class="demo-line">
+          <a class="demo-cta" href="./demo/">Check out the demo <span aria-hidden="true">&rarr;</span></a>
+        </p>
         <p><a class="scroll-hint light" href="#roadmap">See the plan</a></p>
       </div>
       <div class="hero-visual spin-stage" data-spin-stage>
@@ -111,6 +86,7 @@
           <li class="done"><span class="dot" aria-hidden="true"></span><strong>Idea</strong><span class="when">2025 &mdash; done</span></li>
           <li class="done"><span class="dot" aria-hidden="true"></span><strong>Repo live</strong><span class="when">2026 &mdash; done</span></li>
           <li class="now"><span class="dot" aria-hidden="true"></span><strong>Building</strong><span class="when">Now &mdash; in progress</span></li>
+          <li class="future"><span class="dot" aria-hidden="true"></span><strong>Kickstarter</strong><span class="when">Coming soon</span></li>
           <li class="future"><span class="dot" aria-hidden="true"></span><strong>More information</strong><span class="when">Estimated 2027</span></li>
         </ol>
       </div>
@@ -164,5 +140,10 @@
     </section>
   </main>
   <script src="./app.js" defer></script>
+  <div class="test-strip" role="note" aria-label="About this site">
+    <span class="test-strip-icon" aria-hidden="true">&#x26A0;</span>
+    <p><strong>Warning:</strong> test development, don't hurt yourself.</p>
+    <a href="https://github.com/YEAHDOGS/castle">GitHub <span aria-hidden="true">&#x2197;</span></a>
+  </div>
 </body>
 </html>
