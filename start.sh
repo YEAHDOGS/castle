@@ -8,8 +8,8 @@
 #
 # By default it runs LIVE, for working on Castle. It starts the box, opens the desktop
 # app, and keeps both following your edits until you press Ctrl+C:
-#   interface (client/src)         changes appear in the open app and browser at once
-#   app shell (client/src-tauri)   the app rebuilds and reopens itself
+#   interface (app/src)         changes appear in the open app and browser at once
+#   app shell (app/src-tauri)   the app rebuilds and reopens itself
 #   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
 # The same live interface is in the browser at http://localhost:1420.
 #
@@ -39,7 +39,7 @@ set -euo pipefail
 
 DEFAULT_PORT=8787
 START_TIMEOUT_SECONDS=20
-DEV_PORT=1420       # where the live interface is served (client/vite.config.js)
+DEV_PORT=1420       # where the live interface is served (app/vite.config.js)
 WATCH_SECONDS=2     # how often the box daemon's source is checked for changes
 PROBE_SECONDS=0.25
 APP_ID="net.wearedogs.castle"
@@ -56,7 +56,7 @@ elif grep -qi microsoft /proc/version 2>/dev/null && command -v cmd.exe >/dev/nu
 fi
 
 DAEMON_DIR="$ROOT/castled"
-CLIENT_DIR="$ROOT/client"
+CLIENT_DIR="$ROOT/app"
 WEB_DIR="$CLIENT_DIR/dist"
 
 case "$(uname -s)" in
@@ -379,8 +379,8 @@ fi
 
 #===============================================================================
 # Live mode (the default): everything runs from source and follows your edits.
-#   interface (client/src)         changes appear in the open app and browser at once
-#   app shell (client/src-tauri)   the app rebuilds and reopens itself
+#   interface (app/src)         changes appear in the open app and browser at once
+#   app shell (app/src-tauri)   the app rebuilds and reopens itself
 #   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
 # This stays in the foreground. Ctrl+C ends the app and the watching; the box keeps running.
 #===============================================================================

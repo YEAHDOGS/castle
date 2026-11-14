@@ -82,7 +82,7 @@ A way to make data yours again
 castle.dogs.red is the landing page (`landing/`) with a read-only demo of the whole app at
 `/demo/`: every section with sample data, and every button that would run or change something
 says so instead. It is the client built with `npm run build:showcase` (see
-`client/src/lib/showcase.js`). To put the site together and publish it:
+`app/src/lib/showcase.js`). To put the site together and publish it:
 
 ```sh
 node scripts/build-site.mjs                                              # -> site-dist/

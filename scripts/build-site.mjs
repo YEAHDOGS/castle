@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Builds castle.dogs.red in one folder: the landing page (landing/) at the top, and the
-// public, read-only demo of the app (client, `npm run build:showcase`) under demo/.
+// public, read-only demo of the app (app/, `npm run build:showcase`) under demo/.
 //
 //   node scripts/build-site.mjs              build the demo, then put the site together
-//   node scripts/build-site.mjs --no-build   reuse client/dist-showcase as it is
+//   node scripts/build-site.mjs --no-build   reuse app/dist-showcase as it is
 //
 // The result is site-dist/ (not committed). Deploying it is one command, run from the repo
 // root with a Cloudflare login or CLOUDFLARE_API_TOKEN that can edit Pages:
@@ -18,9 +18,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const client = join(root, 'client');
+const app = join(root, 'app');
 const landing = join(root, 'landing');
-const showcase = join(client, 'dist-showcase');
+const showcase = join(app, 'dist-showcase');
 const out = join(root, 'site-dist');
 
 function fail(message) {
@@ -29,14 +29,14 @@ function fail(message) {
 }
 
 if (!process.argv.includes('--no-build')) {
-  if (!existsSync(join(client, 'node_modules'))) fail('run `npm install` in client/ first');
+  if (!existsSync(join(app, 'node_modules'))) fail('run `npm install` in app/ first');
   // npm is npm.cmd on Windows, which only a shell can start.
-  const built = spawnSync('npm', ['run', 'build:showcase'], { cwd: client, stdio: 'inherit', shell: process.platform === 'win32' });
+  const built = spawnSync('npm', ['run', 'build:showcase'], { cwd: app, stdio: 'inherit', shell: process.platform === 'win32' });
   if (built.status !== 0) fail('the showcase build failed');
 }
-if (!existsSync(join(showcase, 'index.html'))) fail('client/dist-showcase is missing: build it first');
+if (!existsSync(join(showcase, 'index.html'))) fail('app/dist-showcase is missing: build it first');
 // A demo built without --mode showcase would look for its files at / and show a blank page.
-if (!readFileSync(join(showcase, 'index.html'), 'utf8').includes('/demo/assets/')) fail('client/dist-showcase was not built for /demo/');
+if (!readFileSync(join(showcase, 'index.html'), 'utf8').includes('/demo/assets/')) fail('app/dist-showcase was not built for /demo/');
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });

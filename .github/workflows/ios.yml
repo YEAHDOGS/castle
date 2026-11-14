@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: client
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Rust toolchain + iOS target
         uses: dtolnay/rust-toolchain@stable
@@ -50,6 +50,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: castle-ios-ipa
-          path: client/castle-unsigned.ipa
+          path: app/castle-unsigned.ipa
           if-no-files-found: error
           retention-days: 7

@@ -9,7 +9,7 @@ mapped network drive, but the apps do not depend on it.
 
 ```powershell
 cd castled
-cargo run -- --data .\castle-data --web ..\client\dist
+cargo run -- --data .\castle-data --web ..\app\dist
 ```
 
 It prints a link ending in `#connect=<token>`. Open it and the app is connected.

@@ -6,7 +6,7 @@ name: Build apps
 # same version replaces that release's files.
 #
 # The desktop apps carry the box daemon (castled) inside them, built from castled/ in this
-# repo by client/scripts/daemon.js.
+# repo by app/scripts/daemon.js.
 # Android and iOS reuse android.yml and ios.yml, so there is one recipe for each.
 on:
   workflow_dispatch:
@@ -72,14 +72,14 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: client
+        working-directory: app
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: app/package-lock.json
       - run: npm ci --no-audit --no-fund
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux dependencies
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}
-          path: client/build/*
+          path: app/build/*
           if-no-files-found: error
           retention-days: 1
 
@@ -132,7 +132,7 @@ jobs:
           for f in artifacts/castle-ios-ipa/*.ipa; do cp "$f" build/castle-ios-unsigned.ipa; break; done
           files=(build/*)
           if [ ${#files[@]} -eq 0 ]; then echo "Nothing was built; nothing to release."; exit 1; fi
-          version=$(node -p 'require("./client/package.json").version')
+          version=$(node -p 'require("./app/package.json").version')
           tag="v${version}"
           repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
           {

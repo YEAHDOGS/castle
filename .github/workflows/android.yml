@@ -12,7 +12,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'client/**'
+      - 'app/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
   workflow_call:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: client
+        working-directory: app
     steps:
       - uses: actions/checkout@v5
 
@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -76,6 +76,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: castle-android-apk
-          path: client/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
+          path: app/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
           if-no-files-found: error
           retention-days: 7
