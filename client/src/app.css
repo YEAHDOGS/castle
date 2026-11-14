@@ -44,7 +44,15 @@ body {
   background-attachment: fixed;
 }
 
-#app { height: 100dvh; }
+/* --strip: the room the showcase's warning strip (ShowcaseBanner) takes at the bottom.
+   0 everywhere else. Full-height layouts use .h-app, and anything pinned to the bottom
+   sits at bottom-[var(--strip)], so the strip never covers the app. */
+:root { --strip: 0px; }
+html.showcase { --strip: calc(3rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { html.showcase { --strip: calc(2.25rem + env(safe-area-inset-bottom)); } }
+
+#app { height: calc(100dvh - var(--strip)); }
+.h-app { height: calc(100dvh - var(--strip)); }
 
 /* ---- motion utilities ---- */
 .expo { transition-timing-function: var(--ease-expo) !important; }

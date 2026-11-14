@@ -84,7 +84,7 @@
   </div>
 {/snippet}
 
-<div class="flex h-dvh overflow-hidden bg-void text-white">
+<div class="flex h-app overflow-hidden bg-void text-white">
   <div class="hidden h-full shrink-0 md:block">
     <Sidebar items={views} {active} onselect={pick} footer={meter} />
   </div>
@@ -101,7 +101,7 @@
 </div>
 
 <!-- phone tab rail -->
-<nav class="glass fixed inset-x-0 bottom-0 z-40 flex border-x-0 border-b-0 md:hidden" aria-label="Drive views">
+<nav class="glass fixed inset-x-0 bottom-[var(--strip)] z-40 flex border-x-0 border-b-0 md:hidden" aria-label="Drive views">
   {#each VIEWS.filter((v) => v.id !== 'computer' || store.computer) as item (item.id)}
     {@const Icon = item.icon}
     {@const active = store.view === item.id}

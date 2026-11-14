@@ -263,7 +263,7 @@
     </div>
   </div>
 {:else if mode === 'audio'}
-  <div class="glass fixed inset-x-0 bottom-0 z-[55] border-x-0 border-b-0" role="region" aria-label="Now playing" transition:fly={{ y: 40, duration: reducedMotion() ? 0 : 220 }}>
+  <div class="glass fixed inset-x-0 bottom-[var(--strip)] z-[55] border-x-0 border-b-0" role="region" aria-label="Now playing" transition:fly={{ y: 40, duration: reducedMotion() ? 0 : 220 }}>
     <div class="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
       <div class="h-12 w-12 shrink-0 overflow-hidden border border-hairline bg-black/40">
         {#if cover}<img src={cover} alt="" class="h-full w-full object-cover" />{/if}

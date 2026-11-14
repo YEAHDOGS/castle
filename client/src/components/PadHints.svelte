@@ -29,7 +29,7 @@
 
 {#if input.mode === 'pad'}
   <div
-    class="pad-hints pointer-events-none fixed left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 border border-hairline bg-black/80 px-3 py-1.5 {input.lift ? 'bottom-[4.75rem]' : 'bottom-3'}"
+    class="pad-hints pointer-events-none fixed left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 border border-hairline bg-black/80 px-3 py-1.5 {input.lift ? 'bottom-[calc(var(--strip)+4.75rem)]' : 'bottom-[calc(var(--strip)+0.75rem)]'}"
     transition:fly={{ y: 12, duration: reducedMotion() ? 0 : 200 }}
     aria-hidden="true"
   >

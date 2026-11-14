@@ -283,6 +283,6 @@
 </SectionFrame>
 
 <!-- The sticker is pinned to the bottom right corner and stays there while the page scrolls. -->
-<a class="expo t-hover fixed bottom-4 right-4 z-10 opacity-90 transition-opacity hover:opacity-100" href="https://wearedogs.net" target="_blank" rel="noreferrer">
+<a class="expo t-hover fixed bottom-[calc(var(--strip)+1rem)] right-4 z-10 opacity-90 transition-opacity hover:opacity-100" href="https://wearedogs.net" target="_blank" rel="noreferrer">
   <img src={madeByDogs} alt="This product was made by DOGS" width="360" height="119" class="h-auto w-[200px]" />
 </a>

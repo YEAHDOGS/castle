@@ -10,6 +10,7 @@
   import { store } from '../../lib/store.svelte.js';
   import { itemIn } from '../../lib/motion.js';
   import RadarScope from './RadarScope.svelte';
+  import WipNote from '../WipNote.svelte';
 
   let { source } = $props();
 
@@ -153,6 +154,12 @@
     <p class="mt-2 text-[34px] font-black leading-none tabular-nums {tone}">{value}</p>
   </div>
 {/snippet}
+
+<WipNote title="Presence radar">
+  The radar nodes have not run on real hardware yet. The firmware is written for an ESP32
+  with an LD2450 sensor, but no node has been built and mounted on a wall. The sweep here
+  shows sample data.
+</WipNote>
 
 {#if problem && !overview}
   <div class="glass p-4 text-[13px] text-text-dim">{problem}</div>

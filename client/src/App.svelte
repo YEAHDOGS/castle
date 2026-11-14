@@ -34,7 +34,10 @@
   const Section = $derived(SECTION_VIEWS[shell.section] || StorageSection);
 
   onMount(() => {
-    if (SHOWCASE) document.title = 'Castle — Demo';
+    if (SHOWCASE) {
+      document.title = 'Castle — Demo';
+      document.documentElement.classList.add('showcase'); // gives the warning strip its room (app.css)
+    }
     store.init(); // no login wall: straight into the drive
     fullScreen.listen();
   });

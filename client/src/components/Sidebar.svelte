@@ -16,7 +16,8 @@
   import PeopleList from './PeopleList.svelte';
 
   /**
-   * items: [{ id, label, icon, count?, expanded?, indent?, action? }] -- the section's views.
+   * items: [{ id, label, icon, count?, wip?, expanded?, indent?, action? }] -- the section's views.
+   *   wip: true marks a view that is mostly not built yet (see WipNote).
    *   expanded (true/false) marks a group heading that opens and closes; indent marks its children;
    *   action marks a row that does something rather than show a view (Arcade's Shuffle).
    *   A controller's LB and RB step through the views, past headings and actions.
@@ -100,6 +101,9 @@
           <span class="micro relative w-[18px] shrink-0 text-center {isActive ? 'text-chiral' : ''} lg:hidden">{item.label.slice(0, 2)}</span>
         {/if}
         <span class="relative hidden min-w-0 flex-1 truncate text-left text-[13px] font-medium tracking-wide lg:block">{item.label}</span>
+        {#if item.wip}
+          <span class="micro relative hidden border border-dashed border-chiral/60 px-1 text-[9px] text-chiral lg:block">WIP</span>
+        {/if}
         {#if item.count != null}
           <span class="micro relative hidden text-text-faint lg:block">{item.count}</span>
         {/if}

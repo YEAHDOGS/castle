@@ -18,7 +18,7 @@
   let { title, subtitle = '', tag = '', items = [], active = null, onselect = () => {}, actions = null, bare = false, children } = $props();
 </script>
 
-<div class="flex h-dvh overflow-hidden bg-void text-white">
+<div class="flex h-app overflow-hidden bg-void text-white">
   <div class="hidden h-full shrink-0 md:block">
     <Sidebar {items} {active} {onselect} />
   </div>
@@ -54,7 +54,7 @@
             onclick={() => onselect(item.id)}
             aria-current={active === item.id ? 'page' : undefined}
           >
-            {item.label}{item.count != null ? ` ${item.count}` : ''}
+            {item.label}{item.count != null ? ` ${item.count}` : ''}{#if item.wip}<span class="ml-1.5 text-chiral">WIP</span>{/if}
           </button>
         {/each}
       </nav>

@@ -21,7 +21,7 @@
     { id: 'activity', label: 'Activity record', icon: ScrollText },
     { id: 'access', label: 'Access', icon: KeyRound },
     { id: 'audits', label: 'Audits', icon: ScanSearch },
-    { id: 'presence', label: 'Presence', icon: Radar },
+    { id: 'presence', label: 'Presence', icon: Radar, wip: true },
     { id: 'planned', label: 'Not built yet', icon: Hammer },
   ];
   const REFRESH_MS = 10_000;
