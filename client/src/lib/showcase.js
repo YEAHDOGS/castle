@@ -24,11 +24,11 @@
 
 export const SHOWCASE = import.meta.env.VITE_SHOWCASE === '1';
 
-export const REFUSED = 'This is the demo. Look around: nothing here runs.';
+export const REFUSED = 'Demo test: not active right now.';
 export const WAITLIST_URL = 'https://castle.dogs.red/#top';
 export const GITHUB_URL = 'https://github.com/YEAHDOGS/castle';
 /** The words on the strip across the bottom of the site (ShowcaseBanner). The owner chose these words: keep them. */
-export const WARNING = 'This site is in test development. You may hurt yourself.';
+export const WARNING = "test development, don't hurt yourself.";
 
 /** Methods that only read. Every demo source shares the list; names are unique enough. */
 const READS = new Set([

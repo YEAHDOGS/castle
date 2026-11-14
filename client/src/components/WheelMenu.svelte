@@ -17,10 +17,11 @@
   import { prefs } from '../lib/prefs.svelte.js';
   import { input } from '../lib/input.svelte.js';
 
-  const TARGET_STEP_DEG = 30; // roughly how far apart neighbouring slots should sit
+  const MIN_STEP_DEG = 30; // neighbouring slots sit at least this far apart, so they never overlap
   // The sections repeat a whole number of times around the rim, so the order never
-  // breaks where the last slot meets the first.
-  const REPEATS = Math.max(1, Math.ceil(360 / (TARGET_STEP_DEG * SECTIONS.length)));
+  // breaks where the last slot meets the first. Only as many repeats as keep the slots
+  // MIN_STEP_DEG apart: with eleven sections that is once round.
+  const REPEATS = Math.max(1, Math.floor(360 / (MIN_STEP_DEG * SECTIONS.length)));
   const SLOT_COUNT = SECTIONS.length * REPEATS;
   const STEP_DEG = 360 / SLOT_COUNT; // angle between neighbouring slots
   const BEAM_DEG = 135; // where the selected slot rests: the diagonal into the screen
@@ -268,7 +269,7 @@
           {@const Icon = slot.section.icon}
           {@const isActive = slot.k === activeSlot}
           {@const label = labelParts(slot.section)}
-          <div class="slot" style="--a: {slot.angle}deg">
+          <div class="slot" class:front={isActive} style="--a: {slot.angle}deg">
             <button
               class="slot-face"
               class:active={isActive}
@@ -426,6 +427,8 @@
     height: 0;
     transform: rotate(var(--a)) translateX(calc(var(--d) * 0.345));
   }
+  /* The selected slot is drawn over its neighbours, never under them. */
+  .slot.front { z-index: 1; }
   .slot-face {
     position: absolute;
     display: flex;

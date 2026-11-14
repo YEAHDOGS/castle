@@ -1,10 +1,11 @@
-<!-- HomeSection: the box at a glance. A running uptime clock, three live gauges for the
-     machine it runs on, and a tile for every other section showing its state right now. A
-     tile opens its section. The Spec card tile, last, makes a picture of the box's numbers, to post. -->
+<!-- HomeSection: the box at a glance. A running uptime clock, one card of live meters for
+     the machine it runs on, and a square tile for every other section with a few words on
+     its state right now. A tile opens its section. The Spec card tile, last, makes a picture
+     of the box's numbers, to post. -->
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
-  import { House, ArrowRight, IdCard } from '@lucide/svelte';
+  import { House, IdCard } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { SECTIONS } from '../../lib/sections.js';
@@ -18,9 +19,12 @@
   const VITALS_MS = 2000;
   const STATUS_MS = 15_000;
   const PERCENT = 100;
-  const RING_RADIUS = 52;
-  const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-  const BUSY_PERCENT = 85; // a gauge turns orange from here up
+  const BUSY_PERCENT = 85; // a meter turns orange from here up
+  // What a tile says when its section has nothing live to report: a word or two, no more.
+  const SHORT = {
+    storage: 'Files', ai: 'Images and chat', arcade: 'Games', theater: 'Films and music', comms: 'Texts and calls',
+    contacts: 'People', clones: 'Machines', network: 'Traffic', security: 'Checks', settings: 'Configure',
+  };
   const SECOND_MS = 1000;
   const MINUTE_MS = 60 * SECOND_MS;
   const HOUR_MS = 60 * MINUTE_MS;
@@ -43,9 +47,9 @@
   const gauges = $derived(
     vitals
       ? [
-          { id: 'cpu', label: 'PROCESSOR', percent: vitals.cpuPercent, detail: `${vitals.cores} cores` },
-          { id: 'memory', label: 'MEMORY', percent: share(vitals.memoryUsed, vitals.memoryTotal), detail: `${fmtSize(vitals.memoryUsed)} of ${fmtSize(vitals.memoryTotal)}` },
-          { id: 'disk', label: 'VAULT DISK', percent: share(vitals.diskTotal - vitals.diskFree, vitals.diskTotal), detail: `${fmtSize(vitals.diskFree)} free of ${fmtSize(vitals.diskTotal)}` },
+          { id: 'cpu', label: 'CPU', percent: vitals.cpuPercent, detail: `${vitals.cores} cores` },
+          { id: 'memory', label: 'MEMORY', percent: share(vitals.memoryUsed, vitals.memoryTotal), detail: `${fmtSize(vitals.memoryUsed)} / ${fmtSize(vitals.memoryTotal)}` },
+          { id: 'disk', label: 'VAULT', percent: share(vitals.diskTotal - vitals.diskFree, vitals.diskTotal), detail: `${fmtSize(vitals.diskFree)} free` },
         ]
       : [],
   );
@@ -119,31 +123,39 @@
       ai: async () => {
         if (store.isDemo || !store.adapter.aiStatus) throw new Error('no box'); // the tile keeps its tagline
         const ai = await store.adapter.aiStatus();
-        return ai.running ? 'DOGS AI is running' : ai.dir ? 'DOGS AI is stopped' : 'DOGS AI is not installed';
+        return ai.running ? 'Running' : ai.dir ? 'Stopped' : 'Not installed';
       },
       clones: async () => {
         const list = await shell.clonesSource.clones();
         const running = list.filter((a) => a.state === 'running').length;
-        return running ? `${running} running` : `${list.length} ${list.length === 1 ? 'automation' : 'automations'}, none running`;
+        return running ? `${running} running` : `${list.length} idle`;
       },
       arcade: async () => {
         const systems = await shell.arcadeSource.arcadeSystems();
         const games = systems.reduce((sum, system) => sum + (system.games || 0), 0);
-        return `${games} games on ${systems.length} systems`;
+        return `${games} games`;
       },
       theater: async () => {
         const { libraries } = await shell.theaterSource.theater();
         const count = libraries.reduce((sum, library) => sum + (library.count || 0), 0);
-        return libraries.length ? `${count} ${count === 1 ? 'item' : 'items'} in ${libraries.length} ${libraries.length === 1 ? 'library' : 'libraries'}` : 'Add a folder to start';
+        return libraries.length ? `${count} ${count === 1 ? 'item' : 'items'}` : 'No folders yet';
       },
       security: async () => {
         const { checks } = await shell.securitySource.security();
         const failing = checks.filter((c) => c.state === 'warn').length;
-        return failing ? `${failing} ${failing === 1 ? 'check needs' : 'checks need'} attention` : `${checks.filter((c) => c.state === 'ok').length} checks pass`;
+        return failing ? `${failing} to fix` : 'All good';
       },
       network: async () => {
         const reading = await shell.networkSource.network();
-        return reading.local?.address ? `${reading.local.adapter} · ${reading.local.address}` : 'Connected';
+        return reading.local?.address || 'Connected';
+      },
+      contacts: async () => {
+        const list = await shell.contactsSource.contacts(shell.user.id);
+        return `${list.length} ${list.length === 1 ? 'person' : 'people'}`;
+      },
+      comms: async () => {
+        const { conversations } = await shell.commsSource.comms(shell.user.id);
+        return `${conversations.length} ${conversations.length === 1 ? 'thread' : 'threads'}`;
       },
     };
     const next = {};
@@ -185,7 +197,7 @@
 
 <SectionFrame
   title="Home"
-  subtitle={vitals ? `${vitals.host || 'This box'} · ${vitals.os}` : 'The box at a glance'}
+  subtitle={vitals?.host || 'Castle'}
   tag={store.isDemo ? 'SAMPLE DATA' : ''}
 >
   {#if !source}
@@ -194,84 +206,69 @@
       <span class="text-bridge">Demo</span> at the top to see it with sample data.
     </Notice>
   {:else}
-    {#if up}
-      <div class="uptime hud-corners glass mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-2 px-5 py-4">
-        <div class="min-w-0">
-          <p class="micro flex items-center gap-2 text-text-faint"><span class="pulse"></span> UPTIME</p>
-          <!-- The digits change every frame, so screen readers get the line in words instead. -->
-          <p class="clock mt-1" aria-hidden="true">
-            {#if up.days}<span class="days">{up.days}<span class="unit">D</span></span>{/if}
-            <span>{up.hours}</span><span class="colon">:</span><span>{up.minutes}</span><span class="colon">:</span><span>{up.seconds}</span><span class="millis">.{up.millis}</span>
-          </p>
-          <p class="sr-only" role="timer">{upSpoken}</p>
-        </div>
-        <p class="micro pb-1 text-right text-text-faint">
-          <span class="block text-text-dim">{vitals?.host || 'THIS BOX'}</span>
-          <span class="block">RUNNING SINCE {since.toUpperCase()}</span>
-        </p>
-      </div>
-    {/if}
-
-    <div class="grid gap-3 sm:grid-cols-3">
-      {#each gauges as gauge (gauge.id)}
-        {@const busy = gauge.percent >= BUSY_PERCENT}
-        <div class="glass flex items-center gap-4 p-4">
-          <svg viewBox="0 0 120 120" class="h-24 w-24 shrink-0 -rotate-90" role="img" aria-label={`${gauge.label} ${Math.round(gauge.percent)} percent`}>
-            <circle cx="60" cy="60" r={RING_RADIUS} fill="none" stroke="var(--color-hairline)" stroke-width="6" />
-            <circle
-              class="gauge-arc"
-              cx="60"
-              cy="60"
-              r={RING_RADIUS}
-              fill="none"
-              stroke={busy ? 'var(--color-chiral)' : 'var(--color-bridge)'}
-              stroke-width="6"
-              stroke-linecap="round"
-              stroke-dasharray={RING_LENGTH}
-              stroke-dashoffset={RING_LENGTH * (1 - gauge.percent / PERCENT)}
-            />
-          </svg>
+    <div class="mb-3 grid gap-3 md:grid-cols-2">
+      {#if up}
+        <div class="uptime hud-corners glass flex flex-wrap items-end justify-between gap-x-6 gap-y-2 px-5 py-4">
           <div class="min-w-0">
-            <p class="micro text-text-faint">{gauge.label}</p>
-            <p class="mt-1 text-[34px] font-black leading-none tabular-nums {busy ? 'text-chiral' : 'text-white'}">
-              {Math.round(gauge.percent)}<span class="micro ml-1 text-text-faint">%</span>
+            <p class="micro flex items-center gap-2 text-text-faint"><span class="pulse"></span> UPTIME</p>
+            <!-- The digits change every frame, so screen readers get the line in words instead. -->
+            <p class="clock mt-1" aria-hidden="true">
+              {#if up.days}<span class="days">{up.days}<span class="unit">D</span></span>{/if}
+              <span>{up.hours}</span><span class="colon">:</span><span>{up.minutes}</span><span class="colon">:</span><span>{up.seconds}</span><span class="millis">.{up.millis}</span>
             </p>
-            <p class="micro mt-1.5 truncate text-text-dim">{gauge.detail}</p>
+            <p class="sr-only" role="timer">{upSpoken}</p>
           </div>
+          <p class="micro pb-1 text-right text-text-faint">RUNNING SINCE {since.toUpperCase()}</p>
         </div>
-      {:else}
-        <div class="glass p-4 sm:col-span-3">
+      {/if}
+
+      <!-- The machine's meters: one card, one line each. -->
+      <div class="glass flex flex-col justify-center gap-3 px-5 py-4">
+        {#each gauges as gauge (gauge.id)}
+          {@const busy = gauge.percent >= BUSY_PERCENT}
+          <div class="grid grid-cols-[4.25rem_1fr_2.75rem] items-center gap-3" role="img" aria-label={`${gauge.label} ${Math.round(gauge.percent)} percent, ${gauge.detail}`}>
+            <span class="micro text-text-faint">{gauge.label}</span>
+            <span class="min-w-0">
+              <span class="block h-1.5 overflow-hidden bg-hairline">
+                <span class="meter block h-full {busy ? 'bg-chiral' : 'bg-bridge'}" style="width: {Math.min(PERCENT, gauge.percent)}%"></span>
+              </span>
+              <span class="micro mt-1 block truncate text-text-dim">{gauge.detail}</span>
+            </span>
+            <span class="text-right text-[18px] font-black leading-none tabular-nums {busy ? 'text-chiral' : 'text-white'}">{Math.round(gauge.percent)}<span class="micro text-text-faint">%</span></span>
+          </div>
+        {:else}
           <p class="micro text-text-faint">{problem ? `VITAL SIGNS UNAVAILABLE: ${problem}` : 'READING THE BOX'}</p>
-        </div>
-      {/each}
+        {/each}
+      </div>
     </div>
 
-    <ul class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <ul class="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
       {#each tiles as tile, i (tile.id)}
         <li in:fly={itemIn(i)}>
           <button
-            class="expo t-ui group flex h-full w-full items-center gap-4 border border-hairline bg-white/[0.02] p-4 text-left hover:border-chiral/60 hover:bg-white/[0.04] active:scale-[0.99]"
+            class="expo t-ui group flex aspect-square w-full flex-col justify-between border border-hairline bg-white/[0.02] p-3 text-left hover:border-chiral/60 hover:bg-white/[0.04] active:scale-[0.97]"
             onclick={() => shell.setSection(tile.id)}
           >
-            <tile.icon class="h-7 w-7 shrink-0 text-text-faint transition-colors group-hover:text-chiral" strokeWidth={1.25} />
-            <span class="min-w-0 flex-1">
-              <span class="block text-[15px] font-bold text-white">{tile.label}</span>
-              <span class="mt-0.5 block truncate text-[13px] text-text-dim">{statuses[tile.id] || tile.tagline}</span>
+            <tile.icon class="h-7 w-7 text-text-faint transition-colors group-hover:text-chiral" strokeWidth={1.25} />
+            <span class="min-w-0">
+              <span class="block truncate text-[14px] font-bold text-white">{tile.label}</span>
+              <span class="mt-0.5 block truncate text-[11px] text-text-dim">{statuses[tile.id] || SHORT[tile.id] || tile.tagline}</span>
             </span>
-            <ArrowRight class="expo t-ui h-4 w-4 shrink-0 text-text-faint transition-transform group-hover:translate-x-1 group-hover:text-chiral" />
           </button>
         </li>
       {/each}
       <!-- Not a section: a picture of the box's numbers, to post. -->
       <li in:fly={itemIn(tiles.length)}>
-        <div class="flex h-full w-full items-center gap-4 border border-bridge/30 bg-bridge/[0.04] p-4">
-          <IdCard class="h-7 w-7 shrink-0 text-bridge" strokeWidth={1.25} />
-          <span class="min-w-0 flex-1">
-            <span class="block text-[15px] font-bold text-white">Spec card</span>
-            <span class="mt-0.5 block truncate text-[13px] text-text-dim">This box's numbers as a picture, to post</span>
+        <button
+          class="expo t-ui group flex aspect-square w-full flex-col justify-between border border-bridge/40 bg-bridge/[0.05] p-3 text-left hover:border-bridge hover:bg-bridge/[0.1] active:scale-[0.97]"
+          onclick={() => (cardOpen = true)}
+        >
+          <IdCard class="h-7 w-7 text-bridge" strokeWidth={1.25} />
+          <span class="min-w-0">
+            <span class="block truncate text-[14px] font-bold text-white">Spec card</span>
+            <span class="mt-0.5 block truncate text-[11px] text-bridge">Make one</span>
           </span>
-          <button class="micro expo t-hover h-9 shrink-0 bg-bridge px-3 font-bold text-black transition-opacity hover:opacity-90" onclick={() => (cardOpen = true)}>MAKE ONE</button>
-        </div>
+        </button>
       </li>
     </ul>
   {/if}
@@ -331,10 +328,10 @@
     .clock .colon { animation: none; }
   }
 
-  /* The arc glides to each new reading instead of jumping. */
-  .gauge-arc {
+  /* A meter glides to each new reading instead of jumping. */
+  .meter {
     transition:
-      stroke-dashoffset 900ms var(--ease-expo),
-      stroke 250ms var(--ease-expo);
+      width 900ms var(--ease-expo),
+      background-color 250ms var(--ease-expo);
   }
 </style>

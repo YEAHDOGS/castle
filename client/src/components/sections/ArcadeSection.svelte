@@ -28,6 +28,7 @@
   import SectionFrame from '../SectionFrame.svelte';
   import Notice from '../Notice.svelte';
   import SteamCache from '../arcade/SteamCache.svelte';
+  import { swipe } from '../../lib/swipe.js';
 
   const NO_ARCADE = 'not started with --arcade';
   const CONSOLES = '@consoles'; // rail ids that are not systems
@@ -648,7 +649,8 @@
       {/if}
     </button>
 
-    <div transition:scale={modalIn()} class="hud-corners scanlines glass relative z-10 flex max-h-[90dvh] w-full max-w-3xl flex-col">
+    <!-- A finger swipes through the games as the arrows do: left for the next, right for the one before. -->
+    <div transition:scale={modalIn()} use:swipe={(dir) => step(dir)} class="hud-corners scanlines glass relative z-10 flex max-h-[90dvh] w-full max-w-3xl flex-col">
       {#if deck}
         <div class="flex flex-wrap items-center gap-2 border-b border-hairline px-5 py-2.5">
           <p class="micro flex items-center gap-2 text-chiral"><Dices class="h-3.5 w-3.5" /> SHUFFLE</p>
@@ -766,7 +768,7 @@
         {#if deck}
           GAME {deck.at + 1} OF THIS SHUFFLE · <span class="text-text-dim">RIGHT</span> DEALS ANOTHER · <span class="text-text-dim">LEFT</span> GOES BACK · <span class="text-text-dim">ESC</span> CLOSES
         {:else}
-          {shown.findIndex((g) => g.id === openGame.id) + 1} OF {shown.length} · <span class="text-text-dim">LEFT</span> AND <span class="text-text-dim">RIGHT</span> MOVE THROUGH THE GAMES · <span class="text-text-dim">ESC</span> CLOSES
+          {shown.findIndex((g) => g.id === openGame.id) + 1} OF {shown.length} · <span class="text-text-dim">LEFT</span> AND <span class="text-text-dim">RIGHT</span> MOVE THROUGH THE GAMES (OR SWIPE) · <span class="text-text-dim">ESC</span> CLOSES
         {/if}
       </p>
     </div>

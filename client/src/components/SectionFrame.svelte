@@ -8,9 +8,11 @@
   import Sidebar from './Sidebar.svelte';
   import Avatar from './Avatar.svelte';
   import ModeSwitch from './ModeSwitch.svelte';
+  import { SHOWCASE } from '../lib/showcase.js';
 
   /**
    * title, subtitle: header text. tag: small label beside the title (e.g. SAMPLE DATA).
+   *   The showcase says SAMPLE DATA once, on its strip at the bottom, so the header drops it there.
    * items/active/onselect: the section's views, as Sidebar takes them.
    * actions: optional snippet on the right of the header. children: the body.
    * bare: the body fills the space edge to edge and does not scroll (for an app shown in a frame).
@@ -32,7 +34,7 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <h1 class="truncate text-[17px] font-black uppercase tracking-[0.16em]">{title}</h1>
-          {#if tag}
+          {#if tag && !(SHOWCASE && tag === 'SAMPLE DATA')}
             <span class="micro shrink-0 border border-bridge/40 px-1.5 py-0.5 text-bridge">{tag}</span>
           {/if}
         </div>
@@ -47,7 +49,7 @@
     </header>
 
     {#if items.length}
-      <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-hairline-faint px-3 py-2 md:hidden" aria-label={`${title} views`}>
+      <nav class="chips flex shrink-0 gap-1 overflow-x-auto border-b border-hairline-faint py-2 pl-3 pr-10 md:hidden" aria-label={`${title} views`}>
         {#each items as item (item.id)}
           <button
             class="micro expo t-hover shrink-0 border px-2.5 py-1.5 transition-colors {active === item.id ? 'border-chiral/70 text-chiral' : 'border-hairline text-text-dim'}"
@@ -70,3 +72,14 @@
     </main>
   </div>
 </div>
+
+<style>
+  /* The phone's row of views scrolls sideways with a finger, without a scroll bar under
+     it; the right edge fades out so it is plain there is more to see. */
+  .chips {
+    scrollbar-width: none;
+    mask-image: linear-gradient(90deg, #000 calc(100% - 2.5rem), transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 2.5rem), transparent);
+  }
+  .chips::-webkit-scrollbar { display: none; }
+</style>

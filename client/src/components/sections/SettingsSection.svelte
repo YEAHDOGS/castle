@@ -277,12 +277,16 @@
       </p>
     {/if}
 
-    <!-- room under the last setting, so the sticker never covers it -->
-    <div class="h-24" aria-hidden="true"></div>
+    <!-- On a phone the sticker ends the list. Wider, it is pinned to the corner (below), and
+         this room under the last setting keeps it from covering anything. -->
+    <a class="expo t-hover mx-auto mt-8 block w-fit opacity-90 transition-opacity hover:opacity-100 md:hidden" href="https://wearedogs.net" target="_blank" rel="noreferrer">
+      <img src={madeByDogs} alt="This product was made by DOGS" width="360" height="119" class="h-auto w-[180px]" />
+    </a>
+    <div class="hidden h-24 md:block" aria-hidden="true"></div>
   </div>
 </SectionFrame>
 
-<!-- The sticker is pinned to the bottom right corner and stays there while the page scrolls. -->
-<a class="expo t-hover fixed bottom-[calc(var(--strip)+1rem)] right-4 z-10 opacity-90 transition-opacity hover:opacity-100" href="https://wearedogs.net" target="_blank" rel="noreferrer">
+<!-- Wider screens: the sticker is pinned to the bottom right corner and stays there while the page scrolls. -->
+<a class="expo t-hover fixed bottom-[calc(var(--strip)+1rem)] right-4 z-10 hidden opacity-90 transition-opacity hover:opacity-100 md:block" href="https://wearedogs.net" target="_blank" rel="noreferrer">
   <img src={madeByDogs} alt="This product was made by DOGS" width="360" height="119" class="h-auto w-[200px]" />
 </a>
