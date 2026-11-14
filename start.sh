@@ -330,9 +330,15 @@ need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.j
 install_packages() { [[ -d "$CLIENT_DIR/node_modules" ]] || (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund); }
 
 # DOGS AI's app (app/ai/app), which the box shows in its AI section through the dogs server.
-# Built once when it is missing (or with --build). A failure leaves AI off; Castle still starts.
+# app/ai is the dogs-ai project as a git submodule: fetched here when the checkout does not
+# have it yet. Built once when it is missing (or with --build). A failure leaves AI off;
+# Castle still starts.
 AI_APP_DIR="$ROOT/app/ai/app"
 build_ai_app() {
+    if [[ ! -f "$ROOT/app/ai/server/bin/dogs.mjs" ]]; then
+        say 'Fetching DOGS AI (app/ai, the dogs-ai project).'
+        git -C "$ROOT" submodule update --init app/ai || { say 'DOGS AI could not be fetched, so AI stays off.'; return 0; }
+    fi
     [[ -f "$AI_APP_DIR/package.json" ]] || return 0
     if [[ -f "$AI_APP_DIR/dist/index.html" ]] && (( ! BUILD )); then return 0; fi
     say 'Building DOGS AI (app/ai/app).'

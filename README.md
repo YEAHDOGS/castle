@@ -72,10 +72,10 @@ folder; everything that is part of the app lives in `app/`.
 | Folder | What it is |
 |---|---|
 | `app/` | **The Castle app**: the interface (Svelte, `app/src`), its desktop and phone shell (Tauri, `app/src-tauri`), and everything the app runs on. |
-| `app/ai/` | DOGS AI, which the AI section shows: its app, its server and the scripts that install its runtime. |
+| `app/ai/` | DOGS AI, which the AI section shows. It is its own project and standalone app, [YEAHDOGS/dogs-ai](https://github.com/YEAHDOGS/dogs-ai), imported here as a git submodule: clone with `--recurse-submodules`, or `start.sh` fetches it. Castle and the standalone app share one engine and one data folder, so models, history and chats are the same in both. |
 | `app/clonewars/` | The Clones engine: QEMU virtual machines, Docker containers and the Android emulator, with the automations that drive them. |
 | `app/gatehouse/` | Firmware for the Presence radar nodes (ESP32 + LD2450). |
-| `app/data/` | Everything live or generated, never committed: Clones' disks, ISOs and Android SDK (`app/data/clonewars`), DOGS AI's runtime, models and outputs (`app/data/ai`), and the vault a plain `cargo run` of the daemon uses (`app/data/castle`). |
+| `app/data/` | Everything live or generated, never committed: Clones' disks, ISOs and Android SDK (`app/data/clonewars`), and the vault a plain `cargo run` of the daemon uses (`app/data/castle`). |
 | `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage, Arcade, Theater, Comms, Contacts, Clones, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
 | `os/` | Castle OS: the Arch-based install image and its tools. |
 | `landing/` | castle.dogs.red, the landing page. |

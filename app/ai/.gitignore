@@ -1,7 +1,0 @@
-# The runtime, models and outputs live in app/data/ai (ignored at the top of the repo).
-node_modules/
-*.log
-.env
-
-# Old Electron packages (desktop builds now land in app/src-tauri/target/, ignored there)
-build/

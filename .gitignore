@@ -42,7 +42,8 @@
 # One folder for all of it, never committed:
 #   app/data/clonewars  Clones' disks, ISOs, Android SDK, containers, payloads (tens of GB)
 #   app/data/castle     the vault `cargo run` uses in castled/
-#   app/data/ai         DOGS AI's runtime (ComfyUI), models and outputs
+# (DOGS AI keeps its runtime, models, history and outputs in its own per-user folder, which
+# every copy of it shares: %LOCALAPPDATA%\DOGS AI. See app/ai's README.)
 app/data/
 
 # Rust build output (castled, app/src-tauri, app/ai/app/src-tauri)

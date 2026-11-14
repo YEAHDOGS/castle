@@ -68,7 +68,7 @@ export const SETTINGS = [
   { id: 'clones.autostart', group: 'clones', where: 'box', type: 'toggle', default: false, label: 'Restart automations when the box starts', help: 'Brings back whatever was running before a restart.' },
 
   // ---- ai ----
-  { id: 'ai.serverUrl', group: 'ai', where: 'box', type: 'text', default: 'http://127.0.0.1:1234', label: 'Model server address', help: 'The local server that runs the models.' },
+  { id: 'ai.ollamaUrl', group: 'ai', where: 'box', type: 'text', default: 'http://127.0.0.1:11434', live: true, label: 'Ollama address', help: 'The Ollama that runs chat models. DOGS AI uses it here, and in its own app on this computer, so both see the same models.', placeholder: 'http://127.0.0.1:11434' },
   { id: 'ai.keepLoadedMinutes', group: 'ai', where: 'box', type: 'number', default: 30, min: 0, max: 1440, unit: 'min', label: 'Unload an idle model after', help: 'Frees memory when nobody is chatting. 0 keeps it loaded.' },
   { id: 'ai.chatHistory', group: 'ai', where: 'box', type: 'toggle', default: true, label: 'Keep chat history', help: 'Chats are stored on the box, per person.' },
 

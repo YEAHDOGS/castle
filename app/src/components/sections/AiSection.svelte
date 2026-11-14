@@ -124,13 +124,13 @@
       {/key}
     {:else if !status.dir}
       <Notice icon={BrainCircuit} title="DOGS AI WAS NOT FOUND">
-        Its code is the <span class="text-white">ai</span> folder of the Castle checkout. Set CASTLE_AI_DIR on the box to use a copy somewhere else.
+        It is the <span class="text-white">dogs-ai</span> project, in <span class="text-white">app/ai</span> of the Castle checkout as a git submodule. Fetch it with <code class="text-white">git submodule update --init app/ai</code> (Castle's start script does), or set CASTLE_AI_DIR on the box to use a copy somewhere else.
       </Notice>
     {:else if !status.node}
       <Notice icon={BrainCircuit} title="NODE.JS IS NEEDED">DOGS AI runs on Node.js 22 or newer. Install it on the box from nodejs.org, then start it here.</Notice>
     {:else if !status.built}
       <Notice icon={BrainCircuit} title="DOGS AI'S APP IS NOT BUILT">
-        Build it once on the box: <code class="text-white">npm --prefix app/ai/app install</code> then <code class="text-white">npm --prefix ai/app run build</code>. Castle's start script does this for you.
+        Build it once on the box: <code class="text-white">npm --prefix app/ai/app install</code> then <code class="text-white">npm --prefix app/ai/app run build</code>. Castle's start script does this for you.
       </Notice>
     {:else}
       <Notice icon={BrainCircuit} title="DOGS AI IS NOT RUNNING">

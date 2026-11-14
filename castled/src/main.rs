@@ -843,6 +843,12 @@ async fn host_speedtest(State(st): State<Shared>, Json(b): Json<SpeedBody>) -> A
 const THEATER_RESCAN: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 /// The box setting that holds the OpenSubtitles API key.
 const OPENSUBTITLES_SETTING: &str = "theater.opensubtitlesKey";
+/// The Ollama DOGS AI chats through, which it then uses in every copy on this computer.
+const OLLAMA_SETTING: &str = "ai.ollamaUrl";
+
+fn ollama_setting(root: &Path) -> Option<String> {
+    read_settings(root).get(OLLAMA_SETTING).and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
+}
 
 #[derive(Deserialize)]
 struct LibraryAddBody {
@@ -1429,7 +1435,7 @@ async fn ai_status(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
 async fn ai_start(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
     local_only(&st)?;
     tokio::task::spawn_blocking(move || {
-        st.ai.start().map_err(|msg| ApiError::conflict(&msg))?;
+        st.ai.start(ollama_setting(&st.root).as_deref()).map_err(|msg| ApiError::conflict(&msg))?;
         // Give it a moment to open its port, so the answer says whether it is up.
         for _ in 0..20 {
             if st.ai.status().running {
@@ -1862,6 +1868,7 @@ async fn settings_put(
     if !changes.iter().all(|(k, v)| valid_setting(k, v)) {
         return Err(ApiError::bad("that setting cannot be saved"));
     }
+    let ollama_changed = changes.contains_key(OLLAMA_SETTING);
     let _writing = st.settings.lock().unwrap();
     let mut saved = read_settings(&st.root);
     saved.extend(changes);
@@ -1871,6 +1878,11 @@ async fn settings_put(
     let tmp = settings_file(&st.root).with_extension("json.tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(&saved).unwrap_or_default())?;
     std::fs::rename(tmp, settings_file(&st.root))?;
+    // A new Ollama address reaches the running DOGS AI at once (and through it, every copy).
+    if let Some(url) = saved.get(OLLAMA_SETTING).and_then(|v| v.as_str()).filter(|_| ollama_changed).map(str::to_string) {
+        let ai = st.clone();
+        tokio::task::spawn_blocking(move || ai.ai.set_ollama(Some(&url)));
+    }
     Ok(Json(saved))
 }
 
@@ -2526,12 +2538,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // DOGS AI starts with the box when a copy of it is there and its app is built.
+    // DOGS AI starts with the box when a copy of it is there and its app is built. One that is
+    // already running (the standalone app's) is used, and given the Ollama address.
     let ai_state = state.clone();
     std::thread::spawn(move || {
         let status = ai_state.ai.status();
-        if status.dir.is_some() && status.built && status.node && !status.running {
-            if let Err(msg) = ai_state.ai.start() {
+        if status.dir.is_some() && status.built && status.node {
+            if let Err(msg) = ai_state.ai.start(ollama_setting(&ai_state.root).as_deref()) {
                 eprintln!("[castled] {msg}");
             }
         }
