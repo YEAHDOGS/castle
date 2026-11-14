@@ -3,5 +3,5 @@
 *.cmd text eol=crlf
 
 # Container entrypoints are read by bash inside Linux images.
-clonewars/docker/**/castle-* text eol=lf
-clonewars/docker/**/Dockerfile text eol=lf
+app/clonewars/docker/**/castle-* text eol=lf
+app/clonewars/docker/**/Dockerfile text eol=lf

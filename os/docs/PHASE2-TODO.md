@@ -31,9 +31,8 @@ it's the honest backlog.
 
 - [ ] Castle secrets vault + token system as first-class services
       (today they're CLI tools in /opt/castle)
-- [ ] The Kotlin server/app — needs a JVM packaging story; was NOT
-      force-fit into Phase 1 for exactly this reason
-- [ ] QEMU/hypervisor bits from `clonewars/` (Windows-oriented today;
+- [ ] The box daemon (`app/castled`, Rust) as a system service on Castle OS
+- [ ] QEMU/hypervisor bits from `app/clonewars/` (Windows-oriented today;
       needs a Linux-native rethink)
 - [ ] DOGS ID gate integration for the local admin UI (when it exists)
 

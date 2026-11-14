@@ -64,29 +64,32 @@ A way to make data yours again
   • Global Ledger Overwatch                      • No Root System File Permissions
 ---
 
-## Components
+## Layout
 
-| Directory | What it is |
+Four folders at the top, and everything that is part of the app lives in `app/`.
+
+| Folder | What it is |
 |---|---|
-| `clonewars/` | **Clone Factory** — modular PowerShell QEMU pipeline: download, cryptographically verify (hash + GPG + trust pinning), provision, and boot VM targets (CachyOS, Ubuntu, Windows, …). Interactive CLI (`start.ps1`), WPF GUI (`gui.ps1`), Docker + noVNC support. See `clonewars/README.md`. |
-| `arcade/` | **Retro asset pipeline** — acquire, hash-verify, extract, and organize console firmware/BIOS + ROM images into `arcade/data/`. See `arcade/README.md`. |
-| `saves/` | **SaveVault** — "git for save data": version control for emulator save files (SNES `.srm`, GBA `.sav`, save states) with commit/diff/restore. See `saves/README.md`. |
-| `server/` | **Castle sync server** (Kotlin/Ktor) — the Data Vault backend: file sync endpoints, vault storage root via `CASTLE_DATA_DIR`. |
-| `app/` | **Sync client** (Kotlin multiplatform) — talks to the server; point `baseUrl` at your Castle box on the LAN. |
-| `swarm/` | Agent-team design notes. |
+| `app/` | **The Castle app**: the interface (Svelte, `app/src`), its desktop and phone shell (Tauri, `app/src-tauri`), and everything the app runs on. |
+| `app/castled/` | The box daemon (Rust). Storage, Arcade, Theater, Comms, Contacts, Clones, Security and Presence all answer from here; the desktop app carries it inside. |
+| `app/ai/` | DOGS AI, which the AI section shows: its app, its server and the scripts that install its runtime. |
+| `app/clonewars/` | The Clones engine: QEMU virtual machines, Docker containers and the Android emulator, with the automations that drive them. Its `data/` (disks, ISOs) is never committed. |
+| `app/security/` | The audit scripts behind Security > Audits. The daemon builds them in. |
+| `app/gatehouse/` | Firmware for the Presence radar nodes (ESP32 + LD2450). |
+| `os/` | Castle OS: the Arch-based install image and its tools. |
+| `landing/` | castle.dogs.red, the landing page. |
+| `scripts/` | Repo scripts, such as building the website. |
 
-**The idea:** Castle is a router replacement with built-in local network storage — a self-hosted Google Drive on your own LAN. Clonewars builds the compute nodes, arcade + saves cover the retro-gaming thread, and the sync server/app are the storage heart. Future: warehouse facilities for encrypted offsite backup.
+`start.sh` (or `start.cmd` on Windows) runs the whole thing for development: the daemon, the app and DOGS AI, rebuilding each as you edit it.
 
 ## The website and its demo
 
 castle.dogs.red is the landing page (`landing/`) with a read-only demo of the whole app at
 `/demo/`: every section with sample data, and every button that would run or change something
-says so instead. It is the client built with `npm run build:showcase` (see
-`app/src/lib/showcase.js`). To put the site together and publish it:
+says so instead. It is the app built with `npm run build:showcase` (see
+`app/src/lib/showcase.js`).
 
-```sh
-node scripts/build-site.mjs                                              # -> site-dist/
-npx wrangler pages deploy site-dist --project-name=castle --branch=master
-```
-
-The deploy replaces everything the site serves, so always deploy the whole `site-dist/`.
+The site is the Cloudflare Pages project `castle`, connected to this repo: **every push to
+`master` builds and publishes it**, and other branches get preview addresses. The build is
+`node scripts/build-site.mjs`, which puts the landing page and the demo together in `site-dist/`.
+Run it yourself to see the site before you push.

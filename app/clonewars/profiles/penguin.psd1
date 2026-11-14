@@ -12,7 +12,7 @@
     # The project sits next to the castle checkout. Packed as git sees it (no
     # virtualenvs, no recordings), plus the git-ignored .env the bot signs in with.
     Payload     = @(
-        @{ Source = "..\..\..\penguin-autosurf"; As = "penguin-autosurf.zip"; Include = @(".env") }
+        @{ Source = "..\..\..\..\penguin-autosurf"; As = "penguin-autosurf.zip"; Include = @(".env") }
     )
 
     # Unpacks the project, builds its Python environment, opens Firefox on the

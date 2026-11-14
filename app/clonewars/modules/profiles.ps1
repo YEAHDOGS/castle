@@ -27,7 +27,7 @@
 #       # packed as git sees it (tracked + untracked, ignored files left out);
 #       # Include adds ignored files by name (a .env, say).
 #       Payload      = @(
-#           @{ Source = "..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
+#           @{ Source = "..\..\..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
 #       )
 #
 #       # Installed before anything runs; the list for the guest's own package

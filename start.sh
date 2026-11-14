@@ -10,7 +10,7 @@
 # app, and keeps both following your edits until you press Ctrl+C:
 #   interface (app/src)         changes appear in the open app and browser at once
 #   app shell (app/src-tauri)   the app rebuilds and reopens itself
-#   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
+#   box daemon (app/castled/src)       the box rebuilds and restarts within a few seconds
 # The same live interface is in the browser at http://localhost:1420.
 #
 # With --release it instead builds everything once, starts it and returns: the box in
@@ -55,7 +55,7 @@ elif grep -qi microsoft /proc/version 2>/dev/null && command -v cmd.exe >/dev/nu
     exec cmd.exe /c "$(wslpath -w "$ROOT/start.cmd")" "$@"
 fi
 
-DAEMON_DIR="$ROOT/castled"
+DAEMON_DIR="$ROOT/app/castled"
 CLIENT_DIR="$ROOT/app"
 WEB_DIR="$CLIENT_DIR/dist"
 
@@ -232,7 +232,7 @@ fi
 # Everything is on unless there is nothing to turn on: Clones uses the clonewars folder in
 # this checkout, and Arcade uses the first Games folder (Consoles + Roms) found on a drive.
 CLONEWARS="$(config_value clonewars)"
-[[ -n "$CLONEWARS" ]] || CLONEWARS="$ROOT/clonewars"
+[[ -n "$CLONEWARS" ]] || CLONEWARS="$ROOT/app/clonewars"
 ARCADE_SET="$(config_value arcade)" # looked for afresh each time the box starts when unset
 URL="http://127.0.0.1:$PORT"
 DEV_URL="http://localhost:$DEV_PORT"
@@ -241,20 +241,20 @@ need_cargo() { command -v cargo >/dev/null 2>&1 || die 'Building Castle needs Ru
 need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.js (npm). Install it from https://nodejs.org'; }
 install_packages() { [[ -d "$CLIENT_DIR/node_modules" ]] || (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund); }
 
-# DOGS AI's app (ai/app), which the box shows in its AI section through the dogs server.
+# DOGS AI's app (app/ai/app), which the box shows in its AI section through the dogs server.
 # Built once when it is missing (or with --build). A failure leaves AI off; Castle still starts.
-AI_APP_DIR="$ROOT/ai/app"
+AI_APP_DIR="$ROOT/app/ai/app"
 build_ai_app() {
     [[ -f "$AI_APP_DIR/package.json" ]] || return 0
     if [[ -f "$AI_APP_DIR/dist/index.html" ]] && (( ! BUILD )); then return 0; fi
-    say 'Building DOGS AI (ai/app).'
+    say 'Building DOGS AI (app/ai/app).'
     if [[ ! -d "$AI_APP_DIR/node_modules" ]]; then
         (cd "$AI_APP_DIR" && npm ci --no-audit --no-fund) || { say 'DOGS AI did not install, so AI stays off.'; return 0; }
     fi
     (cd "$AI_APP_DIR" && npm run build) || say 'DOGS AI did not build, so AI stays off.'
 }
 
-DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$ROOT/security/audits")
+DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$ROOT/app/security/audits")
 WEB_SOURCES=("$CLIENT_DIR/src" "$CLIENT_DIR/index.html" "$CLIENT_DIR/package.json" "$CLIENT_DIR/public")
 APP_SOURCES=("${WEB_SOURCES[@]}" "$CLIENT_DIR/src-tauri/src" "$CLIENT_DIR/src-tauri/Cargo.toml" "$CLIENT_DIR/src-tauri/tauri.conf.json")
 
@@ -381,7 +381,7 @@ fi
 # Live mode (the default): everything runs from source and follows your edits.
 #   interface (app/src)         changes appear in the open app and browser at once
 #   app shell (app/src-tauri)   the app rebuilds and reopens itself
-#   box daemon (castled/src)       the box rebuilds and restarts within a few seconds
+#   box daemon (app/castled/src)       the box rebuilds and restarts within a few seconds
 # This stays in the foreground. Ctrl+C ends the app and the watching; the box keeps running.
 #===============================================================================
 need_cargo; need_npm

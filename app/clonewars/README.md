@@ -134,7 +134,7 @@ A profile is a PowerShell data file (`.psd1`, plain data, nothing runs when it i
     QemuArgs     = @("-rtc", "base=localtime")  # extra raw QEMU arguments, appended last
     Env          = @{ CASTLE_VM_AUDIO = "none" } # CASTLE_* knobs for this launch only
     Payload      = @(                           # host folders packed into data\copy before boot
-        @{ Source = "..\..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
+        @{ Source = "..\..\..\..\my-project"; As = "my-project.zip"; Include = @(".env") }
     )
     Packages     = @{ apt = @("htop"); pacman = @("htop") }   # the guest's own package manager picks its list
     RootCommands = @("timedatectl set-timezone UTC")          # as root, in order; a failure stops the setup

@@ -1,8 +1,58 @@
-# Data
+# ---- Big files never go in git ----------------------------------------------
+# Disk images, installers, archives, game files, model weights and media. They live
+# on the box or in app/clonewars/data, and are fetched or built, not committed.
 *.iso
 *.qcow2
-clonewars/data/*
-arcade/data/*
+*.img
+*.raw
+*.vhd
+*.vhdx
+*.vmdk
+*.vdi
+*.ova
+*.wim
+*.esd
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.xz
+*.zst
+*.apk
+*.aab
+*.ipa
+*.exe
+*.dll
+*.msi
+*.chd
+*.rom
+*.sav
+*.safetensors
+*.ckpt
+*.gguf
+*.pt
+*.pth
+*.onnx
+*.mp4
+*.mkv
+*.mov
+
+# Clonewars' disks, ISOs and downloads (tens of GB)
+app/clonewars/data/*
+!app/clonewars/data/.gitkeep
+
+# Local VM disks kept beside the checkout
+qemu/
+
+# Rust build output (app/castled, app/src-tauri, app/ai/app/src-tauri)
+target/
+
+# Left over from before client/ became app/: build output only
+/client/
+
+# Wrangler's local cache
+.wrangler/
 
 # Logs
 logs
@@ -138,18 +188,18 @@ dist
 .vscode
 
 # Windows apps dropped in for the Wine desktop profile (never commit binaries)
-clonewars/scripts/wine-apps/*
-!clonewars/scripts/wine-apps/README.md
+app/clonewars/scripts/wine-apps/*
+!app/clonewars/scripts/wine-apps/README.md
 
 
 
 # clonewars copy payload: the folder + README are tracked, what you drop in is not
-!clonewars/data/copy/
-clonewars/data/copy/*
-!clonewars/data/copy/README.md
+!app/clonewars/data/copy/
+app/clonewars/data/copy/*
+!app/clonewars/data/copy/README.md
 
 # Android SDK license copied from data/android-sdk into the container build by container.ps1
-clonewars/docker/android/licenses/
+app/clonewars/docker/android/licenses/
 
 # The assembled castle.dogs.red site (landing + the showcase demo), from scripts/build-site.mjs
 site-dist/

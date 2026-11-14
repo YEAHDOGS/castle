@@ -130,7 +130,7 @@
       <Notice icon={BrainCircuit} title="NODE.JS IS NEEDED">DOGS AI runs on Node.js 22 or newer. Install it on the box from nodejs.org, then start it here.</Notice>
     {:else if !status.built}
       <Notice icon={BrainCircuit} title="DOGS AI'S APP IS NOT BUILT">
-        Build it once on the box: <code class="text-white">npm --prefix ai/app install</code> then <code class="text-white">npm --prefix ai/app run build</code>. Castle's start script does this for you.
+        Build it once on the box: <code class="text-white">npm --prefix app/ai/app install</code> then <code class="text-white">npm --prefix ai/app run build</code>. Castle's start script does this for you.
       </Notice>
     {:else}
       <Notice icon={BrainCircuit} title="DOGS AI IS NOT RUNNING">

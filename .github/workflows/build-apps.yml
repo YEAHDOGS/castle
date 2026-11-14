@@ -5,7 +5,7 @@ name: Build apps
 # (castle-win-x64.exe, castle-linux-x64.AppImage, castle-android.apk ...). Running again at the
 # same version replaces that release's files.
 #
-# The desktop apps carry the box daemon (castled) inside them, built from castled/ in this
+# The desktop apps carry the box daemon (castled) inside them, built from app/castled/ in this
 # repo by app/scripts/daemon.js.
 # Android and iOS reuse android.yml and ios.yml, so there is one recipe for each.
 on:

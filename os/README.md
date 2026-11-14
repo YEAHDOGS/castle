@@ -76,7 +76,7 @@ docs/
 `/opt/castle/` ships the portable Python tools from the Castle repo
 (`vault`, `tokens`, `backup`, `flamethrower`) — all standard-library only, no
 extra dependencies. The `castle` command lists and runs them. Anything with
-undeclared or heavy dependencies (the Kotlin server/app, QEMU/Windows
+undeclared or heavy dependencies (the Castle daemon, QEMU/Windows
 hypervisor bits) is **not** force-fit — it's on the Phase 2 list.
 
 ## File versioning (Chains)
