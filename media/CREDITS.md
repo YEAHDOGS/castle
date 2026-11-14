@@ -2,7 +2,7 @@
 
 Images the Castle demo's Arcade and Theater show. Every one is in the public domain or under a free licence:
 Creative Commons for films, shows, music and photos, and the free-software licence of the game for the Arcade's
-screenshots and box art. Built by `scripts/demo-media.mjs`; served from data.wearedogs.net/castle/media.
+screenshots and box art. Built by `scripts/demo-media.mjs`; served from data.wearedogs.net/castle.
 
 | File | Source | Author | Licence |
 |---|---|---|---|

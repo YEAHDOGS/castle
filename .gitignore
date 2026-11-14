@@ -46,8 +46,8 @@
 # every copy of it shares: %LOCALAPPDATA%\DOGS AI. See app/ai's README.)
 app/data/
 
-# The demo's images: scripts/demo-media.mjs builds media/, which is uploaded as it is to
-# data.wearedogs.net/castle/media. Only its credits are kept here.
+# The demo's images: scripts/demo-media.mjs builds media/, which is uploaded to
+# data.wearedogs.net/castle/ (its contents: arcade/, theater/, the credits). Only its credits are kept here.
 /media/*
 !/media/CREDITS.md
 !/media/credits.json

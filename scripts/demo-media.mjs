@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Builds media/: the images the demo's Arcade and Theater show, every one public domain or under a free
-// licence (Creative Commons, or the free-software licence of the game it shows). Upload the folder as it is to
-// data.wearedogs.net/castle/media; the demo loads its images from there (MEDIA_BASE in app/src/lib/demo-shell.js).
+// licence (Creative Commons, or the free-software licence of the game it shows). Upload what is in the folder to
+// data.wearedogs.net/castle/ (arcade/, theater/ and the credits); the demo loads its images from there (MEDIA_BASE in
+// app/src/lib/demo-shell.js).
 //
 //   node scripts/demo-media.mjs           fetch what is missing and rebuild media/
 //
@@ -349,7 +350,7 @@ async function main() {
       "",
       "Images the Castle demo's Arcade and Theater show. Every one is in the public domain or under a free licence:",
       "Creative Commons for films, shows, music and photos, and the free-software licence of the game for the Arcade's",
-      "screenshots and box art. Built by `scripts/demo-media.mjs`; served from data.wearedogs.net/castle/media.",
+      "screenshots and box art. Built by `scripts/demo-media.mjs`; served from data.wearedogs.net/castle.",
       "",
       "| File | Source | Author | Licence |",
       "|---|---|---|---|",

@@ -7,7 +7,7 @@ import { svgThumb } from './adapter.js';
 
 // The demo's posters, covers, stills and game art: public domain or freely licensed, built by
 // scripts/demo-media.mjs into media/ (see media/CREDITS.md) and hosted here.
-export const MEDIA_BASE = 'https://data.wearedogs.net/castle/media';
+export const MEDIA_BASE = 'https://data.wearedogs.net/castle';
 const hostedImages = new Map();
 
 /** A hosted image's address once it has loaded; `fallback` when it cannot (not uploaded yet, offline). */
