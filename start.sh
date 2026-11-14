@@ -17,8 +17,10 @@
 # the background serving the built web app at http://127.0.0.1:<port>, and the built
 # desktop app. Nothing follows your edits in that mode.
 #
-# Either way the box keeps running afterwards. Clones uses the clonewars folder in this
-# checkout and Arcade the first Games folder found on a drive. The vault, the port and
+# Closing the desktop app stops the box and everything it runs (for now). Without the app,
+# Ctrl+C ends live mode and stops it too, and ./start.sh --stop stops a --release box.
+# Clones uses the clonewars folder in this checkout and Arcade the first Games folder
+# found on a drive. The vault, the port and
 # those two folders can be set in the desktop app's box.json:
 #   Windows  %APPDATA%\net.wearedogs.castle\box.json
 #   Linux    ~/.config/net.wearedogs.castle/box.json
@@ -31,7 +33,7 @@
 #   ./start.sh --browser    also open the interface in the default browser
 #   ./start.sh --release    build everything once, start it, and return
 #   ./start.sh --build      rebuild first, even if it looks current
-#   ./start.sh --stop       stop the box this script started
+#   ./start.sh --stop       stop the box and everything it runs
 #   ./start.sh --data DIR --port N    override box.json for this run
 #   ./start.sh --linux      inside WSL: stay in Linux instead of handing over to Windows
 #===============================================================================
@@ -39,6 +41,7 @@ set -euo pipefail
 
 DEFAULT_PORT=8787
 START_TIMEOUT_SECONDS=20
+STOP_TIMEOUT_SECONDS=60 # the box gives its VMs 20 s and its containers 20 s to stop
 DEV_PORT=1420       # where the live interface is served (app/vite.config.js)
 WATCH_SECONDS=2     # how often the box daemon's source is checked for changes
 PROBE_SECONDS=0.25
@@ -161,18 +164,80 @@ stop_pid() {
     fi
 }
 
+# Process ids of the programs called $1 (castle.exe, castle) that run from inside this
+# checkout, so what an earlier ./start.sh left behind can be told apart from anything else
+# (an installed Castle app, say).
+our_programs() {
+    if (( ON_WINDOWS )); then
+        powershell -NoProfile -NonInteractive -Command "
+            \$root = '$(native "$ROOT")'
+            Get-CimInstance Win32_Process -Filter \"Name='$1'\" |
+                Where-Object { \$_.ExecutablePath -and \$_.ExecutablePath.StartsWith(\$root, [StringComparison]::OrdinalIgnoreCase) } |
+                ForEach-Object { \$_.ProcessId }" | tr -d '\r'
+    else
+        local pid
+        for pid in $(pgrep -x "$1" 2>/dev/null); do
+            [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" == "$ROOT"/* ]] && echo "$pid"
+        done
+    fi
+    return 0
+}
+
+# The process id listening on a port, when it was started from this checkout (its program
+# or its command line is inside it). Nothing for anything else.
+our_listener() {
+    if (( ON_WINDOWS )); then
+        powershell -NoProfile -NonInteractive -Command "
+            \$root = '$(native "$ROOT")'
+            \$c = Get-NetTCPConnection -State Listen -LocalPort $1 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (\$c) {
+                \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$(\$c.OwningProcess)\"
+                if (\$p -and (\"\$(\$p.ExecutablePath)\".StartsWith(\$root, [StringComparison]::OrdinalIgnoreCase) -or
+                              \"\$(\$p.CommandLine)\".IndexOf(\$root, [StringComparison]::OrdinalIgnoreCase) -ge 0)) { \$p.ProcessId }
+            }" | tr -d '\r'
+    else
+        local pid
+        pid="$(ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'pid=[0-9]*' | head -n 1 | cut -d= -f2)"
+        [[ -n "$pid" ]] || return 0
+        if [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" == "$ROOT"/* ]] || tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qF "$ROOT"; then
+            echo "$pid"
+        fi
+    fi
+    return 0
+}
+
+# Ends a process and everything it started.
+stop_tree() {
+    if (( ON_WINDOWS )); then
+        taskkill //PID "$1" //T //F >/dev/null 2>&1 || true
+    else
+        pkill -TERM -P "$1" 2>/dev/null || true
+        kill "$1" 2>/dev/null || true
+    fi
+}
+
 # Sets STARTED_PID and STARTED_PORT when the box this script started is still running.
+# A box from this checkout that listens on the port without a record (the record was lost,
+# or it was started by hand or by the dev app) is taken over, so it is stopped and
+# restarted like one started here rather than reported as "something else".
 STARTED_PID=""
 STARTED_PORT=""
 read_started() {
     STARTED_PID=""; STARTED_PORT=""
-    [[ -f "$PID_FILE" ]] || return 0
-    local pid port
-    read -r pid port < "$PID_FILE" || true
-    if [[ "$pid" =~ ^[0-9]+$ ]] && is_castled "$pid"; then
-        STARTED_PID="$pid"; STARTED_PORT="$port"
-    else
+    if [[ -f "$PID_FILE" ]]; then
+        local pid port
+        read -r pid port < "$PID_FILE" || true
+        if [[ "$pid" =~ ^[0-9]+$ ]] && is_castled "$pid"; then
+            STARTED_PID="$pid"; STARTED_PORT="$port"
+            return 0
+        fi
         rm -f "$PID_FILE"
+    fi
+    local found
+    found="$(our_listener "$PORT")"
+    if [[ "$found" =~ ^[0-9]+$ ]] && is_castled "$found"; then
+        STARTED_PID="$found"; STARTED_PORT="$PORT"
+        printf '%s %s\n' "$found" "$PORT" > "$PID_FILE"
     fi
 }
 
@@ -207,21 +272,12 @@ while (( $# > 0 )); do
         --stop)    STOP=1; shift ;;
         --data)    DATA="${2:?--data needs a folder}"; shift 2 ;;
         --port)    PORT="${2:?--port needs a number}"; shift 2 ;;
-        -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,39p' "$0"; exit 0 ;;
         *) die "Unknown option '$1' (see --help)" ;;
     esac
 done
 
 mkdir -p "$CONFIG_DIR"
-
-if (( STOP )); then
-    read_started
-    [[ -n "$STARTED_PID" ]] || { say 'No box started by this script is running.'; exit 0; }
-    stop_pid "$STARTED_PID"
-    rm -f "$PID_FILE"
-    say "Stopped the box (process $STARTED_PID)."
-    exit 0
-fi
 
 # ---- settings shared with the desktop app ----
 [[ -n "$PORT" ]] || PORT="$(config_value port)"
@@ -236,6 +292,38 @@ CLONEWARS="$(config_value clonewars)"
 ARCADE_SET="$(config_value arcade)" # looked for afresh each time the box starts when unset
 URL="http://127.0.0.1:$PORT"
 DEV_URL="http://localhost:$DEV_PORT"
+
+# Asks the box to stop (POST /api/v1/box/stop). It stops what it started first (Clones'
+# machines, DOGS AI and ComfyUI), then itself; this waits for that. A box from this
+# checkout that does not answer, or does not stop in time, is ended.
+stop_box_and_all() {
+    read_started
+    local token pid="$STARTED_PID" waited=0
+    token="$(tr -d '[:space:]' < "$DATA/.castle/token" 2>/dev/null || true)"
+    if [[ -n "$token" ]] && is_listening "$PORT"; then
+        say 'Stopping the box and everything it runs (machines, DOGS AI).'
+        if (( ON_WINDOWS )); then
+            powershell -NoProfile -NonInteractive -Command "Invoke-RestMethod -Method Post -Uri '$URL/api/v1/box/stop' -Headers @{ Authorization = 'Bearer $token' } -TimeoutSec 10 | Out-Null" >/dev/null 2>&1 || true
+        else
+            curl -fsS -m 10 -X POST -H "Authorization: Bearer $token" "$URL/api/v1/box/stop" >/dev/null 2>&1 || true
+        fi
+    fi
+    # The box stops listening first and stops its machines after, so wait for the process.
+    while { is_listening "$PORT" || { [[ -n "$pid" ]] && is_castled "$pid"; }; } && (( waited < STOP_TIMEOUT_SECONDS * 4 )); do
+        sleep 0.25
+        waited=$(( waited + 1 ))
+    done
+    if [[ -n "$pid" ]] && is_castled "$pid"; then stop_pid "$pid"; fi
+    rm -f "$PID_FILE"
+}
+
+if (( STOP )); then
+    read_started
+    if [[ -z "$STARTED_PID" ]] && ! is_listening "$PORT"; then say 'No box is running.'; exit 0; fi
+    stop_box_and_all
+    say 'Stopped the box and everything it ran.'
+    exit 0
+fi
 
 need_cargo() { command -v cargo >/dev/null 2>&1 || die 'Building Castle needs Rust (cargo). Install it from https://rustup.rs'; }
 need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.js (npm). Install it from https://nodejs.org'; }
@@ -373,7 +461,7 @@ if (( RELEASE )); then
             say 'Desktop app opened.'
         fi
     fi
-    say 'The box keeps running in the background. Stop it with:  ./start.sh --stop'
+    say 'Closing the desktop app stops the box and everything it runs. Without the app:  ./start.sh --stop'
     exit 0
 fi
 
@@ -382,16 +470,31 @@ fi
 #   interface (app/src)         changes appear in the open app and browser at once
 #   app shell (app/src-tauri)   the app rebuilds and reopens itself
 #   box daemon (castled/src)           the box rebuilds and restarts within a few seconds
-# This stays in the foreground. Ctrl+C ends the app and the watching; the box keeps running.
+# This stays in the foreground. Closing the app or Ctrl+C ends it all: the app, the watching,
+# the live interface, and the box with everything it runs.
 #===============================================================================
 need_cargo; need_npm
 install_packages
 build_ai_app
+# An earlier ./start.sh (still running, or closed while Tauri left its children behind, as it
+# often does on Windows) may hold the dev app and the live interface's port. Those are
+# ours: close them so this run takes their place. Anything else is left alone.
+LEFTOVER_APPS="$(our_programs "castle$EXE")"
+if [[ -n "$LEFTOVER_APPS" ]]; then
+    say 'Closing the Castle app an earlier ./start.sh left open, so this one can take its place.'
+    for pid in $LEFTOVER_APPS; do stop_tree "$pid"; done
+    sleep 1
+fi
 if app_is_open; then
-    die 'A Castle desktop app is already open. Close it and run this again, so the live one can take its place.'
+    die 'A Castle desktop app (not one from this checkout) is open. Close it and run this again, so the live one can take its place.'
 fi
 if is_listening "$DEV_PORT"; then
-    die "Something is already using port $DEV_PORT, which the live interface needs. Another ./start.sh may still be running."
+    LEFTOVER_DEV="$(our_listener "$DEV_PORT")"
+    [[ -n "$LEFTOVER_DEV" ]] || die "Something else is using port $DEV_PORT, which the live interface needs."
+    say "Stopping the live interface an earlier ./start.sh left on port $DEV_PORT."
+    stop_tree "$LEFTOVER_DEV"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do is_listening "$DEV_PORT" || break; sleep 0.5; done
+    is_listening "$DEV_PORT" && die "Port $DEV_PORT is still in use after stopping the old live interface."
 fi
 
 start_box || exit 1
@@ -401,8 +504,17 @@ say "Web app (live): $LINK"
 say '                (the part after # is the key to the box; do not share the link)'
 
 # The box follows its own source: checked every couple of seconds, rebuilt and restarted on a change.
+# Only the newest ./start.sh watches: an older one still running steps aside instead of
+# rebuilding the same box at the same time.
+SESSION_FILE="$CONFIG_DIR/start.session"
+SESSION="$$-$RANDOM-$(date +%s)"
+printf '%s\n' "$SESSION" > "$SESSION_FILE"
 watch_daemon() {
     while sleep "$WATCH_SECONDS"; do
+        if [[ "$(cat "$SESSION_FILE" 2>/dev/null)" != "$SESSION" ]]; then
+            say 'A newer ./start.sh is watching the box now; this one stopped watching.'
+            return 0
+        fi
         is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}" || continue
         say 'The box daemon changed. Rebuilding and restarting it.'
         build_daemon || say 'The box daemon did not build. The previous one is starting again; fix the error above and save.'
@@ -411,7 +523,18 @@ watch_daemon() {
 }
 watch_daemon &
 WATCHER=$!
-trap 'kill "$WATCHER" 2>/dev/null || true; say "Live mode ended. The box keeps running; stop it with:  ./start.sh --stop"' EXIT
+# When live mode ends, nothing of it keeps running: the app (Ctrl+C leaves it open), the box
+# and what it started, and the live interface, which Tauri can leave behind on Windows.
+end_live() {
+    kill "$WATCHER" 2>/dev/null || true
+    local pid
+    for pid in $(our_programs "castle$EXE"); do stop_tree "$pid"; done
+    stop_box_and_all
+    pid="$(our_listener "$DEV_PORT")"
+    [[ -n "$pid" ]] && stop_tree "$pid"
+    say 'Live mode ended. The app, the box and everything it ran have stopped.'
+}
+trap end_live EXIT
 
 if (( BROWSER )); then
     # Give the live interface a moment to come up before the browser asks for it.

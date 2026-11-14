@@ -157,6 +157,7 @@ they run only when asked for.
 | `PUT /settings` `{name: value, ...}` | Merges settings in. Names are dotted (`storage.trashDays`); values are a switch, a number or short text. |
 | `GET /system` | Vital signs of the machine the box runs on: processor use since the last call, memory, the vault disk's free and total space, uptime, host name and OS. |
 | `GET /box` | Version, listen address, whether Clones and Arcade are on, and whether Tailscale or WireGuard is installed (with Tailscale's state). |
+| `POST /box/stop` | Stops the box and everything it started: Clones' machines (VMs get 20 s to shut down, then are switched off), containers and emulators, then DOGS AI and its ComfyUI. Only a box that listens on this computer alone. The desktop app sends it when it closes; Ctrl+C does the same. |
 
 The box stores settings; it does not act on them yet. The games folder and the
 Clonewars folder are deliberately not settings: they are chosen when the box starts, or found by the box itself when a section is turned on later, so a

@@ -126,8 +126,15 @@
     show(`VOLUME ${Math.round(video.volume * 100)}%`);
   }
 
+  // A track's language from its label ("en", "en.sdh" -> en); English when it does not say.
+  function langOf(label) {
+    const first = String(label).toLowerCase().split(/[^a-z]+/)[0];
+    return first?.length === 2 ? first : 'en';
+  }
+
   function toggleSubtitles() {
-    const tracks = video ? [...video.textTracks] : [];
+    // The captions track is always there; when the video has none it is empty and skipped.
+    const tracks = video ? [...video.textTracks].filter((t) => t.kind !== 'captions' || link?.captions?.found) : [];
     if (!tracks.length) return show('NO SUBTITLES');
     const on = tracks.find((t) => t.mode === 'showing');
     for (const t of tracks) t.mode = 'disabled';
@@ -238,9 +245,11 @@
         {#key link.url}
           <!-- crossorigin lets the subtitles load from the box when the app is served elsewhere -->
           <!-- focused when the player opens, so the keys work at once -->
+          <!-- captions first: the box always sends a captions track, empty ("No captions") when the video has none -->
           <video bind:this={video} tabindex="0" data-autofocus class="h-full max-h-full w-full bg-black outline-none" controls autoplay playsinline crossorigin="anonymous" src={link.url} onended={ended}>
-            {#each link.subtitles as sub, i (sub.url)}
-              <track kind="subtitles" label={sub.label} srclang={sub.label.length === 2 ? sub.label : 'en'} src={sub.url} default={i === 0} />
+            <track kind="captions" label={link.captions.label} srclang={langOf(link.captions.label)} src={link.captions.url} default={link.captions.found} />
+            {#each link.subtitles as sub (sub.url)}
+              <track kind="subtitles" label={sub.label} srclang={langOf(sub.label)} src={sub.url} />
             {/each}
           </video>
         {/key}

@@ -751,10 +751,15 @@ export class HttpAdapter extends StorageAdapter {
     }
   }
 
-  /** A link a player can open (the box's own address in front), with its subtitle tracks. */
+  /** A link a player can open (the box's own address in front), with its captions and subtitle tracks. */
   async theaterPlay(id) {
     const link = await (await this.post('/theater/play', { id })).json();
-    return { ...link, url: this.url + link.url, subtitles: link.subtitles.map((s) => ({ ...s, url: this.url + s.url })) };
+    return {
+      ...link,
+      url: this.url + link.url,
+      captions: { ...link.captions, url: this.url + link.captions.url },
+      subtitles: link.subtitles.map((s) => ({ ...s, url: this.url + s.url })),
+    };
   }
 
   async theaterEdit(changes) {

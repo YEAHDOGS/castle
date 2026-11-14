@@ -28,6 +28,8 @@ const PORTS_TRIED: u16 = 12;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const PROBE_TIMEOUT: Duration = Duration::from_millis(400);
 const LOG_TAIL_BYTES: usize = 4000;
+/// The dogs server waits up to 10 s for ComfyUI to go before it answers a stop.
+const COMFY_STOP_TIMEOUT: Duration = Duration::from_secs(12);
 
 fn looks_like_dogs(dir: &Path) -> bool {
     dir.join("server").join("bin").join("dogs.mjs").is_file() && dir.join("stack.json").is_file()
@@ -229,14 +231,33 @@ impl Ai {
         Ok(())
     }
 
-    /// Stops the dogs server if Castle started it. One started some other way is left alone.
+    /// Stops the dogs server if Castle started it, and the ComfyUI it started, which would
+    /// otherwise outlive it. One started some other way is left alone.
     pub fn stop(&self) {
+        if !self.ours_alive() {
+            return;
+        }
+        self.stop_comfy();
         if let Ok(mut child) = self.child.lock() {
             if let Some(mut c) = child.take() {
                 let _ = c.kill();
                 let _ = c.wait();
             }
         }
+    }
+
+    /// Asks the dogs server to stop ComfyUI (its own POST /api/comfy/stop), and waits for it.
+    fn stop_comfy(&self) {
+        let Ok(addr) = format!("{}:{}", self.probe_host(), self.port()).parse::<SocketAddr>() else { return };
+        let Ok(mut stream) = TcpStream::connect_timeout(&addr, PROBE_TIMEOUT) else { return };
+        let _ = stream.set_read_timeout(Some(COMFY_STOP_TIMEOUT));
+        let auth = if self.key.is_empty() { String::new() } else { format!("Authorization: Bearer {}\r\n", self.key) };
+        let request = format!("POST /api/comfy/stop HTTP/1.1\r\nHost: {addr}\r\n{auth}Content-Length: 0\r\nConnection: close\r\n\r\n");
+        if stream.write_all(request.as_bytes()).is_err() {
+            return;
+        }
+        let mut answer = Vec::new();
+        let _ = stream.take(4096).read_to_end(&mut answer);
     }
 }
 

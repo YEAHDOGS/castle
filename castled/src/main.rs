@@ -61,6 +61,8 @@ use tower_http::{
 };
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
+/// When the box stops, how long open connections get to finish before it stops anyway.
+const CONNECTION_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 /// For `cargo run` in castled/ this is app/data/castle, which git ignores. The desktop app
 /// and start.sh always pass --data (the vault the owner chose, ~/Castle by default).
 const DEFAULT_DATA_DIR: &str = "../app/data/castle";
@@ -125,6 +127,8 @@ struct AppState {
     loopback: bool,
     /// Serialises writes to settings.json.
     settings: Mutex<()>,
+    /// Told when the box is asked to stop (POST /box/stop).
+    stop: tokio::sync::Notify,
 }
 
 type Shared = Arc<AppState>;
@@ -996,9 +1000,25 @@ async fn media_subtitle(State(st): State<Shared>, UrlPath((ticket, n)): UrlPath<
         .await
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
         .ok_or_else(ApiError::not_found)?;
+    Ok(vtt_response(text))
+}
+
+/// A play link's captions track: the captions file, or an empty track when there is none.
+async fn media_captions(State(st): State<Shared>, UrlPath(ticket): UrlPath<String>) -> ApiResult<Response> {
+    if !valid_ticket(&ticket) {
+        return Err(ApiError::not_found());
+    }
+    let text = tokio::task::spawn_blocking(move || st.theater.ticket_captions(&ticket))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+        .ok_or_else(ApiError::not_found)?;
+    Ok(vtt_response(text))
+}
+
+fn vtt_response(text: String) -> Response {
     let mut res = Response::new(Body::from(text));
     res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/vtt; charset=utf-8"));
-    Ok(res)
+    res
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1874,6 +1894,16 @@ async fn specs(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
 }
 
 /// What this box is and how it was started: read-only facts for the Settings screen.
+/// Stops the box and everything it started (POST /box/stop). Only a box that listens on this
+/// computer alone, as the desktop app's and start.sh's do, can be stopped this way.
+async fn box_stop(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    if !st.loopback {
+        return Err(ApiError(StatusCode::FORBIDDEN, "A box other machines can reach is stopped on the computer it runs on.".into()));
+    }
+    st.stop.notify_one();
+    Ok(Json(serde_json::json!({ "stopping": true })))
+}
+
 async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
     let state = st.clone();
     let links = tokio::task::spawn_blocking(move || state.network.links())
@@ -2316,6 +2346,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/network/provider", get(network_provider))
         .route("/settings", get(settings_get).put(settings_put))
         .route("/box", get(box_info))
+        .route("/box/stop", post(box_stop))
         .route("/system", get(system_vitals))
         .route("/specs", get(specs))
         .route("/security", get(security_overview))
@@ -2342,6 +2373,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/presence/report", post(presence_report).layer(DefaultBodyLimit::max(presence::MAX_REPORT_BYTES)))
         .route("/media/{ticket}", get(media))
         .route("/media/{ticket}/sub/{n}", get(media_subtitle))
+        .route("/media/{ticket}/captions", get(media_captions))
         .merge(protected);
 
     let cors = CorsLayer::new()
@@ -2420,6 +2452,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
+        stop: tokio::sync::Notify::new(),
     });
 
     // Windows canonical paths carry a verbatim prefix that only clutters the banner.
@@ -2515,15 +2548,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // The box stops on Ctrl+C, or when asked (POST /box/stop, which the desktop app sends when
+    // it closes). Open connections get CONNECTION_GRACE to finish; then everything the box
+    // started stops with it.
     let stopping = state.clone();
-    axum::serve(listener, router(state, cfg.web))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
-    // The dogs server goes down with the box.
-    stopping.ai.stop();
+    let asked = state.clone();
+    let (told, mut heard) = tokio::sync::watch::channel(false);
+    let signal = async move {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = asked.stop.notified() => {}
+        }
+        let _ = told.send(true);
+    };
+    let server = axum::serve(listener, router(state, cfg.web)).with_graceful_shutdown(signal);
+    let grace = async move {
+        let _ = heard.wait_for(|stopped| *stopped).await;
+        tokio::time::sleep(CONNECTION_GRACE).await;
+    };
+    tokio::select! {
+        served = async { server.await } => served?,
+        _ = grace => eprintln!("[castled] connections were still open; stopping anyway"),
+    }
+    let _ = tokio::task::spawn_blocking(move || stop_everything(&stopping)).await;
     Ok(())
+}
+
+/// What the box started stops with it: Clones' machines and bots, then DOGS AI and its ComfyUI.
+fn stop_everything(st: &AppState) {
+    if let Some(clones) = st.clones.read().ok().and_then(|slot| slot.clone()) {
+        for problem in clones.stop_all() {
+            eprintln!("[castled] could not stop {problem}");
+        }
+    }
+    st.ai.stop();
 }
 
 #[cfg(test)]

@@ -285,6 +285,8 @@ pub struct Probe {
 struct Ticket {
     path: PathBuf,
     subtitles: Vec<PathBuf>,
+    /// The captions file, if the video has one (see `captions_choice`).
+    captions: Option<PathBuf>,
     made: Instant,
 }
 
@@ -379,6 +381,10 @@ pub struct DetailsAnswer {
 pub struct PlayLink {
     pub url: String,
     pub mime: String,
+    /// Always there, so the player always has a captions track; `found` says whether it has
+    /// anything in it.
+    pub captions: CaptionsLink,
+    /// The other subtitle files.
     pub subtitles: Vec<SubtitleLink>,
 }
 
@@ -386,6 +392,24 @@ pub struct PlayLink {
 pub struct SubtitleLink {
     pub label: String,
     pub url: String,
+}
+
+#[derive(Serialize)]
+pub struct CaptionsLink {
+    pub label: String,
+    pub url: String,
+    pub found: bool,
+}
+
+/// Captions are for watching without the sound: a subtitle file whose name says it is one
+/// (`Film.en.sdh.srt`, `.cc`, `.hi`, "captions"). Without one, the first full subtitles (not
+/// "forced", which only cover foreign lines) stand in. Returns its place in `labels`.
+fn captions_choice(labels: &[&str]) -> Option<usize> {
+    let words = |label: &str| label.to_lowercase().split(|c: char| !c.is_ascii_alphanumeric()).map(str::to_string).collect::<Vec<_>>();
+    labels
+        .iter()
+        .position(|l| words(l).iter().any(|w| matches!(w.as_str(), "sdh" | "cc" | "hi" | "captions" | "caption")))
+        .or_else(|| labels.iter().position(|l| !words(l).iter().any(|w| w == "forced")))
 }
 
 pub struct Theater {
@@ -778,9 +802,16 @@ impl Theater {
                 tickets.remove(&oldest);
             }
         }
+        let chosen = captions_choice(&subtitles.iter().map(|(label, _)| label.as_str()).collect::<Vec<_>>());
+        let captions = CaptionsLink {
+            label: chosen.map_or_else(|| "No captions".to_string(), |n| subtitles[n].0.clone()),
+            url: format!("/api/v1/media/{ticket}/captions"),
+            found: chosen.is_some(),
+        };
+        let captions_file = chosen.map(|n| subtitles.remove(n).1);
         let links = subtitles.iter().enumerate().map(|(n, (label, _))| SubtitleLink { label: label.clone(), url: format!("/api/v1/media/{ticket}/sub/{n}") }).collect();
-        tickets.insert(ticket.clone(), Ticket { path, subtitles: subtitles.into_iter().map(|(_, p)| p).collect(), made: Instant::now() });
-        Ok(PlayLink { url: format!("/api/v1/media/{ticket}"), mime: media_type(&item.path), subtitles: links })
+        tickets.insert(ticket.clone(), Ticket { path, subtitles: subtitles.into_iter().map(|(_, p)| p).collect(), captions: captions_file, made: Instant::now() });
+        Ok(PlayLink { url: format!("/api/v1/media/{ticket}"), mime: media_type(&item.path), captions, subtitles: links })
     }
 
     /// The file a play link opens, if the link is still good.
@@ -795,9 +826,20 @@ impl Theater {
             let tickets = self.tickets.lock().ok()?;
             tickets.get(ticket).filter(|t| t.made.elapsed() < TICKET_LIFE)?.subtitles.get(n)?.clone()
         };
-        let text = std::fs::read(&path).ok()?;
-        let text = String::from_utf8_lossy(&text);
-        Some(if extension(&path) == "vtt" { text.to_string() } else { lookup::srt_to_vtt(&text) })
+        vtt_of(&path)
+    }
+
+    /// A play link's captions, as WebVTT: empty when the video has none, so the player's
+    /// captions track loads and says so instead of failing.
+    pub fn ticket_captions(&self, ticket: &str) -> Option<String> {
+        let path = {
+            let tickets = self.tickets.lock().ok()?;
+            tickets.get(ticket).filter(|t| t.made.elapsed() < TICKET_LIFE)?.captions.clone()
+        };
+        match path {
+            Some(path) => vtt_of(&path),
+            None => Some("WEBVTT\n\n".to_string()),
+        }
     }
 
     /// Asks OpenSubtitles for English subtitles for a video, with the key from Settings.
@@ -969,6 +1011,13 @@ fn scan_library(library: &Library, known: &HashMap<String, Item>) -> Vec<Item> {
 }
 
 /// Subtitle files beside a video that start with its name: "Film.srt", "Film.en.srt", "Film.English.vtt".
+/// A subtitle file as WebVTT, which is what browsers read; SubRip files are converted.
+fn vtt_of(path: &Path) -> Option<String> {
+    let text = std::fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&text);
+    Some(if extension(path) == "vtt" { text.to_string() } else { lookup::srt_to_vtt(&text) })
+}
+
 fn subtitles_for(video: &Path, subs: &[PathBuf]) -> Vec<Subtitle> {
     if !VIDEO.contains(&extension(video).as_str()) {
         return Vec::new();
@@ -1031,6 +1080,17 @@ mod tests {
         let found = subtitles_for(&dir.join("Arrival.mkv"), &subs);
         let labels: Vec<&str> = found.iter().map(|s| s.label.as_str()).collect();
         assert_eq!(labels, vec!["Forced", "Subtitles", "en"]);
+    }
+
+    #[test]
+    fn captions_are_the_file_that_says_so_or_else_full_subtitles() {
+        assert_eq!(captions_choice(&["en", "en.sdh", "fr"]), Some(1));
+        assert_eq!(captions_choice(&["Forced", "en.CC"]), Some(1));
+        assert_eq!(captions_choice(&["Forced", "Subtitles", "en"]), Some(1));
+        assert_eq!(captions_choice(&["en.forced"]), None);
+        assert_eq!(captions_choice(&[]), None);
+        // "hi" is a word of its own, not part of one ("chinese" does not count).
+        assert_eq!(captions_choice(&["chinese", "en.hi"]), Some(1));
     }
 
     fn library_in(dir: &Path, kind: &str) -> Library {

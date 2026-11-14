@@ -47,6 +47,8 @@ const BENCH_KEEP: usize = 200;
 const EMPTY_DISK_BYTES: u64 = 1024 * 1024;
 const SCAN_CACHE: Duration = Duration::from_secs(3);
 const QMP_TIMEOUT: Duration = Duration::from_secs(5);
+/// When the box stops, how long its VMs get to shut down when asked before they are switched off.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(20);
 const WATCH_PAUSE: Duration = Duration::from_millis(300);
 const QMP_FLAG: &str = "-qmp tcp:127.0.0.1:";
 /// The launcher prints this just before it hands the machine to QEMU.
@@ -1538,6 +1540,45 @@ impl Clones {
         self.automation_status(id)
     }
 
+    /// Stops every machine and bot of Castle's that is running, for when the box itself
+    /// stops. Only Castle's own: a VM started some other way, from a disk that is not one of
+    /// these, is not looked at. VMs are asked to shut down, and switched off if they have not
+    /// within SHUTDOWN_GRACE. Returns what could not be stopped.
+    pub fn stop_all(&self) -> Vec<String> {
+        let mut units: Vec<Unit> = self.targets().iter().map(|t| self.unit(format!("m:{}", t.id), &t.id, None)).collect();
+        units.extend(self.registry().into_iter().map(|m| self.unit(format!("m:{}", m.id), &m.target, Some(m.id))));
+        for a in self.all_automations() {
+            units.extend(a.bots.iter().map(|bot| self.bot_unit(&a, bot)));
+        }
+        let mut failed = Vec::new();
+        let mut vms = Vec::new();
+        for unit in units {
+            if !matches!(self.state_of(&unit), "launching" | "running") {
+                continue;
+            }
+            let port = matches!(unit.engine, Engine::Vm).then(|| self.disk(&unit).and_then(|d| self.vm_command_line(&d)).and_then(|l| qmp_port(&l))).flatten();
+            match self.halt(&unit) {
+                Ok(()) => vms.extend(port.map(|p| (unit.key.clone(), unit, p))),
+                Err(e) => failed.push(format!("{}: {e}", unit.key)),
+            }
+        }
+        let deadline = std::time::Instant::now() + SHUTDOWN_GRACE;
+        while !vms.is_empty() {
+            self.forget_scan();
+            vms.retain(|(_, unit, _)| self.is_up(unit));
+            if vms.is_empty() || std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        for (key, _, port) in vms {
+            if let Err(e) = switch_off(port) {
+                failed.push(format!("{key}: {e}"));
+            }
+        }
+        failed
+    }
+
     // ---- machines ----
 
     fn registry(&self) -> Vec<Machine> {
@@ -1779,6 +1820,21 @@ fn power_off(port: u16) -> ClonesResult<()> {
     writer.write_all(b"{\"execute\":\"qmp_capabilities\"}\n").map_err(fail)?;
     reader.read_line(&mut line).map_err(fail)?;
     writer.write_all(b"{\"execute\":\"system_powerdown\"}\n").map_err(fail)?;
+    Ok(())
+}
+
+/// Ends a VM at once, like pulling its plug: for one that did not shut down when asked.
+fn switch_off(port: u16) -> ClonesResult<()> {
+    let fail = |_| "the VM did not answer its control port".to_string();
+    let stream = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), QMP_TIMEOUT).map_err(fail)?;
+    stream.set_read_timeout(Some(QMP_TIMEOUT)).map_err(fail)?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(fail)?);
+    let mut writer = stream;
+    let mut line = String::new();
+    reader.read_line(&mut line).map_err(fail)?; // greeting
+    writer.write_all(b"{\"execute\":\"qmp_capabilities\"}\n").map_err(fail)?;
+    reader.read_line(&mut line).map_err(fail)?;
+    writer.write_all(b"{\"execute\":\"quit\"}\n").map_err(fail)?;
     Ok(())
 }
 

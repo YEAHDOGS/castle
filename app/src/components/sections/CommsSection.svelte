@@ -248,6 +248,10 @@
   /** When the person last moved the thread themselves: only their scrolling unsticks it. */
   let touched = 0;
   const touch = () => (touched = Date.now());
+  // Keys scroll the thread wherever the focus is (the page passes them on), so they are
+  // listened for on the window rather than on the thread.
+  const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+  const scrollKey = (e) => SCROLL_KEYS.has(e.key) && touch();
 
   function onScroll() {
     if (scroller && Date.now() - touched < 1000) stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48;
@@ -499,6 +503,8 @@
     ]);
   });
 </script>
+
+<svelte:window onkeydown={scrollKey} />
 
 {#snippet avatar(conv, size = 'h-10 w-10')}
   {@const found = index.forConversation(conv)}
@@ -794,7 +800,8 @@
               <Trash2 class="h-3.5 w-3.5" />
             </button>
           </header>
-          <div bind:this={scroller} onscroll={onScroll} onwheel={touch} ontouchmove={touch} onkeydown={touch} onpointerdown={touch} class="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
+          <!-- a log: the conversation, which screen readers announce as messages arrive -->
+          <div bind:this={scroller} role="log" aria-label={`Conversation with ${open.title}`} onscroll={onScroll} onwheel={touch} ontouchmove={touch} onpointerdown={touch} class="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
             {#if threadLoading || !thread}
               <div class="grid h-full place-items-center"><LoaderCircle class="h-5 w-5 animate-spin text-text-faint" /></div>
             {:else}
