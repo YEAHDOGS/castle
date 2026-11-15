@@ -1,171 +1,589 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Castle — Your data, your keep</title>
-  <meta name="description" content="Castle is a way to make data yours again — a personal keep for your data with a portal, a drawbridge, and distributed nodes. Work in progress — more information estimated by 2027.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Castle by DOGS: your home, kept in one box</title>
+  <meta name="description" content="Castle is a box in your home for your files, photos, texts, calls, email, games and network. Private profiles, backups that stay on your hardware, a Steam cache, virtual machines, and Wi-Fi radar that knows which rooms have someone in them. Coming soon to Kickstarter.">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#faf9f5">
+  <meta name="theme-color" content="#050608">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="canonical" href="https://castle.dogs.red/">
   <meta property="og:site_name" content="Castle">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Castle — Your data, your keep">
-  <meta property="og:description" content="Castle is a way to make data yours again — a personal keep for your data with a portal, a drawbridge, and distributed nodes. Work in progress — more information estimated by 2027.">
+  <meta property="og:title" content="Castle by DOGS: your home, kept in one box">
+  <meta property="og:description" content="Files, messages, games and your network on a box that lives in your house. Try the whole app in your browser. Coming soon to Kickstarter.">
   <meta property="og:url" content="https://castle.dogs.red/">
   <meta property="og:image" content="https://castle.dogs.red/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Castle — Your data, your keep — work in progress, more information by 2027">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./home.css">
+  <script>document.documentElement.classList.remove('no-js');</script>
 </head>
 <body>
+  <!-- Icons (Lucide, ISC licence), drawn once and used by name below. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><circle cx="12" cy="8" r="2"/><path d="M15 13a3 3 0 1 0-6 0"/></symbol>
+      <symbol id="i-pad" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258A4 4 0 0 0 17.32 5z"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+      <symbol id="i-radar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></symbol>
+      <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect x="2" y="5" width="20" height="14" rx="2"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+      <symbol id="i-github" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></symbol>
+      <symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+      <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></symbol>
+      <symbol id="i-router" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6.01 18H6"/><path d="M10.01 18H10"/><path d="M15 10v4"/><path d="M17.84 7.17a4 4 0 0 0-5.66 0"/><path d="M20.66 4.34a8 8 0 0 0-11.31 0"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol>
+    </defs>
+  </svg>
+
   <a class="skip" href="#content">Skip to content</a>
-  <header class="site">
-    <div class="nav">
-      <div class="brand">
-        <a class="wordmark" href="https://wearedogs.net">
-          <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="34" height="34" decoding="async">
-          <span>DOGS</span>
-        </a>
-        <span class="sep" aria-hidden="true">/</span>
-        <a class="project" href="./">Castle</a>
-      </div>
-      <nav aria-label="Primary">
-        <a class="nav-wide" href="./docs.html">Docs</a>
-        <a class="nav-wide" href="./privacy.html">Privacy</a>
+
+  <header class="site-head" data-head>
+    <div class="wrap head-row">
+      <a class="brand" href="./" aria-label="Castle by DOGS, home">
+        <img src="./dogs-logo.svg" alt="" width="34" height="34">
+        <span class="word">CASTLE</span>
+        <span class="micro by">by DOGS</span>
+      </a>
+      <nav class="head-nav" aria-label="Primary">
+        <a href="#radar">Radar</a>
+        <a href="#secure">Security</a>
+        <a href="#features">Features</a>
+        <a href="#upgrade">Roadmap</a>
+        <a href="./demo/">Demo</a>
         <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
       </nav>
+      <a class="btn btn-primary btn-sm head-cta" href="#waitlist">Join the waitlist</a>
     </div>
   </header>
+
   <main id="content">
-    <nav class="dots" aria-label="Sections">
-      <a href="#top" class="active"><span>Top</span></a>
-      <a href="#roadmap"><span>Roadmap</span></a>
-      <a href="#building"><span>What we're building</span></a>
-      <a href="#notify"><span>More</span></a>
-      <a href="./docs.html"><span>Docs</span></a>
-    </nav>
-
-    <section class="hero" id="top" aria-label="Castle">
-      <div class="wrap">
-        <p class="eyebrow">DOGS &middot; Data Sovereignty</p>
-        <h1>Castle</h1>
-        <p class="hero-line">Your data, your keep.</p>
-        <p class="kickstarter-line"><span class="ks-dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
-        <p class="demo-line">
-          <a class="demo-cta" href="./demo/">Click here to view the demo</a>
-        </p>
-        <figure class="hero-visual spin-stage" data-spin-stage>
-          <div class="spin-tilt" data-spin>
-          <picture>
-            <source media="(orientation: portrait) and (max-width: 700px)" srcset="./castle-hero-portrait.webp" type="image/webp">
-            <img src="./castle-hero-landscape.webp" alt="The Castle device — a matte-black home server with a glowing port array and DOGS badge — levitating above a grey prehistoric stone in a futuristic skyscraper office, flying cars streaking past the windows" fetchpriority="high" decoding="async">
-          </picture>
+    <!-- ================= HERO ================= -->
+    <section class="hero" aria-labelledby="hero-h">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="kick micro"><span class="dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
+          <h1 id="hero-h">CASTLE<span class="tag">Your home, kept in one box.</span></h1>
+          <p class="lede">Files, photos, texts, calls, email, games and your home network, on a box that lives in your house instead of someone else's cloud. Add Wi&#8209;Fi radar nodes and it knows which rooms have someone in them, without a single camera.</p>
+          <div class="hero-ctas">
+            <a class="btn btn-primary" href="./demo/"><svg aria-hidden="true"><use href="#i-play"/></svg>Try the live demo</a>
+            <a class="btn btn-ghost" href="#waitlist">Join the waitlist<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </div>
+          <ul class="proof micro">
+            <li>Open source</li>
+            <li>No cloud account</li>
+            <li>Your hardware, your keys</li>
+          </ul>
         </div>
+
+        <figure class="radar-card" aria-label="A live sample of Castle's presence radar">
+          <div class="radar-top micro">
+            <span>Presence · Living room node</span>
+            <span class="live"><span class="dot" aria-hidden="true"></span>Live sample</span>
+          </div>
+          <canvas class="radar-canvas" data-radar role="img" aria-label="A radar sweep showing three people moving through a room, drawn as orange blips"></canvas>
+          <div class="radar-stats">
+            <div><b data-stat="rooms">2/4</b><span class="micro">Rooms occupied</span></div>
+            <div><b data-stat="moving">3</b><span class="micro">Moving now</span></div>
+            <div><b>0</b><span class="micro">Cameras</span></div>
+          </div>
+          <figcaption class="radar-bottom micro" style="margin-top:.8rem">
+            <span>LD2450 · 24 GHz mmWave · over Wi&#8209;Fi</span>
+            <span>Sample data</span>
+          </figcaption>
         </figure>
-        <div class="waitlist-card">
-          <h2 id="waitlist-h" class="waitlist-title">Join the waitlist</h2>
-          <form data-waitlist novalidate>
-                  <div class="step" data-step="email">
-                    <div class="fields">
-                      <div>
-                        <label for="email">Email address</label>
-                        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
-                      </div>
-                      <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
-                    </div>
-                    <p class="field-error" id="email-error" aria-live="polite"></p>
-                    <p class="note">The waitlist opens soon &mdash; we'll email you.</p>
-                  </div>
-                  <div class="step" data-step="code" hidden>
-                    <div class="fields">
-                      <div>
-                        <label for="code">Confirmation code</label>
-                        <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
-                      </div>
-                      <button type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
-                    </div>
-                    <p class="field-error" id="code-error" aria-live="polite"></p>
-                    <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
-                  </div>
-                  <div class="step" data-step="done" hidden>
-                    <p class="confirm-line" role="status"><span class="big-emoji" aria-hidden="true">&#x1F436;</span> You're on the list, good human.</p>
-                    <p class="note">We'll email you when Castle wakes up from its nap.</p>
-                  </div>
-                </form>
-          <p class="counter-line" aria-live="polite"><span data-count-line>Be one of the first in line.</span> <span class="ticker" data-ticker hidden>+1 just signed up</span></p>
+      </div>
+    </section>
+
+    <!-- ================= TICKER ================= -->
+    <div class="ticker micro" aria-label="Everything in Castle">
+      <div class="ticker-track">
+        <ul>
+          <li>Encrypted storage</li><li>NAS</li><li>Backups</li><li>Texts · MMS · Calls · Email</li><li>Call recorder</li><li>Contacts</li><li>Private profiles</li><li>Tailscale</li><li>WireGuard</li><li>Security hub</li><li>Wi&#8209;Fi radar</li><li>Clones</li><li>Docker</li><li>Android</li><li>Arcade</li><li>Save history</li><li>Steam cache</li><li>Theater</li><li>DOGS AI</li><li>Network</li><li>Built to upgrade</li>
+        </ul>
+        <ul aria-hidden="true">
+          <li>Encrypted storage</li><li>NAS</li><li>Backups</li><li>Texts · MMS · Calls · Email</li><li>Call recorder</li><li>Contacts</li><li>Private profiles</li><li>Tailscale</li><li>WireGuard</li><li>Security hub</li><li>Wi&#8209;Fi radar</li><li>Clones</li><li>Docker</li><li>Android</li><li>Arcade</li><li>Save history</li><li>Steam cache</li><li>Theater</li><li>DOGS AI</li><li>Network</li><li>Built to upgrade</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ================= THE APP ================= -->
+    <section class="section" aria-labelledby="app-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow micro">The real app</p>
+          <h2 id="app-h">One app for everything your house keeps.</h2>
+          <p class="lede">Every screen below is the real Castle app, running on sample data. Open the demo and use it yourself: on a computer, or on your phone.</p>
+        </div>
+        <div class="frames reveal">
+          <div class="browser">
+            <div class="browser-bar"><i></i><i></i><i></i><span class="micro">castle.dogs.red/demo</span></div>
+            <img src="./shots/home.webp" alt="Castle's Home screen: a running uptime clock, live processor, memory and disk meters, and a tile for every section" width="1440" height="900" loading="lazy">
+          </div>
+          <div class="phone"><img src="./shots/phone-home.webp" alt="Castle's Home screen on a phone, with square tiles for each section" width="780" height="1688" loading="lazy"></div>
+        </div>
+        <div class="frames-caption micro">
+          <span>Home · the box at a glance</span>
+          <a class="btn btn-ghost btn-sm" href="./demo/">Open the demo<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
         </div>
       </div>
     </section>
 
-    <section class="panel alt" id="roadmap" aria-labelledby="roadmap-h">
-      <div class="wrap">
-        <p class="eyebrow">Roadmap</p>
-        <h2 id="roadmap-h">The road to 2027</h2>
-        <p class="lede" style="margin-bottom:0">Where Castle is on its way to a proper launch.</p>
-        <ol class="timeline">
-          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Idea</strong><span class="when">2025 &mdash; done</span></li>
-          <li class="done"><span class="dot" aria-hidden="true"></span><strong>Repo live</strong><span class="when">2026 &mdash; done</span></li>
-          <li class="now"><span class="dot" aria-hidden="true"></span><strong>Building</strong><span class="when">Now &mdash; in progress</span></li>
-          <li class="future"><span class="dot" aria-hidden="true"></span><strong>Kickstarter</strong><span class="when">Coming soon</span></li>
-          <li class="future"><span class="dot" aria-hidden="true"></span><strong>More information</strong><span class="when">Estimated 2027</span></li>
-        </ol>
+    <!-- ================= RADAR ================= -->
+    <section class="section radar-section" id="radar" aria-labelledby="radar-h">
+      <div class="wrap split">
+        <div class="reveal">
+          <p class="eyebrow micro">Presence · Wi&#8209;Fi radar</p>
+          <h2 id="radar-h">Know which rooms have someone in them. <span class="cyan">No cameras.</span></h2>
+          <p class="lede">Small radar nodes on the walls tell Castle when something moves in a room or through a doorway. The app draws each one as a motion&#8209;tracker sweep and keeps a list of rooms, occupied or empty, with when each was entered and left.</p>
+          <p style="margin-top:1.2rem"><span class="wip-chip micro">In development · the first nodes are being built</span></p>
+          <ul class="ticks">
+            <li><svg aria-hidden="true"><use href="#i-radar"/></svg><span><b>Tracks up to three people per node</b> by position and speed, about 6&nbsp;m out and 60° to each side.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-eyeoff"/></svg><span><b>Senses, never watches.</b> A 24&nbsp;GHz radar sees movement in the dark and through clutter. No camera, no microphone, no picture of anyone.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-wifi"/></svg><span><b>Reports over your Wi&#8209;Fi</b> to your own box. Nothing leaves the house.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-key"/></svg><span><b>Every node holds its own key.</b> It can report what it sees and nothing else. Lose one, replace its key, and the old one stops working at once.</span></li>
+          </ul>
+          <div class="parts">
+            <div><b>ESP32</b><span class="micro">The brains · Wi&#8209;Fi</span></div>
+            <div><b>LD2450</b><span class="micro">24 GHz mmWave radar</span></div>
+            <div><b>~$10–20</b><span class="micro">Parts per node</span></div>
+          </div>
+        </div>
+        <div class="radar-shots reveal">
+          <img class="wide" src="./shots/presence.webp" alt="Castle's Presence screen: radar sweeps for the front door and living room nodes, with people shown as orange blips" width="1440" height="900" loading="lazy">
+          <div class="phone"><img src="./shots/phone-presence.webp" alt="The Presence radar on a phone" width="780" height="1688" loading="lazy"></div>
+        </div>
       </div>
     </section>
 
-    <section class="panel" id="building" aria-labelledby="building-h">
+    <!-- ================= SECURE ================= -->
+    <section class="section" id="secure" aria-labelledby="secure-h">
       <div class="wrap">
-        <p class="eyebrow">The plan</p>
-        <h2 id="building-h">What we're building</h2>
-        
-        <div class="grid">
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>The Portal</h3>
-            <p>A public web door to your keep — what you choose to share, served on your terms.</p>
+        <div class="section-head reveal">
+          <p class="eyebrow micro">Secure storage</p>
+          <h2 id="secure-h">Your data stays in your house, <span class="accent">locked to you.</span></h2>
+          <p class="lede">Castle is storage you own outright. It sits on your network, answers only to the people you let in, and writes down everything that happens to it.</p>
+        </div>
+        <div class="features reveal">
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-lock"/></svg><span class="status dev micro">In development</span></div>
+            <h3>Encrypted storage</h3>
+            <p>Castle encrypts files itself, per person, so a stolen disk, or another account on the box, reads nothing.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-wifi"/></svg><span class="status micro">In the demo</span></div>
+            <h3>Encrypted on the way in</h3>
+            <p>Away from home, your devices reach the box over Tailscale or WireGuard. Nothing is opened on your router and nothing travels in the clear.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-users"/></svg><span class="status dev micro">In development</span></div>
+            <h3>Private profiles, strict roles</h3>
+            <p>Admin, member, child and guest. You can't see their data and they can't see yours, unless you choose to share it. Locked profiles open with a PIN.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="status micro">In the demo</span></div>
+            <h3>Every access written down</h3>
+            <p>An activity record of who did what, and when, that you can check has not been rewritten. Plus security checks and audits of the box itself.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-server"/></svg><span class="status micro">In the demo</span></div>
+            <h3>No cloud in the middle</h3>
+            <p>No account with us and no copy on someone else's servers. Your files, messages and backups live on your hardware, on your network.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-bell"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>A hub for every alert</h3>
+            <p>Connect home security cameras, alarm systems and smart devices, and get every alert in one place you own.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= EVERY FEATURE ================= -->
+    <section class="section" id="features" aria-labelledby="features-h" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow micro">Everything in Castle</p>
+          <h2 id="features-h">One box. Every job your cloud subscriptions do.</h2>
+          <p class="lede">Each feature is marked: <span class="status micro">In the demo</span> you can try today, <span class="status dev micro">In development</span> is being built now, <span class="status guide micro">On the roadmap</span> is where Castle is going.</p>
+        </div>
+
+        <div class="groups">
+          <div class="reveal">
+            <div class="group-title"><h3>Your data</h3><span class="micro">Storage · NAS · Comms · Contacts · Theater</span></div>
+            <div class="features">
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-drive"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Storage</h3>
+                <p>Files, photos and backups for everyone in the house, each in their own space.</p>
+                <ul><li>Search, previews and recent files</li><li>Flash drives, CDs and other removable media</li><li>Full control of the host computer's own drives</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-server"/></svg><span class="status micro">In the demo</span></div>
+                <h3>NAS</h3>
+                <p>One store for every computer and phone in the house. The apps talk to Castle directly, so no device needs a network-drive protocol.</p>
+                <ul><li>Samba can share the same folders as a mapped drive</li><li>Drive health, power-on hours and failing-disk warnings</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-chat"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Comms backup</h3>
+                <p>Every text, picture message, call, email and chat a person brings home, kept per person and searchable.</p>
+                <ul><li>Android SMS, MMS and call logs</li><li>Email from Gmail, Thunderbird or Apple Mail</li><li>Discord and Facebook Messenger</li><li>Restore to a new phone: in development</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-phone"/></svg><span class="status dev micro">In development</span></div>
+                <h3>Call recorder</h3>
+                <p>An optional phone call recorder in the Castle app. Recordings go straight to your box, filed with the call they belong to.</p>
+                <ul><li>Off unless you turn it on</li><li>Recordings from a phone's own recorder already file with their calls</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-book"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Contacts</h3>
+                <p>Your own white pages: everyone you know, with pictures, birthdays and notes.</p>
+                <ul><li>Finds and merges duplicates</li><li>Matched to their texts, calls and email</li><li>The videos they appear in</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-film"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Theater</h3>
+                <p>Films, shows, music and photos from your own folders, with posters and details, streamed around the house.</p>
+                <ul><li>Libraries per kind of media</li><li>Kid-safe libraries per profile</li></ul>
+              </article>
+            </div>
           </div>
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>The Drawbridge</h3>
-            <p>Encrypted WireGuard / Tailscale access for your own devices. Raised by default.</p>
+
+          <div class="reveal">
+            <div class="group-title"><h3>Your network</h3><span class="micro">Remote access · Security · Presence · Network</span></div>
+            <div class="features">
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-globe"/></svg><span class="status guide micro">Setup guide</span></div>
+                <h3>Tailscale and WireGuard</h3>
+                <p>Reach your box from anywhere, over a private link only your devices can use. Castle walks you through both.</p>
+                <ul><li>Tailscale: a private address, nothing opened on the router</li><li>WireGuard as a backup way in</li><li>Found automatically on the home Wi&#8209;Fi</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-share"/></svg><span class="status guide micro">On the roadmap</span></div>
+                <h3>Share with friends, worldwide</h3>
+                <p>Host your media and share it with friends anywhere, thanks to Tailscale, while every file stays on your network.</p>
+                <ul><li>Host websites and apps from your box too</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Security</h3>
+                <p>What protects the box and what doesn't yet, said plainly.</p>
+                <ul><li>Checks, audits and who can reach the box</li><li>A verifiable activity record</li><li>Cameras, alarms and smart devices: on the roadmap</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-radar"/></svg><span class="status dev micro">In development</span></div>
+                <h3>Presence radar</h3>
+                <p>Wi&#8209;Fi radar nodes that say which rooms are occupied. No cameras.</p>
+                <ul><li>Motion-tracker sweep for every node</li><li>Rooms entered and left, as a timeline</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-wifi"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Network</h3>
+                <p>Live traffic, speed and your provider, and what on the box is listening, and who it talks to.</p>
+              </article>
+            </div>
           </div>
-          <div class="card">
-            <span class="tick" aria-hidden="true"></span>
-            <h3>Off-grid nodes</h3>
-            <p>Distributed LoRa radio nodes keep the castle reachable even when the internet isn't.</p>
+
+          <div class="reveal">
+            <div class="group-title"><h3>Play and machines</h3><span class="micro">Arcade · Saves · Steam cache · Clones · AI</span></div>
+            <div class="features">
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-pad"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Arcade</h3>
+                <p>Your retro library across every console, with box art, ready to play.</p>
+                <ul><li>Multi-disc games grouped as one</li><li>Shuffle when you can't pick</li><li>Plays with a controller</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Save history</h3>
+                <p>Every version of every save. Jump a game back to last week, last month or last year.</p>
+                <ul><li>Each version fingerprinted, so an altered one shows</li><li>Kept on your own hardware, forever</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-down"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Steam cache</h3>
+                <p>Games download to Castle once. Every other PC in the house installs them at LAN speed.</p>
+                <ul><li>Keep favourites cached</li><li>Updates checked for you</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-layers"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Clones</h3>
+                <p>Virtual machines and containers on your box, and automations that run tasks inside them.</p>
+                <ul><li>Windows and Linux VMs</li><li>Docker: Debian, Ubuntu, Arch, Fedora</li><li>An Android 15 phone in a container</li></ul>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-spark"/></svg><span class="status micro">In the demo</span></div>
+                <h3>DOGS AI</h3>
+                <p>Images, video, audio and chat, generated on your own hardware. Your prompts don't leave the house.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="reveal">
+            <div class="group-title"><h3>Made for a household</h3><span class="micro">People · Controls · Open source</span></div>
+            <div class="features">
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-users"/></svg><span class="status dev micro">In development</span></div>
+                <h3>Everyone gets their own Castle</h3>
+                <p>One box, a profile for each person: their files, messages and saves, private by default.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-pad"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Mouse, keys or controller</h3>
+                <p>The whole app works from a game controller or the keyboard, so it fits a TV as well as a desk.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-card"/></svg><span class="status micro">In the demo</span></div>
+                <h3>Spec card</h3>
+                <p>Your box's numbers, uptime and drive hours as a picture, made to post.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-top"><svg aria-hidden="true"><use href="#i-github"/></svg><span class="status micro">Live</span></div>
+                <h3>Open source</h3>
+                <p>The code is public on GitHub. Read it, run it, or help build it.</p>
+              </article>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="panel dark tail" id="notify" aria-labelledby="notify-h">
+    <!-- ================= SPOTLIGHTS ================= -->
+    <section class="section" aria-label="Spotlights" style="padding-top:0">
       <div class="wrap">
-        <p class="eyebrow">The plan</p>
-        <h2 id="notify-h">Still curious?</h2>
-        <p class="lede">One app, versioned saves, every game ever made. Read how it all fits together.</p>
-        <p><a href="./docs.html">Read the docs</a></p>
-        <div class="foot">
-          <p class="madeby">
-            <img src="./dogs-logo.svg" alt="DOGS logo: a black-and-white Labrador with its tongue out" width="24" height="24" loading="lazy" decoding="async">
-            This product was made by <a href="https://wearedogs.net">DOGS</a>
-          </p>
-          <nav aria-label="Footer">
-            <a href="./">Home</a>
-            <a href="./docs.html">Docs</a>
-            <a href="./privacy.html">Privacy</a>
-            <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
-          </nav>
-          <p>&copy; 2026 DOGS &middot; Castle is a work in progress &middot; more by 2027.</p>
+        <div class="spot split reveal">
+          <div>
+            <p class="eyebrow micro">Comms</p>
+            <h2>Every text, call and email, backed up at home.</h2>
+            <p class="lede">Hand Castle a phone backup, a Gmail export or a Discord download. It reads every message, puts each conversation with the right person, and only adds what's new the next time.</p>
+            <div class="chips micro"><span>SMS</span><span>MMS</span><span>Call logs</span><span>Email</span><span>Discord</span><span>Messenger</span><span>Call recordings</span></div>
+          </div>
+          <img class="shot" src="./shots/comms.webp" alt="Castle's Comms screen: conversations with each person across texts, calls and email" width="1440" height="900" loading="lazy">
+        </div>
+
+        <div class="spot split flip reveal">
+          <div>
+            <p class="eyebrow micro">Save history</p>
+            <h2>Jump your save back to last year.</h2>
+            <p class="lede">Castle finds every save your emulators write and keeps every version it has ever seen. Put any of them back in one step. It stays on your own network, on your own hardware, forever.</p>
+            <div class="flow micro" aria-label="Save versions over time"><span>Last year</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Last month</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Last week</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span class="hot">Now</span></div>
+          </div>
+          <img class="shot" src="./shots/saves.webp" alt="Castle's Arcade saves: every version of a game's save, ready to put back" width="1440" height="900" loading="lazy">
+        </div>
+
+        <div class="spot split reveal">
+          <div>
+            <p class="eyebrow micro">Steam cache</p>
+            <h2>Download once. Install everywhere at LAN speed.</h2>
+            <p class="lede">The first PC that downloads a game pulls it through Castle. Every computer after that installs from the box, across the house, at the speed of your own network.</p>
+            <div class="flow micro"><span>Steam</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span class="hot">Castle</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Every PC at home</span></div>
+          </div>
+          <img class="shot" src="./shots/steam.webp" alt="Castle's Steam cache: games kept on the box and a PC downloading from it" width="1440" height="900" loading="lazy">
+        </div>
+
+        <div class="spot split flip reveal">
+          <div>
+            <p class="eyebrow micro">Clones</p>
+            <h2>Spare computers, made of software.</h2>
+            <p class="lede">Start a Windows or Linux machine, a light Docker container or a whole Android phone on the box, watch its screen from the app, and let automations do the clicking.</p>
+            <div class="chips micro"><span>Windows</span><span>Debian</span><span>Ubuntu</span><span>Arch</span><span>Fedora</span><span>Android 15</span><span>Automations</span></div>
+          </div>
+          <img class="shot" src="./shots/clones.webp" alt="Castle's Clones screen: virtual machines, containers and automations" width="1440" height="900" loading="lazy">
+        </div>
+
+        <div class="spot split reveal">
+          <div>
+            <p class="eyebrow micro">Remote access</p>
+            <h2>Your box, from anywhere. Through your own tunnel.</h2>
+            <p class="lede">Tailscale gives your phone and laptop a private path home, built on WireGuard, with nothing opened on your router. Castle shows you each step.</p>
+            <div class="chips micro"><span>Tailscale</span><span>WireGuard</span><span>Nothing opened on the router</span></div>
+          </div>
+          <img class="shot" src="./shots/settings.webp" alt="Castle's connection settings: Tailscale connected, WireGuard as a backup" width="1440" height="900" loading="lazy">
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BUILT TO UPGRADE ================= -->
+    <section class="section radar-section" id="upgrade" aria-labelledby="upgrade-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow micro">Built to upgrade</p>
+          <h2 id="upgrade-h">Castle grows with your house.</h2>
+          <p class="lede">Start with one box. Add storage when you run out, add compute when you want more, and one day let Castle run your whole network.</p>
+        </div>
+        <div class="features reveal">
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-plus"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>Expandable storage</h3>
+            <p>Add drives as your files grow. Castle keeps watching each one's health.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-cpu"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>Expandable compute</h3>
+            <p>More power for Clones, AI and games, added to the box you already have.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-router"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>The router and modem of the future</h3>
+            <p>Castle as the gateway to your home: every device on the network seen, ad and tracker blocking, and a firewall that answers to you.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-code"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>Host websites and apps</h3>
+            <p>Run your own sites and apps from the box, shared with the world through Tailscale.</p>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><svg aria-hidden="true"><use href="#i-cam"/></svg><span class="status guide micro">On the roadmap</span></div>
+            <h3>Cameras and smart home</h3>
+            <p>Home security cameras, alarm systems and smart devices, joined up, with every alert in one place.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= GALLERY ================= -->
+    <section class="section" aria-labelledby="gallery-h">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow micro">More of the app</p>
+          <h2 id="gallery-h">Look around. <span class="accent">Swipe</span> through it.</h2>
+        </div>
+        <div class="gallery" tabindex="0" aria-label="Screens from the Castle app; scroll sideways">
+          <figure><img src="./shots/storage.webp" alt="Storage" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Storage</b>Files, photos, backups</figcaption></figure>
+          <figure><img src="./shots/arcade.webp" alt="Arcade" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Arcade</b>Every console</figcaption></figure>
+          <figure><img src="./shots/theater.webp" alt="Theater" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Theater</b>Films, shows, music</figcaption></figure>
+          <figure><img src="./shots/contacts.webp" alt="Contacts" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Contacts</b>Your own white pages</figcaption></figure>
+          <figure><img src="./shots/security.webp" alt="Security" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Security</b>Checks and the record</figcaption></figure>
+          <figure><img src="./shots/network.webp" alt="Network" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Network</b>Live traffic</figcaption></figure>
+          <figure><img src="./shots/ai.webp" alt="DOGS AI" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>DOGS AI</b>On your hardware</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= DEMO BAND ================= -->
+    <section class="section" aria-labelledby="demo-h" style="padding-top:0">
+      <div class="wrap">
+        <div class="band hud reveal">
+          <div>
+            <p class="eyebrow micro">No sign-up</p>
+            <h2 id="demo-h">The whole app is in your browser right now.</h2>
+            <p class="lede">Every screen, with sample data. Nothing runs and nothing is saved, so poke at anything.</p>
+          </div>
+          <a class="btn btn-primary" href="./demo/"><svg aria-hidden="true"><use href="#i-play"/></svg>Try the live demo</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= WAITLIST ================= -->
+    <section class="section" id="waitlist" aria-labelledby="waitlist-h" style="padding-top:0">
+      <div class="wrap waitlist">
+        <figure class="device reveal">
+          <img src="./castle-hero-landscape.webp" alt="A concept render of the Castle box: a matte-black home server with a glowing port array" width="1600" height="900" loading="lazy">
+          <figcaption class="micro">Concept render</figcaption>
+        </figure>
+        <div class="reveal">
+          <p class="kick micro"><span class="dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
+          <h2 id="waitlist-h">Be first in line.</h2>
+          <p class="lede">Join the waitlist and we'll email you when the Kickstarter opens. Nothing else.</p>
+          <div class="form-card hud">
+            <form class="step" data-step="email" novalidate>
+              <label class="micro" for="email">Email address</label>
+              <div class="fields">
+                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" aria-describedby="email-error">
+                <button class="btn btn-primary" type="submit"><span class="spinner" aria-hidden="true"></span><span>Join the waitlist</span></button>
+              </div>
+              <p class="field-error" id="email-error" aria-live="polite"></p>
+              <p class="note" data-count-line>Be one of the first in line.</p>
+            </form>
+            <form class="step" data-step="code" hidden novalidate>
+              <label class="micro" for="code">Confirmation code</label>
+              <div class="fields">
+                <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="12" aria-describedby="code-error">
+                <button class="btn btn-primary" type="submit"><span class="spinner" aria-hidden="true"></span><span>Confirm</span></button>
+              </div>
+              <p class="field-error" id="code-error" aria-live="polite"></p>
+              <p class="note">We sent a code to <strong data-email-echo></strong>. Nothing yet? <button type="button" class="linklike" data-resend>Resend it</button></p>
+            </form>
+            <div class="step" data-step="done" hidden>
+              <p class="done-line" role="status">&#x1F436; You're on the list, good human.</p>
+              <p class="note">We'll email you when the Kickstarter opens.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FAQ ================= -->
+    <section class="section" aria-labelledby="faq-h" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head center reveal"><p class="eyebrow micro">Questions</p><h2 id="faq-h">Straight answers.</h2></div>
+        <div class="faq reveal">
+          <details>
+            <summary>Is Castle ready?</summary>
+            <p>Not yet. The app runs and the demo shows every screen. The box itself, the radar nodes and the features marked "in development" are being built now. The Kickstarter is how we finish them.</p>
+          </details>
+          <details>
+            <summary>Do I need a cloud account?</summary>
+            <p>No. Castle lives on your network and keeps your data on your hardware. Tailscale is optional, for reaching the box away from home.</p>
+          </details>
+          <details>
+            <summary>How does the radar work without cameras?</summary>
+            <p>Each node is an ESP32 with a 24&nbsp;GHz mmWave radar sensor. It measures where things move, not what they look like, and reports over your Wi&#8209;Fi to your box with its own key.</p>
+          </details>
+          <details>
+            <summary>Can my family share one box?</summary>
+            <p>Yes. Everyone gets a profile with their own files, messages and saves. Roles keep them private from each other unless someone chooses to share.</p>
+          </details>
+          <details>
+            <summary>Is it open source?</summary>
+            <p>Yes. The code is on <a href="https://github.com/YEAHDOGS/castle">GitHub</a>.</p>
+          </details>
         </div>
       </div>
     </section>
   </main>
-  <script src="./app.js" defer></script>
+
+  <footer class="site-foot">
+    <div class="wrap foot-row">
+      <a class="made" href="https://wearedogs.net"><img src="./dogs-logo-cropped.webp" alt="DOGS" width="170" height="56" loading="lazy" style="width:auto;height:40px"></a>
+      <span class="micro">Castle by DOGS · Data sovereignty</span>
+      <nav aria-label="Footer">
+        <a href="./demo/">Demo</a>
+        <a href="./docs.html">Docs</a>
+        <a href="./privacy.html">Privacy</a>
+        <a href="https://github.com/YEAHDOGS/castle">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="./home.js" defer></script>
 </body>
 </html>
