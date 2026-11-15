@@ -320,6 +320,9 @@ const DEMO_LAUNCH_LOG = [
 const DEMO_TARGETS = [
   { id: 'debian-x11', name: 'Debian 13 (minimal X11 desktop)', description: 'Light desktop for automations.', family: 'linux', runtime: '', cloud: true, inject: true, built: true, disks: 1 },
   { id: 'container-debian', name: 'Debian 13 container (light, for automations)', description: 'An in-memory screen and Openbox in a Docker container: up in seconds, only the memory its programs use.', family: 'linux', runtime: 'container', cloud: false, inject: true, automatable: true, built: false, disks: 0 },
+  { id: 'container-ubuntu', name: 'Ubuntu 24.04 container', description: 'Ubuntu 24.04 LTS in a Docker container, set up like the Debian one.', family: 'linux', runtime: 'container', cloud: false, inject: true, automatable: true, built: false, disks: 0 },
+  { id: 'container-arch', name: 'Arch Linux container', description: 'Arch Linux in a Docker container, with pacman.', family: 'linux', runtime: 'container', cloud: false, inject: true, automatable: true, built: false, disks: 0 },
+  { id: 'container-fedora', name: 'Fedora 45 container', description: 'Fedora 45 in a Docker container, with dnf.', family: 'linux', runtime: 'container', cloud: false, inject: true, automatable: true, built: false, disks: 0 },
   { id: 'container-android', name: 'Android 15 container (Google emulator, headless)', description: 'The Android emulator in a Docker container. Installs your APKs; Android automations run their tasks on the phone.', family: 'android', runtime: 'container', apk: true, cloud: false, inject: false, automatable: true, built: false, disks: 0 },
   { id: 'endeavouros', name: 'EndeavourOS Linux', description: 'Friendly Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: true, built: true, disks: 1 },
   { id: 'cachyos', name: 'CachyOS Linux', description: 'Performance-tuned Arch-based distribution.', family: 'linux', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
@@ -450,7 +453,12 @@ export class DemoClones {
 
   async cloneMachines() {
     this.machines = this.machines.filter((m) => m.kind !== 'temporary' || m.state === 'running');
-    return { targets: DEMO_TARGETS, machines: this.machines, bench: this.bench };
+    const engine = (m) => {
+      const runtime = DEMO_TARGETS.find((t) => t.id === m.target)?.runtime;
+      return runtime === 'container' ? 'container' : runtime === 'avd' ? 'emulator' : 'vm';
+    };
+    const machines = this.machines.map((m) => ({ ...m, engine: engine(m), controllable: engine(m) === 'container' && !m.target.includes('android') }));
+    return { targets: DEMO_TARGETS, machines, bench: this.bench, docker: true };
   }
 
   async cloneMachineStart(body) {

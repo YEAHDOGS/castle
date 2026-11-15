@@ -148,7 +148,7 @@ if ($Kind -eq "android") {
     }
     if ($env:CASTLE_CONTAINER_ANDROID_IMAGE) { $BuildArgs += "ANDROID_IMAGE=$($env:CASTLE_CONTAINER_ANDROID_IMAGE)" }
 }
-$Image = Install-CastleImage -Kind $Kind -Folder $ImageDir -BuildArgs $BuildArgs
+$Image = Install-CastleImage -Kind $Kind -Folder $ImageDir -Distro ([string]$Entry.ContainerDistro) -BuildArgs $BuildArgs
 if (-not $Image) { Exit 1 }
 
 # -- Stage what goes in -----------------------------------------------------------

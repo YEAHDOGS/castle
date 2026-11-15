@@ -182,11 +182,11 @@ Two targets, pick by what you need:
 - **BlissOS boot.** Every boot loads the ISO's kernel/initrd directly with its "No HW Acceleration" entry (`nomodeset HWACCEL=0`) plus `DATA=vda SETUPWIZARD=0`. The VM disk is not installed to: it is a bare ext4 volume (formatted once through WSL, then never touched again) mounted as `/data`, so apps and settings persist. Without WSL it still boots, with `/data` in RAM. First boot is slow (several minutes while Android optimises apps under software rendering).
 
 ### Containers: the light engine for automations (`container.ps1`)
-A VM boots a kernel, an init system and a desktop for every bot, and holds a fixed share of memory whether the bot uses it or not. A container shares the Docker engine's kernel and starts only what the bot needs. Two container targets, one image each, built once and shared by every container made from them:
+A VM boots a kernel, an init system and a desktop for every bot, and holds a fixed share of memory whether the bot uses it or not. A container shares the Docker engine's kernel and starts only what the bot needs. Linux containers come in four systems (`container-debian`, `container-ubuntu`, `container-arch`, `container-fedora`: Debian 13, Ubuntu 24.04, Arch and Fedora 45, each from its own `docker/automation/Dockerfile.<distro>` with the same scripts, tagged `castle/automation-<distro>`), plus Android. Each image is built once and shared by every container made from it. Debian is the one for browser bots: Ubuntu's Firefox is a snap, which a container cannot run. Profiles' apt package names are used on Fedora too (through dnf, skipping any it does not have).
 
 | | `container-debian` | `container-android` |
 |---|---|---|
-| What runs | Debian 13 + an in-memory X server (Xvfb, 1440x900 or the profile's `Screen`) + Openbox | Google's Android Emulator, headless, on KVM; Android 15 `google_apis` (root tasks work) |
+| What runs | Debian 13 (or Ubuntu, Arch, Fedora) + an in-memory X server (Xvfb, 1440x900 or the profile's `Screen`) + Openbox + a silent sound card (PulseAudio null sink: Flash games under Ruffle wait for sound) | Google's Android Emulator, headless, on KVM; Android 15 `google_apis` (root tasks work) |
 | Setup | the same `scripts/setup-*.sh` and launch profiles as the VMs (`castle-lib.sh` knows it is in a container) | every `.apk` in the payload installed and opened, other files pushed to `Download/castle-copy`, `castle-tasks.sh` started on the phone |
 | Image | `docker/automation/`, about 750 MB | `docker/android/`, SDK + system image, a few GB |
 | Measured | penguin-autosurf (Firefox + the Python bot) up and playing in about 60 s from a fresh container, 9 s from a kept one; an idle box is 46 MB | |

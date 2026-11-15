@@ -1,0 +1,40 @@
+# Castle automation container (Arch Linux, rolling). See Dockerfile.debian for
+# what every automation image carries and why; this is the same on Arch, with
+# pacman, so the scripts written for EndeavourOS work here as they are.
+FROM archlinux:latest
+
+ENV LANG=C.UTF-8
+
+# Docker Desktop's NAT drops some TLS connections to mirrors: one download at a
+# time, and a few more mirrors than the image ships with.
+RUN sed -i 's/^#\?ParallelDownloads.*/ParallelDownloads = 1/' /etc/pacman.conf \
+    && printf '%s\n' 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+         'Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch' \
+         'Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist \
+    && pacman -Syu --noconfirm --needed \
+        xorg-server-xvfb openbox xdotool xorg-xset xorg-xrandr xorg-xdpyinfo xorg-xwd xterm netpbm \
+        sudo ca-certificates curl procps-ng psmisc libarchive which \
+        python ttf-dejavu mesa \
+        pulseaudio x11vnc \
+    && pacman -Scc --noconfirm
+
+# noVNC and websockify are not in Arch's repositories (only the AUR): websockify
+# from PyPI in its own venv, and a pinned noVNC release in /usr/share/novnc, where
+# castle-live looks first.
+ARG NOVNC_VERSION=1.7.0
+RUN python -m venv /opt/websockify \
+    && /opt/websockify/bin/pip install --no-cache-dir websockify \
+    && ln -s /opt/websockify/bin/websockify /usr/local/bin/websockify \
+    && mkdir -p /usr/share/novnc \
+    && curl -fsSL "https://github.com/novnc/noVNC/archive/refs/tags/v${NOVNC_VERSION}.tar.gz" \
+       | bsdtar -xf - --strip-components 1 -C /usr/share/novnc \
+    && test -f /usr/share/novnc/vnc.html
+
+RUN useradd -m -u 1000 -s /bin/bash castle
+
+COPY castle-container-init castle-screen castle-live /usr/local/bin/
+RUN cd /usr/local/bin && sed -i 's/\r$//' castle-container-init castle-screen castle-live \
+    && chmod 755 castle-container-init castle-screen castle-live
+
+LABEL net.wearedogs.castle.kind="automation" net.wearedogs.castle.distro="arch"
+ENTRYPOINT ["/usr/local/bin/castle-container-init"]

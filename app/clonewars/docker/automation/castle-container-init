@@ -20,7 +20,7 @@ set -uo pipefail
 
 SCREEN="${CASTLE_SCREEN:-1440x900}"
 [[ "$SCREEN" =~ ^[0-9]{3,5}x[0-9]{3,5}$ ]] || SCREEN=1440x900
-echo "[castle] container $(hostname) up: screen $SCREEN, $(nproc) core(s), $(awk '/MemTotal/ { printf "%.1f GB", $2 / 1048576 }' /proc/meminfo) visible"
+echo "[castle] container $(cat /etc/hostname) up: screen $SCREEN, $(nproc) core(s), $(awk '/MemTotal/ { printf "%.1f GB", $2 / 1048576 }' /proc/meminfo) visible"
 
 pids=()
 stop_all() { echo "[castle] stopping"; kill "${pids[@]}" 2>/dev/null; pkill -TERM -u castle 2>/dev/null; exit 0; }
@@ -38,6 +38,22 @@ export DISPLAY=:0
 sudo -u castle env HOME=/home/castle DISPLAY=:0 openbox >/tmp/openbox.log 2>&1 &
 pids+=("$!")
 sudo -u castle env DISPLAY=:0 xset s off -dpms 2>/dev/null || true
+
+# Sound: a silent sound card. A container has no audio device, and some programs wait
+# for one: Flash games run through Ruffle in Firefox hold their timeline until their
+# music plays, so Cart Surfer froze on its first frame. PulseAudio with one null sink
+# takes the sound and throws it away at real-time speed. It lives in /run/user/1000,
+# where castle-lib.sh points the desktop user's programs (XDG_RUNTIME_DIR).
+mkdir -p /run/user/1000 && chown castle: /run/user/1000 && chmod 700 /run/user/1000
+rm -rf /run/user/1000/pulse   # a stopped container keeps the last run's socket and PID file
+if command -v pulseaudio >/dev/null 2>&1; then
+  sudo -u castle env HOME=/home/castle XDG_RUNTIME_DIR=/run/user/1000 pulseaudio --daemonize=yes \
+    --exit-idle-time=-1 --log-target=file:/tmp/pulse.log -n \
+    -L "module-null-sink sink_name=castle sink_properties=device.description=Castle" \
+    -L "module-native-protocol-unix" -L "module-always-sink" >/dev/null 2>&1 \
+    && echo "[castle] sound: a silent PulseAudio output (Castle)" \
+    || echo "[castle] sound: PulseAudio did not start; programs that wait for sound may hang"
+fi
 
 if [ "${CASTLE_STOP_AFTER_MIN:-0}" -gt 0 ] 2>/dev/null; then
   ( sleep $((CASTLE_STOP_AFTER_MIN * 60)); echo "[castle] the stop time has come"; kill -TERM 1 ) &

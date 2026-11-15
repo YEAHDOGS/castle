@@ -371,13 +371,44 @@ $IsoMatrix = @(
     # names it, a profile sets it up exactly as it would a VM.
 
     @{
-        Id            = "container-debian"
-        Name          = "Debian 13 container (light, for automations)"
-        Description   = "Debian Trixie with an in-memory X server (Xvfb) and Openbox in a Docker container: no kernel to boot, up in seconds, uses only the memory its programs use. Runs the same setup scripts and profiles as the VMs. Needs Docker."
-        Runtime       = "container"
-        ContainerKind = "automation"
-        OsFamily      = "linux"
-        SupportsCopy  = $true
+        Id              = "container-debian"
+        Name            = "Debian 13 container"
+        Description     = "Debian Trixie with an in-memory screen (Xvfb), Openbox and a silent sound card, in a Docker container: no kernel to boot, up in seconds, uses only the memory its programs use. The one for browser bots (firefox-esr). Runs the same setup scripts and profiles as the VMs. Needs Docker."
+        Runtime         = "container"
+        ContainerKind   = "automation"
+        ContainerDistro = "debian"
+        OsFamily        = "linux"
+        SupportsCopy    = $true
+    },
+    @{
+        Id              = "container-ubuntu"
+        Name            = "Ubuntu 24.04 container"
+        Description     = "Ubuntu 24.04 LTS in a Docker container, set up like the Debian one (screen, Openbox, sound, apt). Ubuntu's Firefox is a snap, which a container cannot run: pick Debian for browser bots. Needs Docker."
+        Runtime         = "container"
+        ContainerKind   = "automation"
+        ContainerDistro = "ubuntu"
+        OsFamily        = "linux"
+        SupportsCopy    = $true
+    },
+    @{
+        Id              = "container-arch"
+        Name            = "Arch Linux container"
+        Description     = "Arch Linux (rolling) in a Docker container, set up like the Debian one, with pacman: the EndeavourOS setup scripts run here as they are. Needs Docker."
+        Runtime         = "container"
+        ContainerKind   = "automation"
+        ContainerDistro = "arch"
+        OsFamily        = "linux"
+        SupportsCopy    = $true
+    },
+    @{
+        Id              = "container-fedora"
+        Name            = "Fedora 45 container"
+        Description     = "Fedora 45 in a Docker container, set up like the Debian one, with dnf. Packages are asked for by their apt names, which mostly match. Needs Docker."
+        Runtime         = "container"
+        ContainerKind   = "automation"
+        ContainerDistro = "fedora"
+        OsFamily        = "linux"
+        SupportsCopy    = $true
     },
     @{
         Id            = "container-android"

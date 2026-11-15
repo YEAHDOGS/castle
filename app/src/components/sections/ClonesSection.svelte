@@ -1,10 +1,12 @@
-<!-- ClonesSection: a workbench of virtual machines. Systems is the catalogue: click a tile
-     to start a disk that exists, make a new machine, or run a temporary one. Machines lists
-     what exists. Automations are recipes with any number of bots, each on its own machine.
+<!-- ClonesSection: a workbench of machines. Boxes is the home: one click starts a container
+     of a Linux system or an Android phone (up in seconds), and below it every machine there is,
+     running ones first. Automations are recipes with any number of bots, each on its own
+     machine. Systems is the whole catalogue (containers, VMs, emulators, Docker desktops):
+     click a tile to start a disk that exists, make a new machine, or run a temporary one.
      Benchmarks shows how long launches took. -->
 <script>
   import { untrack } from 'svelte';
-  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText } from '@lucide/svelte';
+  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText, Container, Smartphone, Zap } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -22,15 +24,32 @@
   const NO_CLONES = 'not started with --clonewars';
   const ADMIN = 'Admin';
   const VIEWS = [
-    { id: 'systems', label: 'Systems', icon: LayoutGrid },
-    { id: 'machines', label: 'Machines', icon: Monitor },
+    { id: 'boxes', label: 'Boxes', icon: Container },
     { id: 'automations', label: 'Automations', icon: Bot },
+    { id: 'systems', label: 'Systems', icon: LayoutGrid },
     { id: 'benchmarks', label: 'Benchmarks', icon: Timer },
   ];
   const KIND_LABEL = { main: 'MAIN DISK', instance: 'OWN DISK', temporary: 'TEMPORARY' };
+  const ENGINE_LABEL = { container: 'CONTAINER', vm: 'VIRTUAL MACHINE', emulator: 'EMULATOR' };
+  /** Catalogue filter by how a system runs. */
+  const ENGINES = [
+    { id: '', label: 'All' },
+    { id: 'container', label: 'Containers' },
+    { id: 'vm', label: 'Virtual machines' },
+    { id: 'other', label: 'Emulators & desktops' },
+  ];
+  const engineOf = (t) => (t.runtime === 'container' ? 'container' : t.runtime ? 'other' : 'vm');
+  /** The one-click boxes, in this order; a short name for each. */
+  const QUICK = [
+    { target: 'container-debian', label: 'Debian', hint: 'Browser bots (Firefox)' },
+    { target: 'container-ubuntu', label: 'Ubuntu', hint: '24.04 LTS' },
+    { target: 'container-arch', label: 'Arch', hint: 'Rolling, pacman' },
+    { target: 'container-fedora', label: 'Fedora', hint: 'dnf' },
+    { target: 'container-android', label: 'Android', hint: 'Google emulator' },
+  ];
   const MODE_LABEL = { existing: 'EXISTING DISK', new: 'NEW MACHINE', temporary: 'TEMPORARY', automation: 'AUTOMATION' };
 
-  let view = $state('systems');
+  let view = $state('boxes');
   let automations = $state([]);
   let lab = $state({ targets: [], machines: [], bench: [] });
   let problem = $state('');
@@ -39,6 +58,8 @@
   let turningOn = $state(false);
   let query = $state('');
   let family = $state('');
+  let engineFilter = $state('');
+  let throwaway = $state(false); // quick boxes: removed when they stop
   let picked = $state(null); // the system whose launch dialog is open
   let editing = $state(null); // { initial } while the automation editor is open
   let openMachine = $state(''); // id of the machine whose log and screen are shown
@@ -50,9 +71,19 @@
   const shown = $derived.by(() => {
     const q = query.trim().toLowerCase();
     return lab.targets
-      .filter((t) => (!family || t.family === family) && (!q || `${t.id} ${t.name} ${t.description} ${t.family} ${t.runtime}`.toLowerCase().includes(q)))
-      .sort((a, b) => Number(b.built) - Number(a.built));
+      .filter((t) => (!family || t.family === family) && (!engineFilter || engineOf(t) === engineFilter))
+      .filter((t) => !q || `${t.id} ${t.name} ${t.description} ${t.family} ${t.runtime}`.toLowerCase().includes(q))
+      .sort((a, b) => Number(b.built) - Number(a.built) || Number(engineOf(b) === 'container') - Number(engineOf(a) === 'container'));
   });
+  const quick = $derived(QUICK.map((q) => ({ ...q, system: lab.targets.find((t) => t.id === q.target) })).filter((q) => q.system));
+  /** Running and starting machines first, then the rest by name. */
+  const machines = $derived(
+    [...lab.machines].sort((a, b) => {
+      const up = (m) => (m.state === 'running' || m.state === 'launching' ? 0 : 1);
+      return up(a) - up(b) || a.name.localeCompare(b.name);
+    }),
+  );
+  const liveCount = $derived(lab.machines.filter((m) => m.state === 'running' || m.state === 'launching').length);
   /** Fastest good launch per system, apart for first builds and for ordinary boots. */
   const records = $derived.by(() => {
     const best = new Map();
@@ -126,7 +157,28 @@
     const ok = await act(() => source.cloneMachineStart(body), 'Starting the machine', applyLab);
     if (!ok) return;
     picked = null;
-    view = 'machines';
+    view = 'boxes';
+  }
+
+  /** The next free name for a quick box: debian-1, debian-2, ... */
+  function nextName(label) {
+    const base = label.toLowerCase();
+    const taken = new Set(lab.machines.map((m) => m.id));
+    let n = 1;
+    while (taken.has(`${base}-${n}`)) n++;
+    return `${base}-${n}`;
+  }
+
+  /** One click: a new container of that system, started at once, with its screen open. */
+  async function quickBox(q) {
+    const name = nextName(q.label);
+    const body = throwaway ? { mode: 'temporary', target: q.target } : { mode: 'new', target: q.target, name };
+    const before = new Set(lab.machines.map((m) => m.id));
+    const ok = await act(() => source.cloneMachineStart(body), `Starting ${throwaway ? 'a throwaway ' + q.label : name}`, applyLab);
+    if (!ok) return;
+    // The machine this click made: a throwaway gets a name of the box's choosing, so it is the new one.
+    const made = throwaway ? lab.machines.find((m) => m.target === q.target && !before.has(m.id)) : lab.machines.find((m) => m.id === name);
+    if (made) openMachine = made.id;
   }
 
   async function saveAutomation(def) {
@@ -190,60 +242,63 @@
     </Notice>
   {:else if problem}
     <Notice icon={Boxes} title="CLONES UNAVAILABLE">{problem}</Notice>
-  {:else if view === 'systems'}
-    <div class="mb-4 flex flex-wrap items-center gap-3">
-      <label class="relative min-w-[14rem] flex-1">
-        <Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-faint" />
-        <input bind:value={query} type="search" placeholder="Search {lab.targets.length} systems" spellcheck="false" class="{INPUT} pl-9" />
-      </label>
-      <div class="flex gap-1" role="group" aria-label="Kind of system">
-        {#each FAMILIES as f (f.id)}
-          <button class="{BTN} {family === f.id ? '!border-chiral/70 !text-chiral' : ''}" aria-pressed={family === f.id} onclick={() => (family = f.id)}>{f.label.toUpperCase()}</button>
-        {/each}
+  {:else if view === 'boxes'}
+    <section class="hud-corners glass mb-5 p-4">
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <Zap class="h-4 w-4 text-chiral" />
+        <h2 class="micro flex-1 text-white">NEW BOX IN SECONDS</h2>
+        <label class="micro flex items-center gap-2 text-text-faint" title="A throwaway box is removed, with everything in it, when it stops">
+          <input type="checkbox" bind:checked={throwaway} class="accent-chiral" /> THROWAWAY
+        </label>
       </div>
+      {#if quick.length}
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {#each quick as q (q.target)}
+            {@const Icon = q.system.family === 'android' ? Smartphone : Container}
+            <button disabled={busy || lab.docker === false} onclick={() => quickBox(q)} title={q.system.description}
+              class="expo t-hover flex items-center gap-3 border border-hairline bg-white/[0.02] px-3 py-3 text-left transition-colors hover:border-chiral/60 disabled:opacity-40">
+              <Icon class="h-6 w-6 shrink-0 text-chiral" strokeWidth={1.5} />
+              <span class="min-w-0">
+                <span class="block text-[14px] font-bold text-white">{q.label}</span>
+                <span class="micro block truncate text-text-faint">{q.hint.toUpperCase()}</span>
+              </span>
+            </button>
+          {/each}
+        </div>
+        <p class="mt-2 text-[12px] leading-relaxed text-text-dim">
+          {#if lab.docker === false}
+            Boxes are Docker containers, and Docker is not installed on this box. Install Docker Desktop, then come back.
+          {:else}
+            A container, not a VM: no kernel to boot, only the memory its programs use. The first box of a system builds its image once (a minute or two{quick.some((q) => q.system.family === 'android') ? ', a few for Android' : ''}); after that a box is up in seconds. {throwaway ? 'Throwaway: it is removed when it stops.' : 'It is kept when it stops, with what was installed in it.'}
+          {/if}
+        </p>
+      {:else}
+        <p class="text-[12px] text-text-dim">This box's Clonewars has no container systems yet.</p>
+      {/if}
+    </section>
+
+    <div class="mb-3 flex items-center gap-3">
+      <h2 class="micro flex-1 text-text-faint">{lab.machines.length} MACHINE{lab.machines.length === 1 ? '' : 'S'}{liveCount ? ` · ${liveCount} RUNNING` : ''}</h2>
+      <button class={BTN} onclick={() => (view = 'systems')}><LayoutGrid class="h-3.5 w-3.5" /> ALL SYSTEMS</button>
     </div>
-    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {#each shown as t (t.id)}
-        <li>
-          <button onclick={() => (picked = t)} class="expo t-hover hud-corners glass flex h-full w-full flex-col p-4 text-left transition-colors hover:border-chiral/60">
-            <span class="flex w-full items-start gap-2">
-              <span class="min-w-0 flex-1 text-[15px] font-bold leading-snug text-white">{t.name}</span>
-              {#if running.has(t.id)}<span class="mt-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-live" title="Running"></span>{/if}
-            </span>
-            <span class="mt-1 line-clamp-2 flex-1 text-[12px] leading-relaxed text-text-dim">{t.description}</span>
-            <span class="micro mt-3 flex flex-wrap gap-x-3 gap-y-1 text-text-faint">
-              <span>{(t.family || 'other').toUpperCase()}</span>
-              {#if t.built}<span class="text-live">BUILT</span>{/if}
-              {#if t.disks > 1}<span>{t.disks} DISKS</span>{/if}
-              {#if t.inject}<span class="text-chiral">SCRIPTABLE</span>{/if}
-              {#if t.apk}<span class="text-chiral">TAKES APKS</span>{/if}
-              {#if t.runtime}<span>{t.runtime === 'avd' ? 'EMULATOR' : t.runtime.toUpperCase()}</span>{/if}
-            </span>
-          </button>
-        </li>
-      {/each}
-    </ul>
-    {#if !shown.length}
-      <p class="mt-6 text-[13px] leading-relaxed text-text-dim">
-        Nothing matches. The catalogue is Clonewars' own target list (clonewars/modules/targets.ps1): a system added there shows up here.
-      </p>
-    {/if}
-  {:else if view === 'machines'}
-    {#if !lab.machines.length}
-      <Notice icon={Monitor} title="NO MACHINES YET">Pick a system under Systems and start one. It appears here.</Notice>
+    {#if !machines.length}
+      <Notice icon={Monitor} title="NO MACHINES YET">Start a box above, or pick any system under All systems.</Notice>
     {/if}
     <ul class="grid gap-3 xl:grid-cols-2">
-      {#each lab.machines as m (m.id)}
+      {#each machines as m (m.id)}
         {@const live = m.state === 'running' || m.state === 'launching'}
         {@const open = openMachine === m.id}
+        {@const sys = lab.targets.find((t) => t.id === m.target)}
+        {@const Icon = sys?.family === 'android' ? Smartphone : m.engine === 'container' ? Container : Monitor}
         <li class="glass p-4 {open ? 'xl:col-span-2' : ''}">
           <div class="flex flex-wrap items-center gap-3">
-            <Monitor class="h-7 w-7 shrink-0 {m.state === 'running' ? 'text-live' : 'text-text-faint'}" strokeWidth={1.25} />
+            <Icon class="h-7 w-7 shrink-0 {m.state === 'running' ? 'text-live' : 'text-text-faint'}" strokeWidth={1.25} />
             <div class="min-w-0 flex-1">
               <p class="truncate text-[15px] font-semibold text-white">{m.name}</p>
               <p class="micro mt-1 flex flex-wrap gap-x-3 text-text-faint">
-                <span>{KIND_LABEL[m.kind]}</span>
+                {#if m.engine}<span class={m.engine === 'container' ? 'text-chiral' : ''}>{ENGINE_LABEL[m.engine] || m.engine.toUpperCase()}</span>{/if}
                 {#if m.kind !== 'main'}<span>{targetName(m.target)}</span>{/if}
+                {#if m.kind === 'temporary'}<span>THROWAWAY</span>{:else if m.engine !== 'container'}<span>{KIND_LABEL[m.kind]}</span>{/if}
                 {#if m.diskBytes}<span>{fmtSize(m.diskBytes)}</span>{/if}
               </p>
             </div>
@@ -256,11 +311,11 @@
                 <Square class="h-3.5 w-3.5 fill-current" /> STOP
               </button>
             {:else if m.kind !== 'temporary'}
-              <button disabled={busy} class={BTN} onclick={() => act(() => source.cloneMachineStart({ mode: 'existing', machine: m.id }), 'Starting the machine', applyLab)}>
+              <button disabled={busy} class={BTN} onclick={() => { openMachine = m.id; act(() => source.cloneMachineStart({ mode: 'existing', machine: m.id }), 'Starting the machine', applyLab); }}>
                 <Play class="h-3.5 w-3.5 fill-current" /> START
               </button>
             {/if}
-            <button class={BTN} aria-pressed={open} title="Log and screen" onclick={() => (openMachine = open ? '' : m.id)}><ScrollText class="h-4 w-4" /></button>
+            <button class={BTN} aria-pressed={open} title="Screen and log" onclick={() => (openMachine = open ? '' : m.id)}><ScrollText class="h-4 w-4" /></button>
             {#if m.kind !== 'main' && !live}
               <button disabled={busy} class={BTN} title="Delete this machine and its disk" onclick={() => twice(m.id, () => act(() => source.cloneMachineDelete(m.id), 'Machine deleted', applyLab))}>
                 <Trash2 class="h-4 w-4" />{#if confirming === m.id}DELETE IT AND ITS DISK?{/if}
@@ -268,12 +323,60 @@
             {/if}
           </div>
           {#if open}
-            <pre class="mt-3 max-h-56 overflow-auto border border-hairline bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-text-dim">{m.log.length ? m.log.join('\n') : m.state === 'running' ? 'Running. It was started outside this screen, so there is no launch log here.' : 'Nothing yet.'}</pre>
             {#if m.state === 'running' && source.cloneScreen}<VmScreen {source} id={m.key} controllable={m.controllable} name={m.name} />{/if}
+            <details class="mt-3" open={m.state !== 'running'}>
+              <summary class="micro cursor-pointer text-text-faint hover:text-white">WHAT THE BOX DID</summary>
+              <pre class="mt-2 max-h-56 overflow-auto border border-hairline bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-text-dim">{m.log.length ? m.log.join('\n') : m.state === 'running' ? 'Running. It was started outside this screen, so there is no launch log here.' : 'Nothing yet.'}</pre>
+            </details>
           {/if}
         </li>
       {/each}
     </ul>
+  {:else if view === 'systems'}
+    <div class="mb-3 flex flex-wrap items-center gap-3">
+      <label class="relative min-w-[14rem] flex-1">
+        <Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-faint" />
+        <input bind:value={query} type="search" placeholder="Search {lab.targets.length} systems" spellcheck="false" class="{INPUT} pl-9" />
+      </label>
+    </div>
+    <div class="mb-4 flex flex-wrap gap-x-5 gap-y-2">
+      <div class="flex flex-wrap gap-1" role="group" aria-label="How it runs">
+        {#each ENGINES as e (e.id)}
+          <button class="{BTN} {engineFilter === e.id ? '!border-chiral/70 !text-chiral' : ''}" aria-pressed={engineFilter === e.id} onclick={() => (engineFilter = e.id)}>{e.label.toUpperCase()}</button>
+        {/each}
+      </div>
+      <div class="flex flex-wrap gap-1" role="group" aria-label="Kind of system">
+        {#each FAMILIES as f (f.id)}
+          <button class="{BTN} {family === f.id ? '!border-chiral/70 !text-chiral' : ''}" aria-pressed={family === f.id} onclick={() => (family = f.id)}>{f.label.toUpperCase()}</button>
+        {/each}
+      </div>
+    </div>
+    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {#each shown as t (t.id)}
+        {@const kind = engineOf(t)}
+        <li>
+          <button onclick={() => (picked = t)} class="expo t-hover hud-corners glass flex h-full w-full flex-col p-4 text-left transition-colors hover:border-chiral/60">
+            <span class="flex w-full items-start gap-2">
+              <span class="min-w-0 flex-1 text-[15px] font-bold leading-snug text-white">{t.name}</span>
+              {#if running.has(t.id)}<span class="mt-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-live" title="Running"></span>{/if}
+            </span>
+            <span class="mt-1 line-clamp-2 flex-1 text-[12px] leading-relaxed text-text-dim">{t.description}</span>
+            <span class="micro mt-3 flex flex-wrap gap-x-3 gap-y-1 text-text-faint">
+              <span class={kind === 'container' ? 'text-chiral' : ''}>{kind === 'container' ? 'CONTAINER' : kind === 'vm' ? 'VM' : t.runtime === 'avd' ? 'EMULATOR' : 'DOCKER DESKTOP'}</span>
+              <span>{(t.family || 'other').toUpperCase()}</span>
+              {#if t.built}<span class="text-live">{kind === 'container' ? 'MADE' : 'BUILT'}</span>{/if}
+              {#if t.disks > 1}<span>{t.disks} DISKS</span>{/if}
+              {#if t.automatable ?? t.inject}<span>AUTOMATABLE</span>{/if}
+            </span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+    {#if !shown.length}
+      <p class="mt-6 text-[13px] leading-relaxed text-text-dim">
+        Nothing matches. The catalogue is Clonewars' own target list (clonewars/modules/targets.ps1): a system added there shows up here.
+      </p>
+    {/if}
   {:else if view === 'automations'}
     <div class="mb-4 flex items-center gap-3">
       <p class="flex-1 text-[13px] text-text-dim">A recipe and its bots. Each bot signs in as itself and runs on its own machine, so several can run at once.</p>

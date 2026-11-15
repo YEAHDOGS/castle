@@ -94,10 +94,11 @@ castle_mount_label() {
   mkdir -p "$mnt" && mount -o ro "$dev" "$mnt"
 }
 
-# castle_pm  -> pacman | apt | (empty)
+# castle_pm  -> pacman | apt | dnf | (empty)
 castle_pm() {
   if command -v pacman >/dev/null 2>&1; then echo pacman
   elif command -v apt-get >/dev/null 2>&1; then echo apt
+  elif command -v dnf >/dev/null 2>&1; then echo dnf
   fi
 }
 
@@ -124,12 +125,17 @@ castle_pkg_install() {
       done
       DEBIAN_FRONTEND=noninteractive apt-get update -q &&
         DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" ;;
-    *) echo "[-] No supported package manager (pacman, apt) in this guest."; return 1 ;;
+    dnf)
+      # Fedora (the container-fedora image). --skip-unavailable: a Debian-only name in a
+      # shared list is reported and passed over instead of failing the whole install.
+      dnf install -y -q --setopt=install_weak_deps=False --skip-unavailable "$@" ;;
+    *) echo "[-] No supported package manager (pacman, apt, dnf) in this guest."; return 1 ;;
   esac
 }
 
-# castle_need <command> <pacman-package> <apt-package>
+# castle_need <command> <pacman-package> <apt-package> [dnf-package]
 #   Queues the right package name in CASTLE_NEED when the command is missing.
+#   dnf takes the fourth name, or the apt one when there is none.
 #   Finish with: castle_pkg_install "${CASTLE_NEED[@]}"
 CASTLE_NEED=()
 castle_need() {
@@ -137,6 +143,7 @@ castle_need() {
   case "$(castle_pm)" in
     pacman) [ -n "$2" ] && CASTLE_NEED+=("$2") ;;
     apt)    [ -n "$3" ] && CASTLE_NEED+=("$3") ;;
+    dnf)    [ -n "${4:-$3}" ] && CASTLE_NEED+=("${4:-$3}") ;;
   esac
   return 0
 }
@@ -230,6 +237,8 @@ castle_profile_apply() {
     case "$(castle_pm)" in
       pacman) if [ "${#CASTLE_PKGS_PACMAN[@]}" -gt 0 ]; then echo "[+] Profile packages: ${CASTLE_PKGS_PACMAN[*]}"; castle_pkg_install "${CASTLE_PKGS_PACMAN[@]}" || return 1; fi ;;
       apt)    if [ "${#CASTLE_PKGS_APT[@]}" -gt 0 ]; then echo "[+] Profile packages: ${CASTLE_PKGS_APT[*]}"; castle_pkg_install "${CASTLE_PKGS_APT[@]}" || return 1; fi ;;
+      # Profiles name apt and pacman packages; Fedora gets the apt list (most names match).
+      dnf)    if [ "${#CASTLE_PKGS_APT[@]}" -gt 0 ]; then echo "[+] Profile packages (apt names, through dnf): ${CASTLE_PKGS_APT[*]}"; castle_pkg_install "${CASTLE_PKGS_APT[@]}" || return 1; fi ;;
     esac
     for c in "${CASTLE_ROOT_COMMANDS[@]}"; do
       echo "[+] Profile (root): $c"

@@ -87,13 +87,16 @@ function Enable-DockerKvm {
 function Get-CastleImageTag {
     <#
     .SYNOPSIS
-        castle/<kind>:<12 hex>, the hash of every file in the image's folder,
-        so an edit to the Dockerfile or its scripts makes a new tag.
+        castle/<kind>[-<distro>]:<12 hex>, a hash of the image's folder: its shared
+        files plus its own Dockerfile (Dockerfile.<distro> when there are several),
+        so an edit makes a new tag and only the images it touches are rebuilt.
     #>
-    param ([string]$Kind, [string]$Folder)
+    param ([string]$Kind, [string]$Folder, [string]$Distro)
+    $Own = if ($Distro) { "Dockerfile.$Distro" } else { "Dockerfile" }
     $Sha = [System.Security.Cryptography.SHA256]::Create()
     $Stream = [System.IO.MemoryStream]::new()
-    foreach ($File in Get-ChildItem -LiteralPath $Folder -Recurse -File | Sort-Object { $_.FullName.Substring($Folder.Length) -replace '\\', '/' }) {
+    $Files = Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object { $_.Name -notlike "Dockerfile*" -or $_.Name -eq $Own }
+    foreach ($File in $Files | Sort-Object { $_.FullName.Substring($Folder.Length) -replace '\\', '/' }) {
         $Rel = [System.Text.Encoding]::UTF8.GetBytes(($File.FullName.Substring($Folder.Length) -replace '\\', '/') + "`n")
         $Stream.Write($Rel, 0, $Rel.Length)
         # Line endings do not count: a CRLF checkout builds the same image.
@@ -101,24 +104,27 @@ function Get-CastleImageTag {
         $Stream.Write($Bytes, 0, $Bytes.Length)
     }
     $Hash = -join ($Sha.ComputeHash($Stream.ToArray()) | Select-Object -First 6 | ForEach-Object { $_.ToString("x2") })
-    return "castle/${Kind}:$Hash"
+    $Repo = if ($Distro) { "castle/$Kind-$Distro" } else { "castle/$Kind" }
+    return "${Repo}:$Hash"
 }
 
 function Install-CastleImage {
     <#
     .SYNOPSIS
-        Builds castle/<kind> from docker/<kind> unless that exact version is
-        already in the engine. Returns the tag, or $null when the build failed.
+        Builds castle/<kind>[-<distro>] from docker/<kind> unless that exact
+        version is already in the engine. Returns the tag, or $null when the
+        build failed.
     #>
-    param ([string]$Kind, [string]$Folder, [string[]]$BuildArgs = @())
-    $Tag = Get-CastleImageTag -Kind $Kind -Folder $Folder
+    param ([string]$Kind, [string]$Folder, [string]$Distro, [string[]]$BuildArgs = @())
+    $Tag = Get-CastleImageTag -Kind $Kind -Folder $Folder -Distro $Distro
     if ((Invoke-Docker image inspect $Tag).ExitCode -eq 0) {
         Write-Host "  [OK] Image $Tag is built." -ForegroundColor Green
         return $Tag
     }
-    $Note = if ($Kind -eq "android") { "the SDK and a system image, ~3 GB, 5-15 min" } else { "Debian + X server, ~250 MB, a minute or two" }
+    $Note = if ($Kind -eq "android") { "the SDK and a system image, ~3 GB, 5-15 min" } else { "$(if ($Distro) { $Distro } else { 'Linux' }) + an X server, a minute or two" }
     Write-Host "  [DOCKER] Building $Tag once ($Note)..." -ForegroundColor Cyan
-    $Build = @("build", "--progress", "plain", "-t", $Tag, "-t", "castle/${Kind}:latest")
+    $Build = @("build", "--progress", "plain", "-t", $Tag, "-t", "$($Tag.Split(':')[0]):latest")
+    if ($Distro) { $Build += @("-f", (Join-Path $Folder "Dockerfile.$Distro")) }
     foreach ($B in $BuildArgs) { $Build += @("--build-arg", $B) }
     $Build += $Folder
     $R = Invoke-Quiet docker $Build -Stream

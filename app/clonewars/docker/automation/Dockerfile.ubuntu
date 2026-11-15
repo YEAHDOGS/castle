@@ -1,0 +1,25 @@
+# Castle automation container (Ubuntu 24.04 LTS). See Dockerfile.debian for what
+# every automation image carries and why; this is the same on Ubuntu.
+# Ubuntu ships Firefox only as a snap, which a container cannot run: a setup
+# that needs a browser should use the Debian container (firefox-esr) or bring
+# its own (Mozilla's apt repository, Chromium from a PPA, a Playwright browser).
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        xvfb openbox xdotool x11-xserver-utils x11-utils x11-apps xterm netpbm \
+        sudo ca-certificates curl procps psmisc libarchive-tools \
+        python3 python3-venv fonts-dejavu-core dbus-x11 libgl1-mesa-dri \
+        pulseaudio pulseaudio-utils x11vnc novnc python3-websockify \
+    && rm -rf /var/lib/apt/lists/*
+
+# The image comes with an "ubuntu" user on uid 1000; Castle's desktop user takes its place.
+RUN userdel -r ubuntu 2>/dev/null; useradd -m -u 1000 -s /bin/bash castle
+
+COPY castle-container-init castle-screen castle-live /usr/local/bin/
+RUN cd /usr/local/bin && sed -i 's/\r$//' castle-container-init castle-screen castle-live \
+    && chmod 755 castle-container-init castle-screen castle-live
+
+LABEL net.wearedogs.castle.kind="automation" net.wearedogs.castle.distro="ubuntu"
+ENTRYPOINT ["/usr/local/bin/castle-container-init"]

@@ -1,0 +1,25 @@
+# Castle automation container (Fedora). See Dockerfile.debian for what every
+# automation image carries and why; this is the same on Fedora, with dnf.
+# castle-lib.sh installs a profile's packages with dnf here, using the same
+# names it would give apt: most match, some (python3-venv, firefox-esr) do not.
+# Fedora 45, the current release (42's image no longer starts: it is past its end of life).
+FROM fedora:45
+
+ENV LANG=C.UTF-8
+
+# PulseAudio, not PipeWire: one daemon with a null sink is all a container needs.
+RUN dnf install -y --setopt=install_weak_deps=False --allowerasing \
+        xorg-x11-server-Xvfb openbox xdotool xset xrandr xdpyinfo xwd xterm netpbm-progs \
+        sudo ca-certificates curl procps-ng psmisc bsdtar which \
+        python3 dejavu-sans-fonts mesa-dri-drivers \
+        pulseaudio pulseaudio-utils x11vnc novnc python3-websockify \
+    && dnf clean all
+
+RUN useradd -m -u 1000 -s /bin/bash castle
+
+COPY castle-container-init castle-screen castle-live /usr/local/bin/
+RUN cd /usr/local/bin && sed -i 's/\r$//' castle-container-init castle-screen castle-live \
+    && chmod 755 castle-container-init castle-screen castle-live
+
+LABEL net.wearedogs.castle.kind="automation" net.wearedogs.castle.distro="fedora"
+ENTRYPOINT ["/usr/local/bin/castle-container-init"]
