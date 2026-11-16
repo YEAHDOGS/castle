@@ -10,7 +10,8 @@
 // on every push, so a push to master is the deploy and other branches get preview addresses.
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { cpSync, existsSync, rmSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,5 +40,18 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 cpSync(landing, out, { recursive: true });
 cpSync(showcase, join(out, 'demo'), { recursive: true });
+
+// Browsers keep the landing page's own CSS and JS for hours (Cloudflare sends max-age=14400),
+// so a deploy could pair new HTML with yesterday's stylesheet. Each page asks for them as
+// name?v=<content hash> instead: a new file is a new address, an unchanged one stays cached.
+for (const page of readdirSync(out).filter((f) => f.endsWith('.html'))) {
+  const path = join(out, page);
+  const html = readFileSync(path, 'utf8').replace(/(href|src)="\.\/([\w.-]+\.(?:css|js))"/g, (whole, attr, file) => {
+    if (!existsSync(join(out, file))) return whole;
+    const hash = createHash('sha256').update(readFileSync(join(out, file))).digest('hex').slice(0, 10);
+    return `${attr}="./${file}?v=${hash}"`;
+  });
+  writeFileSync(path, html);
+}
 console.log(`build-site: ${out} is ready (landing at /, the demo at /demo/)`);
 console.log('deploy:     push to master (Cloudflare Pages builds it from git)');
