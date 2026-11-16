@@ -28,6 +28,7 @@
   import AskDialog from './components/AskDialog.svelte';
   import PadHints from './components/PadHints.svelte';
   import ShowcaseBanner from './components/ShowcaseBanner.svelte';
+  import Tour from './components/tour/Tour.svelte';
   import { SHOWCASE } from './lib/showcase.js';
 
   const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, theater: TheaterSection, comms: CommsSection, contacts: ContactsSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
@@ -59,3 +60,5 @@
 <Toasts />
 <PadHints />
 {#if SHOWCASE}<ShowcaseBanner />{/if}
+<!-- The first-run tour: on by itself in the showcase, from Settings anywhere else. -->
+<Tour />

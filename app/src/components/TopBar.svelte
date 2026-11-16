@@ -26,7 +26,7 @@
 </script>
 
 <!-- pr-16 keeps the bar clear of the section wheel button in the corner -->
-<header class="flex h-16 shrink-0 items-center gap-2 border-b border-hairline bg-black/40 pl-3 pr-16 md:gap-3 md:pl-5">
+<header class="flex h-16 shrink-0 items-center gap-2 border-b border-hairline bg-black/40 pl-3 pr-16 md:gap-3 md:pl-5" data-tour="topbar">
   <button class="md:hidden" onclick={() => (shell.userMenuOpen = true)} aria-label={`Signed in as ${shell.user.name}. Change person`}>
     <Avatar person={shell.user} />
   </button>

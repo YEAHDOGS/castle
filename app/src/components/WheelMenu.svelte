@@ -245,6 +245,7 @@
   aria-label={shell.wheelOpen ? 'Close the section wheel' : `Sections. Now in ${current.label}. Scroll to turn the wheel, hold to go Home`}
   title="Click, scroll or Shift+Enter for sections · hold for Home"
   data-nav-skip
+  data-tour="wheel"
   aria-expanded={shell.wheelOpen}
   aria-haspopup="dialog"
 >

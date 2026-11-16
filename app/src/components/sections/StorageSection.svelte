@@ -101,7 +101,7 @@
 </div>
 
 <!-- phone tab rail -->
-<nav class="glass fixed inset-x-0 bottom-[var(--strip)] z-40 flex border-x-0 border-b-0 md:hidden" aria-label="Drive views">
+<nav class="glass fixed inset-x-0 bottom-[var(--strip)] z-40 flex border-x-0 border-b-0 md:hidden" aria-label="Drive views" data-tour="tabs">
   {#each VIEWS.filter((v) => v.id !== 'computer' || store.computer) as item (item.id)}
     {@const Icon = item.icon}
     {@const active = store.view === item.id}

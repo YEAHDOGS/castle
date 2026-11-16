@@ -55,7 +55,7 @@
   });
 </script>
 
-<aside class="scanlines flex h-full w-16 flex-col border-r border-hairline bg-black/40 lg:w-60">
+<aside class="scanlines flex h-full w-16 flex-col border-r border-hairline bg-black/40 lg:w-60" data-tour="sidebar">
   <!-- Castle mark + who is signed in: opens the people menu -->
   <button
     class="expo t-hover group flex items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.03] lg:px-5"
