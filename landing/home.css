@@ -115,8 +115,11 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
 .head-nav { display: flex; gap: 1.6rem; margin-left: auto; }
 .head-nav a { color: var(--dim); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.2s; }
 .head-nav a:hover { color: var(--text); }
-.head-cta { margin-left: 0.5rem; }
-@media (max-width: 900px) { .head-nav { display: none; } .head-cta { margin-left: auto; } }
+.head-demo { margin-left: 0.5rem; }
+.head-demo svg { width: 0.8rem; height: 0.8rem; }
+.head-cta { margin-left: 0; }
+@media (max-width: 900px) { .head-nav { display: none; } .head-demo { margin-left: auto; } }
+@media (max-width: 420px) { .head-row { gap: 0.6rem; } .head-cta, .head-demo { padding-inline: 0.7rem; font-size: 0.78rem; } }
 
 /* ---- hero ---- */
 .hero { padding: clamp(2.5rem, 7vw, 5.5rem) 0 clamp(3rem, 7vw, 5rem); }
@@ -124,12 +127,15 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
 /* the mark: the measured drawing, and under it the pen sketch it came from. Hover (or tap, which
    home.js turns into .is-sketch) crossfades one into the other; both are hollow line drawings in
    the page's text colour, so they sit on anything. */
+.h1-row { display: inline-flex; align-items: flex-end; gap: 0.22em; }
 .mark {
   position: relative;
   display: block;
-  width: clamp(88px, 11vw, 140px);
-  aspect-ratio: 300 / 420;
-  margin: 0 0 1.5rem -0.35rem;
+  font: inherit; /* buttons do not inherit the h1 size on their own, and the mark is sized in em */
+  flex: none;
+  width: 0.72em;
+  height: 1.008em; /* 300:420, so the ground line of the drawing lands on the baseline of CASTLE */
+  margin: 0 0 -0.09em -0.04em;
   padding: 0;
   border: 0;
   background: none;
@@ -147,7 +153,6 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
   .mark:hover .mark-sketch { opacity: 1; transform: none; }
 }
 .mark:focus-visible { outline-offset: 8px; }
-@media (max-width: 960px) { .mark { width: clamp(80px, 18vw, 110px); margin-bottom: 1.2rem; } }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
 @media (max-width: 960px) { .hero-grid { grid-template-columns: 1fr; } }
 .kick {
