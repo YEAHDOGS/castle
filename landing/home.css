@@ -149,14 +149,15 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
 .proof li::before { content: ""; width: 5px; height: 5px; background: var(--bridge); }
 @media (max-width: 560px) { .hero-ctas .btn { flex: 1 1 100%; } }
 
-/* the radar: a live motion-tracker sweep, drawn on a canvas by home.js */
-.radar-card {
+/* the hero card: the box at a glance, storage used and what it backed up tonight */
+.hud-card {
   position: relative;
+  margin: 0;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(0, 215, 255, 0.05), rgba(0, 0, 0, 0) 60%), var(--panel);
-  padding: 1rem;
+  padding: 1.1rem;
 }
-.radar-card::before, .radar-card::after, .hud::before, .hud::after {
+.hud-card::before, .hud-card::after, .hud::before, .hud::after {
   content: "";
   position: absolute;
   width: 14px;
@@ -165,16 +166,37 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
   border-style: solid;
   pointer-events: none;
 }
-.radar-card::before, .hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
-.radar-card::after, .hud::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
-.radar-top, .radar-bottom { display: flex; justify-content: space-between; align-items: center; gap: 1rem; color: var(--faint); }
-.radar-top .live { color: var(--live); display: inline-flex; align-items: center; gap: 0.5rem; }
-.radar-canvas { display: block; width: 100%; aspect-ratio: 4 / 3; margin: 0.6rem 0; }
-.radar-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
-.radar-stats div { padding: 0.8rem 0.2rem 0.2rem; }
-.radar-stats div + div { border-left: 1px solid var(--line); padding-left: 0.9rem; }
-.radar-stats b { display: block; font-size: 1.7rem; font-weight: 800; color: var(--chiral); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.radar-stats span { color: var(--faint); }
+.hud-card::before, .hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.hud-card::after, .hud::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+.hud-top, .hud-bottom { display: flex; justify-content: space-between; align-items: center; gap: 1rem; color: var(--faint); }
+.hud-bottom { margin-top: 0.9rem; }
+.hud-bottom a { color: var(--dim); }
+.hud-top .live { color: var(--live); display: inline-flex; align-items: center; gap: 0.5rem; }
+.meter-head { display: flex; align-items: baseline; gap: 0.7rem; margin-top: 1.2rem; }
+.meter-head b { font-size: 2.2rem; font-weight: 800; font-stretch: 112%; line-height: 1; }
+.meter-head span { color: var(--faint); }
+.meter { display: flex; height: 10px; margin-top: 0.8rem; background: rgba(255, 255, 255, 0.06); }
+.meter i { display: block; height: 100%; }
+.meter i + i { border-left: 2px solid var(--panel); }
+.m-photo { background: var(--chiral); }
+.m-media { background: var(--bridge); }
+.m-files { background: var(--live); }
+.m-backup { background: #c9a6ff; }
+.meter-key { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; margin: 0.7rem 0 0; padding: 0; list-style: none; color: var(--faint); font-size: 0.62rem; }
+.meter-key li { display: flex; align-items: center; gap: 0.45rem; }
+.meter-key i { width: 8px; height: 8px; }
+.feed-title { margin: 1.4rem 0 0.4rem; color: var(--faint); }
+.feed { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.feed li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: 0.7rem; align-items: center; padding: 0.7rem 0; border-bottom: 1px solid var(--line); }
+.feed svg { width: 1.2rem; height: 1.2rem; color: var(--bridge); }
+.feed span { color: var(--faint); font-size: 0.88rem; line-height: 1.35; min-width: 0; }
+.feed b { display: block; color: var(--text); font-weight: 650; font-size: 0.95rem; }
+.feed time { color: var(--live); font-size: 0.6rem; white-space: nowrap; }
+.hud-stats { display: grid; grid-template-columns: repeat(3, 1fr); }
+.hud-stats div { padding: 0.8rem 0.2rem 0.2rem; }
+.hud-stats div + div { border-left: 1px solid var(--line); padding-left: 0.9rem; }
+.hud-stats b { display: block; font-size: 1.7rem; font-weight: 800; color: var(--chiral); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hud-stats span { color: var(--faint); }
 
 /* ---- ticker ---- */
 .ticker { border-block: 1px solid var(--line); overflow: hidden; background: rgba(255, 255, 255, 0.015); }
@@ -211,8 +233,34 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
 .phone img { border-radius: 21px; }
 .frames-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; color: var(--faint); }
 
-/* ---- the radar, up close ---- */
-.radar-section { position: relative; border-block: 1px solid var(--line); background: radial-gradient(50rem 30rem at 20% 50%, rgba(0, 215, 255, 0.06), transparent 70%), var(--void); }
+/* what Castle replaces */
+.replaces { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1.6rem; }
+.replaces span { padding: 0.4rem 0.7rem; border: 1px solid var(--line); color: var(--dim); text-decoration: line-through; text-decoration-color: rgba(255, 106, 0, 0.7); }
+.replaces span:first-child { border: 0; padding-left: 0; color: var(--faint); text-decoration: none; }
+
+/* ---- tinted sections: backups, the router ---- */
+.tint-section { position: relative; border-block: 1px solid var(--line); background: radial-gradient(50rem 30rem at 20% 50%, rgba(0, 215, 255, 0.06), transparent 70%), var(--void); }
+.fine { margin: 1.4rem 0 0; color: var(--faint); font-size: 0.9rem; max-width: 40rem; }
+.fine .status { white-space: nowrap; }
+
+/* ---- the email outage ---- */
+.outage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: clamp(2rem, 6vw, 4.5rem); align-items: start; }
+@media (max-width: 960px) { .outage { grid-template-columns: 1fr; } }
+.outage h2 { font-size: clamp(1.9rem, 4.4vw, 3.2rem); }
+.outage h2 .accent { display: block; margin-top: 0.4rem; }
+.status-board { position: sticky; top: 6rem; }
+.board { margin: 1rem 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.board li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.95rem 0; border-bottom: 1px solid var(--line); color: var(--dim); }
+.board .down { color: #ff5c5c; }
+.board .up { color: var(--live); display: inline-flex; align-items: center; gap: 0.5rem; }
+.board li.ours { color: var(--text); font-weight: 700; }
+
+/* ---- Wi-Fi sensing, a small note low on the page ---- */
+.sensing { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; padding: clamp(1.4rem, 4vw, 2rem); border: 1px solid var(--line); background: var(--panel); }
+.sensing .eyebrow { margin-bottom: 0.6rem; }
+.sensing p:not(.eyebrow) { margin: 0.6rem 0 0; color: var(--dim); max-width: 48rem; }
+.sensing .status { white-space: nowrap; }
+@media (max-width: 640px) { .sensing { flex-direction: column; gap: 1rem; } }
 .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(2rem, 6vw, 5rem); align-items: center; }
 .split.flip > :first-child { order: 2; }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; } .split.flip > :first-child { order: 0; } }
@@ -221,14 +269,6 @@ h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.005em; font-stretch
 .ticks li { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.6rem; color: var(--dim); }
 .ticks li svg { width: 1.2rem; height: 1.2rem; color: var(--bridge); margin-top: 0.2rem; }
 .ticks b { color: var(--text); font-weight: 650; }
-.parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 2rem; }
-.parts div { background: var(--panel); padding: 1rem; }
-.parts b { display: block; font-size: 1.05rem; }
-.parts span { color: var(--faint); }
-@media (max-width: 560px) { .parts { grid-template-columns: 1fr; } }
-.radar-shots { position: relative; }
-.radar-shots .wide { border: 1px solid var(--line-strong); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6); }
-.radar-shots .phone { right: -0.5rem; bottom: -2rem; width: clamp(120px, 34%, 210px); }
 
 /* ---- every feature ---- */
 .groups { display: grid; gap: clamp(2.5rem, 6vw, 4rem); }
