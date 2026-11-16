@@ -92,12 +92,12 @@
 
   <main id="content">
     <!-- ================= HERO ================= -->
-    <section class="hero" aria-labelledby="hero-h">
+    <section class="hero screen" aria-labelledby="hero-h">
       <div class="wrap hero-grid">
         <div>
           <p class="kick micro"><span class="dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
           <h1 id="hero-h">CASTLE<span class="tag">Your own cloud. In your house.</span></h1>
-          <p class="lede">Castle is cloud storage you own. One box keeps your family's files, photos and videos, backs up every phone and computer on its own, keeps every text, call, email and contact you've ever had, runs your email, streams your films and shows to every screen, and runs your home network. No storage plan to rent, and nobody else's servers in the middle.</p>
+          <p class="lede">Cloud storage you own. One box at home keeps your family's files and photos, backs up every text, call, email and contact on its own, runs your email, streams to every TV, and runs your network. No storage plan, and nobody else's servers.</p>
           <div class="hero-ctas">
             <a class="btn btn-primary" href="./demo/"><svg aria-hidden="true"><use href="#i-play"/></svg>Try the live demo</a>
             <a class="btn btn-ghost" href="#waitlist">Join the waitlist<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
@@ -147,475 +147,207 @@
     <div class="ticker micro" aria-label="Everything in Castle">
       <div class="ticker-track">
         <ul>
-          <li>Cloud storage</li><li>Photo backup</li><li>Automatic backups</li><li>Texts · Calls · Email</li><li>Contacts</li><li>Your own email server</li><li>Share photos</li><li>Host websites</li><li>Streaming to every TV</li><li>Modem and router</li><li>Ad blocking</li><li>Private profiles</li><li>Tailscale</li><li>WireGuard</li><li>Steam cache</li><li>Arcade</li><li>Clones</li><li>DOGS AI</li><li>Open source</li>
+          <li>Cloud storage</li><li>Photo backup</li><li>Texts · Calls · Email</li><li>Contacts</li><li>Your own email server</li><li>Sharing</li><li>Streaming to every TV</li><li>Modem and router</li><li>Ad blocking</li><li>Private profiles</li><li>Steam cache</li><li>Arcade</li><li>Clones</li><li>DOGS AI</li>
         </ul>
         <ul aria-hidden="true">
-          <li>Cloud storage</li><li>Photo backup</li><li>Automatic backups</li><li>Texts · Calls · Email</li><li>Contacts</li><li>Your own email server</li><li>Share photos</li><li>Host websites</li><li>Streaming to every TV</li><li>Modem and router</li><li>Ad blocking</li><li>Private profiles</li><li>Tailscale</li><li>WireGuard</li><li>Steam cache</li><li>Arcade</li><li>Clones</li><li>DOGS AI</li><li>Open source</li>
+          <li>Cloud storage</li><li>Photo backup</li><li>Texts · Calls · Email</li><li>Contacts</li><li>Your own email server</li><li>Sharing</li><li>Streaming to every TV</li><li>Modem and router</li><li>Ad blocking</li><li>Private profiles</li><li>Steam cache</li><li>Arcade</li><li>Clones</li><li>DOGS AI</li>
         </ul>
       </div>
     </div>
 
     <!-- ================= CLOUD ================= -->
-    <section class="section" id="cloud" aria-labelledby="cloud-h">
-      <div class="wrap">
-        <div class="section-head reveal">
+    <section class="section screen" id="cloud" aria-labelledby="cloud-h">
+      <div class="wrap split wide-right reveal">
+        <div>
           <p class="eyebrow micro">Cloud storage, at home</p>
           <h2 id="cloud-h">Stop renting your own memories.</h2>
-          <p class="lede">Every photo of your kids, every scanned document, every file you'd hate to lose sits on someone else's computer, behind a monthly plan that grows as your life does. Castle is that cloud, moved into your house. It sits on your shelf, answers only to your family, and works from every phone, tablet and computer you own, at home or away.</p>
+          <p class="lede">Castle is the cloud, moved into your house. It answers only to your family and works on every phone and computer you own, at home or away.</p>
           <div class="replaces micro" aria-label="What Castle replaces">
-            <span class="micro">Instead of</span>
-            <span>Google Drive</span><span>Google Photos</span><span>iCloud</span><span>Dropbox</span><span>OneDrive</span>
+            <span>Instead of</span><span>Google Drive</span><span>Google Photos</span><span>iCloud</span><span>Dropbox</span><span>OneDrive</span>
+          </div>
+          <div class="mini">
+            <div><svg aria-hidden="true"><use href="#i-drive"/></svg><b>A drive for the house<i class="st">Demo</i></b><span>Everyone's files, each in their own space.</span></div>
+            <div><svg aria-hidden="true"><use href="#i-image"/></svg><b>Phone photos<i class="st dev">Building</i></b><span>Sent home on their own, full quality.</span></div>
+            <div><svg aria-hidden="true"><use href="#i-server"/></svg><b>No NAS homework<i class="st">Demo</i></b><span>Apps connect directly. Samba if you want it.</span></div>
+            <div><svg aria-hidden="true"><use href="#i-wifi"/></svg><b>Yours anywhere<i class="st">Demo</i></b><span>Tailscale or WireGuard. Nothing opened.</span></div>
+            <div><svg aria-hidden="true"><use href="#i-shield"/></svg><b>Drives that warn you<i class="st">Demo</i></b><span>A failing disk flagged before it fails.</span></div>
+            <div><svg aria-hidden="true"><use href="#i-plus"/></svg><b>Room to grow<i class="st road">Roadmap</i></b><span>Add a drive, not a bigger plan.</span></div>
           </div>
         </div>
-        <div class="frames reveal">
+        <div class="frames">
           <div class="browser">
             <div class="browser-bar"><i></i><i></i><i></i><span class="micro">castle.dogs.red/demo</span></div>
             <img src="./shots/storage.webp" alt="Castle's Storage screen: each person's files, photos and backups, with search and previews" width="1440" height="900" loading="lazy">
           </div>
-          <div class="phone"><img src="./shots/phone-home.webp" alt="Castle's Home screen on a phone, with square tiles for each section" width="780" height="1688" loading="lazy"></div>
-        </div>
-        <div class="frames-caption micro">
-          <span>Storage · the real app, on sample data</span>
-          <a class="btn btn-ghost btn-sm" href="./demo/">Open the demo<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
-        </div>
-        <div class="features reveal" style="margin-top:2.5rem">
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-drive"/></svg><span class="status micro">In the demo</span></div>
-            <h3>A drive for the whole house</h3>
-            <p>Files, photos and backups for everyone at home, each person in their own space. Search, previews, stars, recent files and a trash you can take things back out of.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-image"/></svg><span class="status dev micro">In development</span></div>
-            <h3>Every photo, off every phone</h3>
-            <p>Phones send new photos and videos to Castle on their own, at full quality. Free up your phone without deleting a single memory.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-server"/></svg><span class="status micro">In the demo</span></div>
-            <h3>A NAS without the homework</h3>
-            <p>The Castle app talks to the box directly, on Windows, Linux, Android and iOS, so nobody has to map a network drive. For anyone who wants one, Samba shares the same folders.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-wifi"/></svg><span class="status micro">In the demo</span></div>
-            <h3>Yours from anywhere</h3>
-            <p>Away from home, your devices reach the box over Tailscale or WireGuard: a private, encrypted path that only your devices can use, with nothing opened on the router.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="status micro">In the demo</span></div>
-            <h3>Drives that warn you first</h3>
-            <p>Castle watches every disk's health and power-on hours, and tells you a drive is failing before it takes anything with it.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-plus"/></svg><span class="status guide micro">On the roadmap</span></div>
-            <h3>Room to grow</h3>
-            <p>Run out of space and add a drive. No bigger plan to buy, no price that goes up every year.</p>
-          </article>
+          <div class="phone"><img src="./shots/phone-home.webp" alt="Castle's Home screen on a phone" width="780" height="1688" loading="lazy"></div>
         </div>
       </div>
     </section>
 
     <!-- ================= BACKUPS ================= -->
-    <section class="section tint-section" id="backups" aria-labelledby="backups-h">
-      <div class="wrap">
-        <div class="spot split reveal">
-          <div>
-            <p class="eyebrow micro">Automatic backups</p>
-            <h2 id="backups-h">Never lose a contact again.</h2>
-            <p class="lede">A dropped phone, a dead laptop, an account you got locked out of: that's how families lose years of texts, the last voicemail from someone they loved, and the number of the plumber who actually showed up. Castle backs it all up on its own, every night, and keeps every version.</p>
-            <ul class="ticks">
-              <li><svg aria-hidden="true"><use href="#i-chat"/></svg><span><b>Every text and picture message.</b> SMS, MMS, group chats, plus Discord and Facebook Messenger, kept per person and searchable.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-phone"/></svg><span><b>Every call.</b> The full call log, and recordings if you choose to make them, filed with the call they belong to.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span><b>Every email.</b> From Gmail, Outlook, Apple Mail or Thunderbird, kept on your box even if the account goes away.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-book"/></svg><span><b>Every contact.</b> Your own white pages, with pictures, birthdays and notes. Duplicates found and merged, and each person matched to their texts, calls and email.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-laptop"/></svg><span><b>Every computer.</b> Documents, desktops and photo folders, copied to the box as they change.</span></li>
-            </ul>
-            <div class="flow micro" aria-label="How a backup moves"><span>Your phone</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span class="hot">Castle, at home</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Your next phone</span></div>
-            <p class="fine">Castle reads texts, calls, email and chats today from the backups and exports you hand it, and only adds what's new each time. Backups that run on their own, and restoring to a new phone, are <span class="status dev micro">In development</span></p>
-          </div>
-          <img class="shot" src="./shots/comms.webp" alt="Castle's Comms screen: conversations with each person across texts, calls and email" width="1440" height="900" loading="lazy">
+    <section class="section screen tint-section" id="backups" aria-labelledby="backups-h">
+      <div class="wrap split wide-right flip reveal">
+        <div>
+          <p class="eyebrow micro">Automatic backups</p>
+          <h2 id="backups-h">Never lose a contact again.</h2>
+          <p class="lede">A dropped phone or a locked account can take years of texts and voicemails with it. Castle backs it all up every night and keeps every version.</p>
+          <ul class="ticks tight">
+            <li><svg aria-hidden="true"><use href="#i-chat"/></svg><span><b>Texts and picture messages.</b> SMS, MMS, Discord, Messenger.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-phone"/></svg><span><b>Calls.</b> The full log, and recordings if you make them.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span><b>Email.</b> Gmail, Outlook, Apple Mail, Thunderbird.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-book"/></svg><span><b>Contacts.</b> Duplicates merged, matched to every message.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-laptop"/></svg><span><b>Computers.</b> Documents and photos, as they change.</span></li>
+          </ul>
+          <p class="fine">Imports work in the demo today. Nightly automatic backup and restoring to a new phone: <i class="st dev">Building</i></p>
         </div>
+        <img class="shot" src="./shots/comms.webp" alt="Castle's Comms screen: conversations with each person across texts, calls and email" width="1440" height="900" loading="lazy">
       </div>
     </section>
 
     <!-- ================= EMAIL ================= -->
-    <section class="section" id="email" aria-labelledby="email-h">
-      <div class="wrap">
-        <div class="outage reveal">
-          <div>
-            <p class="eyebrow micro">Your own email server</p>
-            <h2 id="email-h">On November 12, Outlook went dark. <span class="accent">A Castle would have kept your mail coming.</span></h2>
-            <p class="lede">On Thursday, November 12, Microsoft's email went down around the world. Outlook, Exchange Online, Teams and SharePoint stopped answering for businesses, schools, hospitals and governments, Downdetector took more than 130,000 reports about Outlook alone, and Microsoft had to give mail up to 48 hours to get through. It wasn't a hack. Microsoft said its servers were overloaded, and millions of people found out that their inbox was never really theirs.</p>
-            <p class="lede">Castle runs its own mail server, on the box in your house. Your address, your domain, your inbox, on your hardware. When a giant has a bad day, your mail doesn't go through the giant, so it keeps arriving. And because the same box keeps your texts, calls and chats, every way your family talks lives in one place you own.</p>
-            <ul class="ticks">
-              <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span><b>Your own address</b> on your own domain, for everyone in the family.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-down"/></svg><span><b>Bring your old mail with you.</b> Years of Gmail or Outlook, moved onto the box and searchable.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-eyeoff"/></svg><span><b>Nobody reading over your shoulder.</b> No ads built from your inbox, and no company deciding when you can open it.</span></li>
-            </ul>
-            <p style="margin-top:1.4rem"><span class="wip-chip micro">In development · the mail server is being built</span></p>
+    <section class="section screen" id="email" aria-labelledby="email-h">
+      <div class="wrap split reveal">
+        <div>
+          <p class="eyebrow micro">Your own email server</p>
+          <h2 id="email-h">Outlook went dark. <span class="accent">Castle wouldn't have.</span></h2>
+          <p class="lede">On November 12, Outlook, Exchange, Teams and SharePoint went down worldwide, with mail delayed up to 48 hours. Castle runs its own mail server at home, so when a giant has a bad day, your mail doesn't go through the giant.</p>
+          <ul class="ticks tight">
+            <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span><b>Your own address</b> on your own domain, for the whole family.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-down"/></svg><span><b>Bring your old mail.</b> Years of Gmail or Outlook, searchable.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-eyeoff"/></svg><span><b>Nobody reading it.</b> No ads built from your inbox.</span></li>
+          </ul>
+        </div>
+        <figure class="hud-card" aria-label="Which services were down during the November 12 outage, next to a Castle">
+          <div class="hud-top micro"><span>Thursday, November 12, 2026</span><span>Status</span></div>
+          <ul class="board">
+            <li><span>Outlook</span><b class="down micro">Down</b></li>
+            <li><span>Exchange Online</span><b class="down micro">Down</b></li>
+            <li><span>Microsoft Teams</span><b class="down micro">Down</b></li>
+            <li><span>SharePoint Online</span><b class="down micro">Down</b></li>
+            <li class="ours"><span>Your Castle</span><b class="up micro"><span class="dot" aria-hidden="true"></span>Delivering</b></li>
+          </ul>
+          <div class="hud-stats">
+            <div><b>130K+</b><span class="micro">Outage reports</span></div>
+            <div><b>48 h</b><span class="micro">Mail delay window</span></div>
+            <div><b>4</b><span class="micro">Services down</span></div>
           </div>
-          <figure class="hud-card status-board" aria-label="Which services were down during the November 12 outage, next to a Castle">
-            <div class="hud-top micro"><span>Thursday, November 12, 2026</span><span>Status</span></div>
-            <ul class="board">
-              <li><span>Outlook</span><b class="down micro">Down</b></li>
-              <li><span>Exchange Online</span><b class="down micro">Down</b></li>
-              <li><span>Microsoft Teams</span><b class="down micro">Down</b></li>
-              <li><span>SharePoint Online</span><b class="down micro">Down</b></li>
-              <li class="ours"><span>Your Castle</span><b class="up micro"><span class="dot" aria-hidden="true"></span>Delivering</b></li>
-            </ul>
-            <figcaption class="hud-bottom micro">
-              <span>Sources: <a href="https://www.cnn.com/2026/11/12/tech/microsoft-outage-cripples-office-workers-nationwide">CNN</a>, <a href="https://www.npr.org/2026/11/12/nx-s1-6039343/is-outlook-down-widespread-outage-hits-microsoft-email-and-other-apps">NPR</a>, <a href="https://abcnews.com/US/outlook-down-microsoft-outage-reported-mail/story?id=138088203">ABC News</a></span>
-            </figcaption>
-          </figure>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= SHARING ================= -->
-    <section class="section" id="sharing" aria-labelledby="sharing-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="section-head reveal">
-          <p class="eyebrow micro">Sharing</p>
-          <h2 id="sharing-h">Share with anyone. <span class="cyan">Keep it in your house.</span></h2>
-          <p class="lede">Send grandma the album from the weekend, hand a friend a folder, or put your own website online, all straight from your box. They see what you share. The files never leave your home.</p>
-        </div>
-        <div class="features reveal">
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-image"/></svg><span class="status guide micro">On the roadmap</span></div>
-            <h3>Share photos and albums</h3>
-            <p>Pick the pictures, send a link. Family and friends see them anywhere in the world, without an account and without anyone uploading anything to a stranger's servers.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-share"/></svg><span class="status guide micro">On the roadmap</span></div>
-            <h3>Share files and folders</h3>
-            <p>Big videos, school projects, tax papers for the accountant: share one file or a whole folder, and take the link back whenever you want.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-code"/></svg><span class="status guide micro">On the roadmap</span></div>
-            <h3>Host your own websites</h3>
-            <p>A family page, a portfolio, a small shop or an app you built: run it from your Castle and put it on the internet, with no hosting bill.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-globe"/></svg><span class="status guide micro">On the roadmap</span></div>
-            <h3>Your media, for your friends</h3>
-            <p>Let the people you choose stream from your library, wherever they live, while every file stays on your network.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= SECURE ================= -->
-    <section class="section" id="secure" aria-labelledby="secure-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="section-head reveal">
-          <p class="eyebrow micro">Secure storage</p>
-          <h2 id="secure-h">Your data stays in your house, <span class="accent">locked to you.</span></h2>
-          <p class="lede">Castle is storage you own outright. It sits on your network, answers only to the people you let in, and writes down everything that happens to it.</p>
-        </div>
-        <div class="features reveal">
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-lock"/></svg><span class="status dev micro">In development</span></div>
-            <h3>Encrypted storage</h3>
-            <p>Castle encrypts files itself, per person, so a stolen disk, or another account on the box, reads nothing.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-wifi"/></svg><span class="status micro">In the demo</span></div>
-            <h3>Encrypted on the way in</h3>
-            <p>Away from home, your devices reach the box over Tailscale or WireGuard. Nothing is opened on your router and nothing travels in the clear.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-users"/></svg><span class="status dev micro">In development</span></div>
-            <h3>Private profiles, strict roles</h3>
-            <p>Admin, member, child and guest. You can't see their data and they can't see yours, unless you choose to share it. Locked profiles open with a PIN.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="status micro">In the demo</span></div>
-            <h3>Every access written down</h3>
-            <p>An activity record of who did what, and when, that you can check has not been rewritten. Plus security checks and audits of the box itself.</p>
-          </article>
-          <article class="feature">
-            <div class="feature-top"><svg aria-hidden="true"><use href="#i-cloudoff"/></svg><span class="status micro">In the demo</span></div>
-            <h3>No cloud in the middle</h3>
-            <p>No account with us and no copy on someone else's servers. Your files, messages and backups live on your hardware, on your network.</p>
-          </article>
-        </div>
+          <figcaption class="hud-bottom micro">
+            <span>Sources: <a href="https://www.cnn.com/2026/11/12/tech/microsoft-outage-cripples-office-workers-nationwide">CNN</a>, <a href="https://www.npr.org/2026/11/12/nx-s1-6039343/is-outlook-down-widespread-outage-hits-microsoft-email-and-other-apps">NPR</a>, <a href="https://abcnews.com/US/outlook-down-microsoft-outage-reported-mail/story?id=138088203">ABC</a></span>
+            <span>Castle mail server: <i class="st dev">Building</i></span>
+          </figcaption>
+        </figure>
       </div>
     </section>
 
     <!-- ================= NETWORK ================= -->
-    <section class="section tint-section" id="network" aria-labelledby="network-h">
-      <div class="wrap">
-        <div class="spot split flip reveal">
-          <div>
-            <p class="eyebrow micro">Modem and router</p>
-            <h2 id="network-h">The router for the 21st century. <span class="cyan">Built for a family.</span></h2>
-            <p class="lede">The box your internet comes through decides what every phone, TV and laptop in the house can do, and most of them are a blinking plastic brick with a settings page from 2009. Castle is a modular, expandable modem and router that anyone in the family can understand, with everything a power user would spend a weekend setting up already built in.</p>
-            <ul class="ticks">
-              <li><svg aria-hidden="true"><use href="#i-router"/></svg><span><b>Modem, router and Wi&#8209;Fi in one.</b> Your internet comes into Castle and goes out to the whole house from there.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-eyeoff"/></svg><span><b>Ads and trackers blocked</b> for every device on the network, even the TV.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-users"/></svg><span><b>Every device, by name and by person.</b> See what's online and how much it's using. Bedtimes and kid-safe browsing per profile.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-shield"/></svg><span><b>A firewall that answers to you,</b> explained in plain words instead of port numbers.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-globe"/></svg><span><b>A private way home</b> over Tailscale or WireGuard, set up for you.</span></li>
-              <li><svg aria-hidden="true"><use href="#i-puzzle"/></svg><span><b>Modular.</b> Add drives, more compute or new radios as the house grows, to the box you already own.</span></li>
-            </ul>
-            <p class="fine">Today Castle shows its own connection: live traffic, speed, your provider and what is listening. Running the whole network as your modem and router is <span class="status dev micro">In development</span>, on Castle OS.</p>
-          </div>
-          <img class="shot" src="./shots/network.webp" alt="Castle's Network screen: live traffic, speed and the internet provider" width="1440" height="900" loading="lazy">
+    <section class="section screen tint-section" id="network" aria-labelledby="network-h">
+      <div class="wrap split wide-right flip reveal">
+        <div>
+          <p class="eyebrow micro">Modem and router</p>
+          <h2 id="network-h">The router for the 21st century. <span class="cyan">Built for a family.</span></h2>
+          <p class="lede">Simple enough for anyone at home, with everything a power user would spend a weekend setting up already built in.</p>
+          <ul class="ticks tight two">
+            <li><svg aria-hidden="true"><use href="#i-router"/></svg><span><b>Modem, router, Wi&#8209;Fi</b> in one box.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-eyeoff"/></svg><span><b>Ads and trackers</b> blocked on every device.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-users"/></svg><span><b>Every device</b> by name and by person.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-clock"/></svg><span><b>Bedtimes</b> and kid-safe browsing.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-shield"/></svg><span><b>A firewall</b> in plain words.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-puzzle"/></svg><span><b>Modular:</b> add drives, compute, radios.</span></li>
+          </ul>
+          <p class="fine">Live traffic, speed and provider are in the demo. Running your whole network on Castle OS: <i class="st dev">Building</i></p>
         </div>
+        <img class="shot" src="./shots/network.webp" alt="Castle's Network screen: live traffic, speed and the internet provider" width="1440" height="900" loading="lazy">
       </div>
     </section>
 
     <!-- ================= MEDIA ================= -->
-    <section class="section" id="media" aria-labelledby="media-h">
-      <div class="wrap">
-        <div class="spot split reveal">
-          <div>
-            <p class="eyebrow micro">Theater</p>
-            <h2 id="media-h">No more Plex. No more Jellyfin. <span class="accent">It just plays.</span></h2>
-            <p class="lede">No media server to install, no libraries to configure, no transcoding settings to look up at midnight. Put your films, shows, music and photos on Castle and they're ready on every TV, phone, tablet and computer in the house, out of the box, with posters and details, in fast, modern apps that feel like the streaming services you're paying for.</p>
-            <div class="chips micro"><span>Films</span><span>Shows</span><span>Music</span><span>Photos</span><span>Every TV and device</span><span>Kid-safe libraries</span><span>Works with a controller</span></div>
-          </div>
-          <img class="shot" src="./shots/theater.webp" alt="Castle's Theater: films and shows from your own folders, with posters" width="1440" height="900" loading="lazy">
+    <section class="section screen" id="media" aria-labelledby="media-h">
+      <div class="wrap split wide-right reveal">
+        <div>
+          <p class="eyebrow micro">Theater</p>
+          <h2 id="media-h">No more Plex. No more Jellyfin. <span class="accent">It just plays.</span></h2>
+          <p class="lede">No media server to set up. Put your films, shows, music and photos on Castle and they're on every TV, phone and computer in the house, in fast, modern apps.</p>
+          <div class="chips micro"><span>Films</span><span>Shows</span><span>Music</span><span>Photos</span><span>Every TV and device</span><span>Kid-safe libraries</span><span>Controller-friendly</span></div>
+        </div>
+        <img class="shot" src="./shots/theater.webp" alt="Castle's Theater: films and shows from your own folders, with posters" width="1440" height="900" loading="lazy">
+      </div>
+    </section>
+
+    <!-- ================= SECURE + SHARING ================= -->
+    <section class="section screen tint-section" id="secure" aria-labelledby="secure-h">
+      <div class="wrap reveal">
+        <div class="section-head row">
+          <p class="eyebrow micro">Secure storage · Sharing</p>
+          <h2 id="secure-h">Your data stays in your house, <span class="accent">locked to you.</span></h2>
+          <p class="lede">It answers only to the people you let in and writes down everything that happens. Share what you choose; the files never leave home.</p>
+        </div>
+        <div class="mini cols-4">
+          <div><svg aria-hidden="true"><use href="#i-lock"/></svg><b>Encrypted per person<i class="st dev">Building</i></b><span>A stolen disk reads nothing.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-wifi"/></svg><b>Encrypted on the way in<i class="st">Demo</i></b><span>Tailscale or WireGuard, never in the clear.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-users"/></svg><b>Private profiles<i class="st dev">Building</i></b><span>Admin, member, child, guest. PIN locks.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-shield"/></svg><b>Every access recorded<i class="st">Demo</i></b><span>A log you can prove wasn't rewritten.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-cloudoff"/></svg><b>No cloud in the middle<i class="st">Demo</i></b><span>No account with us. No copy elsewhere.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-image"/></svg><b>Share photos and albums<i class="st road">Roadmap</i></b><span>Send a link. No account needed.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-share"/></svg><b>Share files and folders<i class="st road">Roadmap</i></b><span>Take the link back any time.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-code"/></svg><b>Host your own websites<i class="st road">Roadmap</i></b><span>Online from your box, no hosting bill.</span></div>
         </div>
       </div>
     </section>
 
-    <!-- ================= EVERY FEATURE ================= -->
-    <section class="section" id="features" aria-labelledby="features-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="section-head reveal">
-          <p class="eyebrow micro">Everything in Castle</p>
-          <h2 id="features-h">One box. Every job your cloud subscriptions do.</h2>
-          <p class="lede">Each feature is marked: <span class="status micro">In the demo</span> you can try today, <span class="status dev micro">In development</span> is being built now, <span class="status guide micro">On the roadmap</span> is where Castle is going.</p>
+    <!-- ================= EVERYTHING ELSE ================= -->
+    <section class="section screen" id="features" aria-labelledby="features-h">
+      <div class="wrap reveal">
+        <div class="section-head row">
+          <p class="eyebrow micro">Also on your Castle</p>
+          <h2 id="features-h">One box. Every job your subscriptions do.</h2>
+          <ul class="legend lede"><li><i class="st">Demo</i>Try it today</li><li><i class="st dev">Building</i>Being made now</li><li><i class="st road">Roadmap</i>Coming next</li></ul>
         </div>
-
-        <div class="groups">
-          <div class="reveal">
-            <div class="group-title"><h3>Your data</h3><span class="micro">Storage · Backups · Email · Contacts · Theater</span></div>
-            <div class="features">
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-drive"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Storage</h3>
-                <p>Files, photos and backups for everyone in the house, each in their own space.</p>
-                <ul><li>Search, previews and recent files</li><li>Flash drives, CDs and other removable media</li><li>Full control of the host computer's own drives</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-chat"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Comms backup</h3>
-                <p>Every text, picture message, call, email and chat a person brings home, kept per person and searchable.</p>
-                <ul><li>Android SMS, MMS and call logs</li><li>Email from Gmail, Thunderbird or Apple Mail</li><li>Discord and Facebook Messenger</li><li>Automatic backups and restore to a new phone: in development</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-mail"/></svg><span class="status dev micro">In development</span></div>
-                <h3>Email server</h3>
-                <p>Your family's email, sent and received by your own box, on your own domain.</p>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-phone"/></svg><span class="status dev micro">In development</span></div>
-                <h3>Call recorder</h3>
-                <p>An optional phone call recorder in the Castle app. Recordings go straight to your box, filed with the call they belong to.</p>
-                <ul><li>Off unless you turn it on</li><li>Recordings from a phone's own recorder already file with their calls</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-book"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Contacts</h3>
-                <p>Your own white pages: everyone you know, with pictures, birthdays and notes.</p>
-                <ul><li>Finds and merges duplicates</li><li>Matched to their texts, calls and email</li><li>The videos they appear in</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-film"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Theater</h3>
-                <p>Films, shows, music and photos from your own folders, with posters and details, streamed around the house.</p>
-                <ul><li>Libraries per kind of media</li><li>Kid-safe libraries per profile</li></ul>
-              </article>
-            </div>
-          </div>
-
-          <div class="reveal">
-            <div class="group-title"><h3>Your network</h3><span class="micro">Router · Remote access · Security · Network</span></div>
-            <div class="features">
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-router"/></svg><span class="status dev micro">In development</span></div>
-                <h3>Modem and router</h3>
-                <p>Castle as the gateway to your home: every device seen, ads and trackers blocked, and a firewall that answers to you.</p>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-globe"/></svg><span class="status guide micro">Setup guide</span></div>
-                <h3>Tailscale and WireGuard</h3>
-                <p>Reach your box from anywhere, over a private link only your devices can use. Castle walks you through both.</p>
-                <ul><li>Tailscale: a private address, nothing opened on the router</li><li>WireGuard as a backup way in</li><li>Found automatically on the home Wi&#8209;Fi</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-shield"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Security</h3>
-                <p>What protects the box and what doesn't yet, said plainly.</p>
-                <ul><li>Checks, audits and who can reach the box</li><li>A verifiable activity record</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-wifi"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Network</h3>
-                <p>Live traffic, speed and your provider, and what on the box is listening, and who it talks to.</p>
-              </article>
-            </div>
-          </div>
-
-          <div class="reveal">
-            <div class="group-title"><h3>Play and machines</h3><span class="micro">Arcade · Saves · Steam cache · Clones · AI</span></div>
-            <div class="features">
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-pad"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Arcade</h3>
-                <p>Your retro library across every console, with box art, ready to play.</p>
-                <ul><li>Multi-disc games grouped as one</li><li>Shuffle when you can't pick</li><li>Plays with a controller</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Save history</h3>
-                <p>Every version of every save. Jump a game back to last week, last month or last year.</p>
-                <ul><li>Each version fingerprinted, so an altered one shows</li><li>Kept on your own hardware, forever</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-down"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Steam cache</h3>
-                <p>Games download to Castle once. Every other PC in the house installs them at LAN speed.</p>
-                <ul><li>Keep favourites cached</li><li>Updates checked for you</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-layers"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Clones</h3>
-                <p>Virtual machines and containers on your box, and automations that run tasks inside them.</p>
-                <ul><li>Windows and Linux VMs</li><li>Docker: Debian, Ubuntu, Arch, Fedora</li><li>An Android 15 phone in a container</li></ul>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-spark"/></svg><span class="status micro">In the demo</span></div>
-                <h3>DOGS AI</h3>
-                <p>Images, video, audio and chat, generated on your own hardware. Your prompts don't leave the house.</p>
-              </article>
-            </div>
-          </div>
-
-          <div class="reveal">
-            <div class="group-title"><h3>Made for a household</h3><span class="micro">People · Controls · Open source</span></div>
-            <div class="features">
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-users"/></svg><span class="status dev micro">In development</span></div>
-                <h3>Everyone gets their own Castle</h3>
-                <p>One box, a profile for each person: their files, messages and saves, private by default.</p>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-pad"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Mouse, keys or controller</h3>
-                <p>The whole app works from a game controller or the keyboard, so it fits a TV as well as a desk.</p>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-card"/></svg><span class="status micro">In the demo</span></div>
-                <h3>Spec card</h3>
-                <p>Your box's numbers, uptime and drive hours as a picture, made to post.</p>
-              </article>
-              <article class="feature">
-                <div class="feature-top"><svg aria-hidden="true"><use href="#i-github"/></svg><span class="status micro">Live</span></div>
-                <h3>Open source</h3>
-                <p>The code is public on GitHub. Read it, run it, or help build it.</p>
-              </article>
-            </div>
-          </div>
+        <div class="mini cols-5">
+          <div><svg aria-hidden="true"><use href="#i-book"/></svg><b>Contacts<i class="st">Demo</i></b><span>Your own white pages, duplicates merged.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-phone"/></svg><b>Call recorder<i class="st dev">Building</i></b><span>Optional, filed with each call.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-pad"/></svg><b>Arcade<i class="st">Demo</i></b><span>Every console, with box art.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-clock"/></svg><b>Save history<i class="st">Demo</i></b><span>Jump a save back to last year.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-down"/></svg><b>Steam cache<i class="st">Demo</i></b><span>Download once, install at LAN speed.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-layers"/></svg><b>Clones<i class="st">Demo</i></b><span>Windows, Linux and Android machines.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-spark"/></svg><b>DOGS AI<i class="st">Demo</i></b><span>Images, video and chat, on your hardware.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-users"/></svg><b>A Castle each<i class="st dev">Building</i></b><span>One profile per person, private by default.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-wifi"/></svg><b>Wi&#8209;Fi sensing<i class="st dev">Building</i></b><span>The router notices which rooms are occupied. Sensors are optional extras.</span></div>
+          <div><svg aria-hidden="true"><use href="#i-github"/></svg><b>Open source<i class="st">Live</i></b><span>Read it, run it, help build it.</span></div>
         </div>
       </div>
     </section>
 
-    <!-- ================= SPOTLIGHTS ================= -->
-    <section class="section" aria-label="Spotlights" style="padding-top:0">
+    <!-- ================= GALLERY + DEMO ================= -->
+    <section class="section screen" aria-labelledby="gallery-h" style="padding-top:0">
       <div class="wrap">
-        <div class="spot split reveal">
+        <div class="gallery-head reveal">
           <div>
-            <p class="eyebrow micro">Save history</p>
-            <h2>Jump your save back to last year.</h2>
-            <p class="lede">Castle finds every save your emulators write and keeps every version it has ever seen. Put any of them back in one step. It stays on your own network, on your own hardware, forever.</p>
-            <div class="flow micro" aria-label="Save versions over time"><span>Last year</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Last month</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Last week</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span class="hot">Now</span></div>
+            <p class="eyebrow micro">No sign-up</p>
+            <h2 id="gallery-h">The whole app is in your browser.</h2>
+            <p class="lede">Every screen, with sample data. Nothing is saved, so poke at anything.</p>
           </div>
-          <img class="shot" src="./shots/saves.webp" alt="Castle's Arcade saves: every version of a game's save, ready to put back" width="1440" height="900" loading="lazy">
-        </div>
-
-        <div class="spot split flip reveal">
-          <div>
-            <p class="eyebrow micro">Steam cache</p>
-            <h2>Download once. Install everywhere at LAN speed.</h2>
-            <p class="lede">The first PC that downloads a game pulls it through Castle. Every computer after that installs from the box, across the house, at the speed of your own network.</p>
-            <div class="flow micro"><span>Steam</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span class="hot">Castle</span><svg aria-hidden="true"><use href="#i-arrow"/></svg><span>Every PC at home</span></div>
-          </div>
-          <img class="shot" src="./shots/steam.webp" alt="Castle's Steam cache: games kept on the box and a PC downloading from it" width="1440" height="900" loading="lazy">
-        </div>
-
-        <div class="spot split reveal">
-          <div>
-            <p class="eyebrow micro">Clones</p>
-            <h2>Spare computers, made of software.</h2>
-            <p class="lede">Start a Windows or Linux machine, a light Docker container or a whole Android phone on the box, watch its screen from the app, and let automations do the clicking.</p>
-            <div class="chips micro"><span>Windows</span><span>Debian</span><span>Ubuntu</span><span>Arch</span><span>Fedora</span><span>Android 15</span><span>Automations</span></div>
-          </div>
-          <img class="shot" src="./shots/clones.webp" alt="Castle's Clones screen: virtual machines, containers and automations" width="1440" height="900" loading="lazy">
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= WI-FI SENSING (an extra, kept low on the page) ================= -->
-    <section class="section" id="sensing" aria-labelledby="sensing-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="sensing reveal">
-          <div>
-            <p class="eyebrow micro">One more thing your router can do</p>
-            <h3 id="sensing-h">Wi&#8209;Fi that notices when someone's home.</h3>
-            <p>Because Castle is your router, it can read the Wi&#8209;Fi already moving through your house and tell which rooms have someone in them, with no cameras and no microphones. For rooms that need more detail, optional add-on sensors will be offered as extensions.</p>
-          </div>
-          <span class="status dev micro">In development</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= GALLERY ================= -->
-    <section class="section" aria-labelledby="gallery-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="section-head reveal">
-          <p class="eyebrow micro">More of the app</p>
-          <h2 id="gallery-h">Look around. <span class="accent">Swipe</span> through it.</h2>
+          <a class="btn btn-primary" href="./demo/"><svg aria-hidden="true"><use href="#i-play"/></svg>Try the live demo</a>
         </div>
         <div class="gallery" tabindex="0" aria-label="Screens from the Castle app; scroll sideways">
           <figure><img src="./shots/home.webp" alt="Home" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Home</b>The box at a glance</figcaption></figure>
           <figure><img src="./shots/storage.webp" alt="Storage" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Storage</b>Files, photos, backups</figcaption></figure>
           <figure><img src="./shots/contacts.webp" alt="Contacts" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Contacts</b>Your own white pages</figcaption></figure>
-          <figure><img src="./shots/comms.webp" alt="Comms" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Comms</b>Texts, calls, email</figcaption></figure>
           <figure><img src="./shots/theater.webp" alt="Theater" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Theater</b>Films, shows, music</figcaption></figure>
           <figure><img src="./shots/security.webp" alt="Security" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Security</b>Checks and the record</figcaption></figure>
-          <figure><img src="./shots/network.webp" alt="Network" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Network</b>Live traffic</figcaption></figure>
-          <figure><img src="./shots/arcade.webp" alt="Arcade" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Arcade</b>Every console</figcaption></figure>
+          <figure><img src="./shots/steam.webp" alt="Steam cache" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Steam cache</b>LAN-speed installs</figcaption></figure>
+          <figure><img src="./shots/clones.webp" alt="Clones" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>Clones</b>Machines in software</figcaption></figure>
           <figure><img src="./shots/ai.webp" alt="DOGS AI" width="1440" height="900" loading="lazy"><figcaption class="micro"><b>DOGS AI</b>On your hardware</figcaption></figure>
         </div>
       </div>
     </section>
 
-    <!-- ================= DEMO BAND ================= -->
-    <section class="section" aria-labelledby="demo-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="band hud reveal">
-          <div>
-            <p class="eyebrow micro">No sign-up</p>
-            <h2 id="demo-h">The whole app is in your browser right now.</h2>
-            <p class="lede">Every screen, with sample data. Nothing runs and nothing is saved, so poke at anything.</p>
-          </div>
-          <a class="btn btn-primary" href="./demo/"><svg aria-hidden="true"><use href="#i-play"/></svg>Try the live demo</a>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= WAITLIST ================= -->
-    <section class="section" id="waitlist" aria-labelledby="waitlist-h" style="padding-top:0">
+    <!-- ================= WAITLIST + FAQ ================= -->
+    <section class="section screen" id="waitlist" aria-labelledby="waitlist-h" style="padding-top:0">
       <div class="wrap waitlist">
-        <figure class="device reveal">
-          <img src="./castle-hero-landscape.webp" alt="A concept render of the Castle box: a matte-black home server with a glowing port array" width="1600" height="900" loading="lazy">
-          <figcaption class="micro">Concept render</figcaption>
-        </figure>
         <div class="reveal">
           <p class="kick micro"><span class="dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
           <h2 id="waitlist-h">Be first in line.</h2>
-          <p class="lede">Join the waitlist and we'll email you when the Kickstarter opens. Nothing else.</p>
+          <p class="lede">We'll email you when the Kickstarter opens. Nothing else.</p>
           <div class="form-card hud">
             <form class="step" data-step="email" novalidate>
               <label class="micro" for="email">Email address</label>
@@ -640,42 +372,32 @@
               <p class="note">We'll email you when the Kickstarter opens.</p>
             </div>
           </div>
+          <figure class="device">
+            <img src="./castle-hero-landscape.webp" alt="A concept render of the Castle box: a matte-black home server with a glowing port array" width="1600" height="900" loading="lazy">
+            <figcaption class="micro">Concept render</figcaption>
+          </figure>
         </div>
-      </div>
-    </section>
-
-    <!-- ================= FAQ ================= -->
-    <section class="section" aria-labelledby="faq-h" style="padding-top:0">
-      <div class="wrap">
-        <div class="section-head center reveal"><p class="eyebrow micro">Questions</p><h2 id="faq-h">Straight answers.</h2></div>
-        <div class="faq reveal">
+        <div class="faq reveal" aria-labelledby="faq-h">
+          <p class="eyebrow micro" id="faq-h">Straight answers</p>
           <details>
             <summary>Is Castle ready?</summary>
-            <p>Not yet. The app runs and the demo shows every screen. The box itself, the mail server, the router and the features marked "in development" are being built now. The Kickstarter is how we finish them.</p>
+            <p>Not yet. The app runs and the demo shows every screen. The box, the mail server, the router and everything marked Building are being made now. The Kickstarter finishes them.</p>
           </details>
           <details>
             <summary>Does it replace Google Drive, iCloud or Dropbox?</summary>
-            <p>That's the heart of it. Castle is cloud storage that lives in your house: your files and photos on your own drives, reachable from every device you own, at home or away, with no monthly storage plan.</p>
+            <p>That's the heart of it: your files and photos on your own drives, reachable from every device, with no monthly plan.</p>
           </details>
           <details>
             <summary>Do I still need Gmail or Outlook?</summary>
-            <p>Not once Castle's mail server is done. It runs on the box itself, so your family's email is sent and received by your own box, on your own domain. Bring your old mail with you and it stays searchable on the box.</p>
+            <p>Not once Castle's mail server is done. Your family's mail is sent and received by your own box, on your own domain, and your old mail comes with you.</p>
           </details>
           <details>
-            <summary>What happens to my email if my internet goes down?</summary>
-            <p>Everything inside the house keeps working: files, photos, backups and media. Mail sent to you while you're offline isn't lost. The sender's mail server keeps trying, normally for days, and it arrives once your connection is back.</p>
-          </details>
-          <details>
-            <summary>Do I need to set up Plex or Jellyfin?</summary>
-            <p>No. Theater is built in. Put your films, shows and music on Castle and they play on your TVs and devices with nothing to install on the box and nothing to configure.</p>
-          </details>
-          <details>
-            <summary>Do I need a cloud account?</summary>
-            <p>No. Castle lives on your network and keeps your data on your hardware. Tailscale is optional, for reaching the box away from home.</p>
+            <summary>What if my internet goes down?</summary>
+            <p>Files, photos, backups and media keep working inside the house. Mail sent to you waits: the sender's server keeps retrying, normally for days, and it arrives once you're back.</p>
           </details>
           <details>
             <summary>Can my family share one box?</summary>
-            <p>Yes. Everyone gets a profile with their own files, messages and saves. Roles keep them private from each other unless someone chooses to share.</p>
+            <p>Yes. Everyone gets a private profile with their own files, messages and saves.</p>
           </details>
           <details>
             <summary>Is it open source?</summary>
