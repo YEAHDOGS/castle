@@ -248,6 +248,7 @@
           <button
             class="expo t-ui group flex aspect-square w-full flex-col justify-between border border-hairline bg-white/[0.02] p-3 text-left hover:border-chiral/60 hover:bg-white/[0.04] active:scale-[0.97]"
             onclick={() => shell.setSection(tile.id)}
+            data-tour={`tile-${tile.id}`}
           >
             <tile.icon class="h-7 w-7 text-text-faint transition-colors group-hover:text-chiral" strokeWidth={1.25} />
             <span class="min-w-0">

@@ -27,7 +27,7 @@
 
   <div class="flex min-w-0 flex-1 flex-col">
     <!-- pr-16 keeps the header clear of the wheel button in the corner -->
-    <header class="flex min-h-16 shrink-0 items-center gap-3 border-b border-hairline bg-black/40 py-2 pl-3 pr-16 md:pl-6">
+    <header class="flex min-h-16 shrink-0 items-center gap-3 border-b border-hairline bg-black/40 py-2 pl-3 pr-16 md:pl-6" data-tour="topbar">
       <button class="md:hidden" onclick={() => (shell.userMenuOpen = true)} aria-label={`Signed in as ${shell.user.name}. Change person`}>
         <Avatar person={shell.user} />
       </button>
@@ -49,7 +49,7 @@
     </header>
 
     {#if items.length}
-      <nav class="chips flex shrink-0 gap-1 overflow-x-auto border-b border-hairline-faint py-2 pl-3 pr-10 md:hidden" aria-label={`${title} views`}>
+      <nav class="chips flex shrink-0 gap-1 overflow-x-auto border-b border-hairline-faint py-2 pl-3 pr-10 md:hidden" aria-label={`${title} views`} data-tour="tabs">
         {#each items as item (item.id)}
           <button
             class="micro expo t-hover shrink-0 border px-2.5 py-1.5 transition-colors {active === item.id ? 'border-chiral/70 text-chiral' : 'border-hairline text-text-dim'}"

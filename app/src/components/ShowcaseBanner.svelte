@@ -8,7 +8,7 @@
   import { WAITLIST_URL, GITHUB_URL, WARNING } from '../lib/showcase.js';
 </script>
 
-<div class="strip fixed inset-x-0 bottom-0 z-[45] flex items-center gap-3 border-t border-hairline bg-black/90 px-3 backdrop-blur md:px-4" role="note" aria-label="About this site">
+<div class="strip fixed inset-x-0 bottom-0 z-[45] flex items-center gap-3 border-t border-hairline bg-black/90 px-3 backdrop-blur md:px-4" role="note" aria-label="About this site" data-tour="strip">
   <TriangleAlert class="h-4 w-4 shrink-0 text-chiral" strokeWidth={2} />
   <p class="min-w-0 text-[11px] leading-tight text-text-dim md:text-xs">
     <span class="font-bold uppercase tracking-[0.12em] text-chiral">Warning:</span> {WARNING}

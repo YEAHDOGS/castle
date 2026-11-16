@@ -10,6 +10,7 @@
   import { SHOWCASE, refused } from '../../lib/showcase.js';
   import { SETTING_GROUPS, SETTINGS, defaultsFor } from '../../lib/settings.js';
   import SectionFrame from '../SectionFrame.svelte';
+  import { tour } from '../tour/tour.svelte.js';
   import madeByDogs from '../../assets/made-by-dogs-sticker.webp';
 
   const BOX_PORT_FALLBACK = '8787';
@@ -53,6 +54,12 @@
     const typed = Number(raw);
     const value = raw === '' || Number.isNaN(typed) ? setting.default : Math.min(setting.max, Math.max(setting.min, Math.round(typed)));
     change(setting, value);
+  }
+
+  /** Show the tour again: from its first card, on Home, where most of its bubbles live. Works in the showcase too. */
+  function showTour() {
+    tour.restart();
+    shell.goHome();
   }
 
   async function copy(text) {
@@ -196,6 +203,17 @@
         <p class="mt-3 text-[12px] leading-relaxed text-text-dim">
           These are chosen when the box starts, not from this screen: a web page should not be able to point the box at a new folder of programs to run.
         </p>
+      </section>
+    {:else if group === 'look'}
+      <section class="glass mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+        <div class="min-w-[12rem] flex-1">
+          <p class="text-[14px] font-semibold text-white">The tour</p>
+          <p class="mt-0.5 text-[12px] leading-relaxed text-text-dim">The cards a first visit sees, then the speech bubbles that point out the wheel, the rail and the sections. Put away for good once you close them.</p>
+          <p class="micro mt-2 text-bridge">THIS DEVICE</p>
+        </div>
+        <button class="micro expo t-hover shrink-0 border border-chiral/60 px-3 py-2 font-bold text-chiral transition-colors hover:bg-chiral hover:text-black" onclick={showTour}>
+          SHOW THE TOUR AGAIN
+        </button>
       </section>
     {/if}
 
