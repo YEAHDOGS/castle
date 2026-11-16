@@ -12,14 +12,14 @@
 
   // ---- the mark: a tap (or a click, or Enter) swaps the measured drawing for the pen sketch and back.
   // Hover does the same in CSS alone, so this only matters where there is no pointer to hover with.
-  var mark = document.querySelector('[data-mark]');
-  if (mark) {
+  // There are two marks (one for phones, one for desktops); only one is ever shown.
+  document.querySelectorAll('[data-mark]').forEach(function (mark) {
     mark.addEventListener('click', function () {
       var on = !mark.classList.contains('is-sketch');
       mark.classList.toggle('is-sketch', on);
       mark.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-  }
+  });
 
   // ---- sections settle in as they arrive
   var reveals = document.querySelectorAll('.reveal');

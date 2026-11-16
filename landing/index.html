@@ -116,37 +116,14 @@
           </ul>
         </div>
 
-        <figure class="hud-card" aria-label="A sample of what a Castle box shows: storage used, and what it backed up tonight">
-          <div class="hud-top micro">
-            <span>Castle · Home box</span>
-            <span class="live"><span class="dot" aria-hidden="true"></span>Online</span>
-          </div>
-          <div class="meter-head">
-            <b>3.1 TB</b><span class="micro">of 8 TB used</span>
-          </div>
-          <div class="meter" role="img" aria-label="Storage used: photos and videos 1.4 TB, films and shows 0.9 TB, files 0.5 TB, backups 0.3 TB">
-            <i style="width:17.5%" class="m-photo"></i><i style="width:11.25%" class="m-media"></i><i style="width:6.25%" class="m-files"></i><i style="width:3.75%" class="m-backup"></i>
-          </div>
-          <ul class="meter-key micro">
-            <li><i class="m-photo"></i>Photos &amp; video</li><li><i class="m-media"></i>Films &amp; shows</li><li><i class="m-files"></i>Files</li><li><i class="m-backup"></i>Backups</li>
-          </ul>
-          <p class="feed-title micro">Backed up tonight, on its own</p>
-          <ul class="feed">
-            <li><svg aria-hidden="true"><use href="#i-mobile"/></svg><span><b>Sam's phone</b>214 photos · 38 texts · 6 calls</span><time class="micro">2 min ago</time></li>
-            <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span><b>Family email</b>112 new messages</span><time class="micro">9 min ago</time></li>
-            <li><svg aria-hidden="true"><use href="#i-book"/></svg><span><b>Contacts</b>3 new · 1 duplicate merged</span><time class="micro">1 h ago</time></li>
-            <li><svg aria-hidden="true"><use href="#i-laptop"/></svg><span><b>Living room laptop</b>Documents · Desktop</span><time class="micro">3 h ago</time></li>
-          </ul>
-          <div class="hud-stats">
-            <div><b>4</b><span class="micro">People</span></div>
-            <div><b>11</b><span class="micro">Devices</span></div>
-            <div><b>0</b><span class="micro">Cloud accounts</span></div>
-          </div>
-          <figcaption class="hud-bottom micro">
-            <span>Nothing leaves the house</span>
-            <span>Sample data</span>
-          </figcaption>
-        </figure>
+        <!-- On a desktop the mark stands big on the right, in place of the small one in the headline (home.css
+             shows one or the other, never both). Same hover-or-tap swap to the sketch. -->
+        <div class="hero-mark">
+          <button type="button" class="mark" data-mark aria-pressed="false" aria-label="The Castle mark. Hover or tap to see the original drawing it was made from.">
+            <svg class="mark-fine" viewBox="0 0 300 420" aria-hidden="true"><use href="./logo-castle.svg#mark"/></svg>
+            <svg class="mark-sketch" viewBox="0 0 300 420" aria-hidden="true"><use href="./logo-sketch.svg#mark"/></svg>
+          </button>
+        </div>
       </div>
     </section>
 
