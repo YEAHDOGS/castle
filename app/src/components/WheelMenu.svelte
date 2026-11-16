@@ -42,6 +42,11 @@
   let dragStart = null; // { angle, moved }
   let dial = $state(null);
 
+  // How far the dial has turned. It is written straight onto the few elements that turn
+  // (the disc, the ticks, the inner rim, each face) as their own `rotate`, never as a
+  // custom property on the overlay: a property every descendant could read restyles all
+  // of them (over a hundred elements) on every notch and every pointer move, which is
+  // what made the dial stutter on phones.
   const rotation = $derived(BEAM_DEG - index * STEP_DEG + dragDeg);
   const activeSlot = $derived(((index % SLOT_COUNT) + SLOT_COUNT) % SLOT_COUNT);
   const active = $derived(SECTIONS[activeSlot % SECTIONS.length]);
@@ -178,18 +183,31 @@
 
   function onPointerDown(e) {
     // No pointer capture: a captured pointer would swallow the click on a slot.
-    dragStart = { angle: pointerAngle(e), moved: 0 };
+    dragStart = { angle: pointerAngle(e), moved: 0, deg: 0 };
     dragging = true;
   }
 
+  // A finger can report its position far more often than the screen draws. Each move only
+  // notes the angle; the dial takes it once per frame.
+  let moveFrame = 0;
+
   function onPointerMove(e) {
     if (!dragStart) return;
-    dragDeg = pointerAngle(e) - dragStart.angle;
-    dragStart.moved = Math.max(dragStart.moved, Math.abs(dragDeg));
+    dragStart.deg = pointerAngle(e) - dragStart.angle;
+    dragStart.moved = Math.max(dragStart.moved, Math.abs(dragStart.deg));
+    if (!moveFrame) moveFrame = requestAnimationFrame(applyMove);
+  }
+
+  function applyMove() {
+    moveFrame = 0;
+    if (dragStart) dragDeg = dragStart.deg;
   }
 
   function onPointerUp() {
     if (!dragStart) return;
+    cancelAnimationFrame(moveFrame);
+    moveFrame = 0;
+    dragDeg = dragStart.deg;
     index -= Math.round(dragDeg / STEP_DEG);
     dragDeg = 0;
     dragging = false;
@@ -250,7 +268,6 @@
     tabindex="-1"
     onwheel={onWheel}
     onkeydown={onKey}
-    style="--rot: {rotation}deg"
   >
     <button class="backdrop absolute inset-0 cursor-default" onclick={close} aria-label="Close" tabindex="-1"></button>
 
@@ -260,11 +277,11 @@
       onpointerdown={onPointerDown}
     >
       <div class="band"></div>
-      <div class="ticks"></div>
+      <div class="ticks" style:rotate="{rotation * -0.5}deg"></div>
       <div class="beam"></div>
       <div class="rim rim-outer"></div>
-      <div class="rim rim-inner"></div>
-      <div class="disc">
+      <div class="rim rim-inner" style:rotate="{rotation * 1.5}deg"></div>
+      <div class="disc" style:rotate="{rotation}deg">
         {#each SLOTS as slot (slot.k)}
           {@const Icon = slot.section.icon}
           {@const isActive = slot.k === activeSlot}
@@ -273,6 +290,7 @@
             <button
               class="slot-face"
               class:active={isActive}
+              style:rotate="{-(slot.angle + rotation)}deg"
               onclick={() => onSlotClick(slot.k)}
               tabindex={isActive ? 0 : -1}
               aria-label={slot.section.label}
@@ -351,9 +369,19 @@
   .overlay.dragging { --turn: 0ms; }
   .backdrop {
     background: radial-gradient(circle at 100% 0%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.82) 70%);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
     animation: fade-in 250ms var(--ease-expo);
+  }
+  /* The blur behind the dial is re-filtered under every frame the dial moves; a phone's
+     screen is dense enough that this alone costs it frames, so a touch screen gets a
+     slightly deeper shade instead. */
+  @media (pointer: fine) {
+    .backdrop {
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+  }
+  @media (pointer: coarse) {
+    .backdrop { background: radial-gradient(circle at 100% 0%, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.88) 70%); }
   }
   @keyframes fade-in { from { opacity: 0; } }
 
@@ -367,12 +395,20 @@
     transform: translate(50%, -50%);
     border-radius: 50%;
     touch-action: none;
+    contain: layout;
     animation: wheel-in 520ms var(--ease-expo);
   }
   @keyframes wheel-in {
     from { transform: translate(50%, -50%) scale(0.55) rotate(-60deg); opacity: 0; }
   }
   .wheel > * { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+  /* Everything that turns does so as `rotate` (and `scale`) on its own compositor layer,
+     so a turn is a transform the GPU interpolates, not a repaint. The layers only exist
+     while the dial is open, as the whole dial is. */
+  .ticks, .rim-inner, .disc, .slot-face {
+    transition: rotate var(--turn) var(--ease-expo);
+    will-change: transform;
+  }
 
   /* the dark track the slots ride on */
   .band {
@@ -384,8 +420,6 @@
     background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.34) 0 0.35deg, transparent 0.35deg 3deg);
     mask: radial-gradient(closest-side, transparent calc(100% - 26px), #000 calc(100% - 26px) calc(100% - 14px), transparent calc(100% - 14px));
     -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 26px), #000 calc(100% - 26px) calc(100% - 14px), transparent calc(100% - 14px));
-    transform: rotate(calc(var(--rot) * -0.5));
-    transition: transform var(--turn) var(--ease-expo);
   }
   /* the beam: a fixed wedge of light marking the selected slot. Conic angles start at
      12 o'clock, so the 135deg diagonal is 225deg here. */
@@ -410,15 +444,9 @@
   .rim-inner {
     inset: 30%;
     border: 1px dashed color-mix(in srgb, var(--color-bridge) 45%, transparent);
-    transform: rotate(calc(var(--rot) * 1.5));
-    transition: transform var(--turn) var(--ease-expo);
   }
 
   /* ---- slots: the disc turns; each face counter-turns so it always reads upright ---- */
-  .disc {
-    transform: rotate(var(--rot));
-    transition: transform var(--turn) var(--ease-expo);
-  }
   .slot {
     position: absolute;
     left: 50%;
@@ -437,14 +465,21 @@
     gap: 8px;
     pointer-events: auto;
     color: var(--color-text-dim);
-    transform: translate(-50%, -50%) rotate(calc(-1 * (var(--a) + var(--rot)))) scale(0.86);
-    transition: transform var(--turn) var(--ease-expo), color 250ms var(--ease-expo);
+    /* translate, then rotate (set inline, counter to the disc), then scale: the same order
+       the old single `transform` had. */
+    translate: -50% -50%;
+    scale: 0.86;
+    /* The text and icon colour changes at once rather than fading: `color` is inherited, so
+       fading it restyles every element of two faces on every frame of the fade. The glow,
+       the border and the scale still ease in, which is what the eye reads as the fade. */
+    transition: rotate var(--turn) var(--ease-expo), scale var(--turn) var(--ease-expo);
   }
   .slot-face.active {
     color: #fff;
-    transform: translate(-50%, -50%) rotate(calc(-1 * (var(--a) + var(--rot)))) scale(1.18);
+    scale: 1.18;
   }
   .tile {
+    position: relative;
     display: grid;
     place-items: center;
     width: 68px;
@@ -452,14 +487,25 @@
     border-radius: 50%;
     background: var(--color-panel-solid);
     border: 1px solid var(--color-hairline);
-    transition: border-color 250ms var(--ease-expo), box-shadow 250ms var(--ease-expo), color 250ms var(--ease-expo);
+    transition: border-color 250ms var(--ease-expo);
+  }
+  /* The selected tile's glow. A shadow that fades in by changing its colour has to be
+     repainted every frame; one painted once and faded in with opacity is composited. */
+  .tile::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-chiral) 14%, transparent), 0 0 38px color-mix(in srgb, var(--color-chiral) 55%, transparent);
+    opacity: 0;
+    transition: opacity 250ms var(--ease-expo);
   }
   .slot-face:hover .tile { border-color: rgba(255, 255, 255, 0.3); }
   .slot-face.active .tile {
     color: var(--color-chiral);
     border-color: var(--color-chiral);
-    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-chiral) 14%, transparent), 0 0 38px color-mix(in srgb, var(--color-chiral) 55%, transparent);
   }
+  .slot-face.active .tile::after { opacity: 1; }
   .label { white-space: nowrap; }
   /* the letter that opens a section from the keyboard */
   .hotkey { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
