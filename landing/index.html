@@ -95,6 +95,12 @@
     <section class="hero screen" aria-labelledby="hero-h">
       <div class="wrap hero-grid">
         <div>
+          <!-- The mark. The drawn-to-measure version shows; hover or tap and the original pen sketch it was
+               made from fades in, wobble and all. Both files share one viewBox, so they swap in place. -->
+          <button type="button" class="mark" data-mark aria-pressed="false" aria-label="The Castle mark. Hover or tap to see the original drawing it was made from.">
+            <svg class="mark-fine" viewBox="0 0 300 420" aria-hidden="true"><use href="./logo-castle.svg#mark"/></svg>
+            <svg class="mark-sketch" viewBox="0 0 300 420" aria-hidden="true"><use href="./logo-sketch.svg#mark"/></svg>
+          </button>
           <p class="kick micro"><span class="dot" aria-hidden="true"></span>Coming soon to Kickstarter</p>
           <h1 id="hero-h">CASTLE<span class="tag">Your own cloud. In your house.</span></h1>
           <p class="lede">Cloud storage you own. One box at home keeps your family's files and photos, backs up every text, call, email and contact on its own, runs your email, streams to every TV, and runs your network. No storage plan, and nobody else's servers.</p>
