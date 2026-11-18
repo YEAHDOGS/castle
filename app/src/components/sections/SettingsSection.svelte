@@ -56,7 +56,7 @@
     change(setting, value);
   }
 
-  /** Show the tour again: from its first card, on Home, where most of its bubbles live. Works in the showcase too. */
+  /** Show the tutorial again: every section's is new again, starting with Home's (Settings has none). Works in the showcase too. */
   function showTour() {
     tour.restart();
     shell.goHome();
@@ -207,12 +207,12 @@
     {:else if group === 'look'}
       <section class="glass mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
         <div class="min-w-[12rem] flex-1">
-          <p class="text-[14px] font-semibold text-white">The tour</p>
-          <p class="mt-0.5 text-[12px] leading-relaxed text-text-dim">The cards a first visit sees, then the speech bubbles that point out the wheel, the rail and the sections. Put away for good once you close them.</p>
+          <p class="text-[14px] font-semibold text-white">The tutorial</p>
+          <p class="mt-0.5 text-[12px] leading-relaxed text-text-dim">A few pop-ups in a section, one at a time, that point out the wheel, the rail and the bar. Each section shows its own once.</p>
           <p class="micro mt-2 text-bridge">THIS DEVICE</p>
         </div>
         <button class="micro expo t-hover shrink-0 border border-chiral/60 px-3 py-2 font-bold text-chiral transition-colors hover:bg-chiral hover:text-black" onclick={showTour}>
-          SHOW THE TOUR AGAIN
+          SHOW THE TUTORIAL AGAIN
         </button>
       </section>
     {/if}
