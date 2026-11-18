@@ -1,5 +1,5 @@
-// Where a bubble goes, given the box it points at. Pure arithmetic, so Blurb.svelte stays
-// about drawing.
+// Where the tour's pop-up (a bubble) goes, given the box it points at. Pure arithmetic, so
+// Steps.svelte stays about drawing.
 //
 //   place(rect, size, side, at, bounds, taken)
 //     rect    the target's getBoundingClientRect()
@@ -7,16 +7,21 @@
 //     side    the side of the target the bubble prefers: 'top' | 'bottom' | 'left' | 'right'
 //     at      where along the target's edge the tail lands, 0 to 1
 //     bounds  { w, h } the room there is: the window, minus the showcase strip at the bottom
-//     taken   [{ left, top, w, h }] where other bubbles already are
+//     taken   [{ left, top, w, h }] what the bubble keeps clear of: the tour's own buttons
 //   returns { left, top, side, tx, ty }: the bubble's corner, the side it ended up on, and
 //   the tail's point inside the bubble.
 //
 // The preferred side is tried first; when the bubble would not fit there (a phone is narrow),
-// or would cover another bubble, the other sides are tried in turn, and the first that fits
-// clear of the others wins. Failing that, a bubble that fits but covers another is slid away
-// from its target until it is clear (its tail then floats a little short of the target);
-// failing that too, the first that fits at all. If none does, the preferred side is kept
-// and the bubble is pushed inside the window.
+// or would cover something taken, the other sides are tried in turn, and the first that fits
+// clear of them wins. Failing that, a bubble that fits but covers one is slid away from its
+// target until it is clear (its tail then floats a little short of the target); failing that
+// too, the first that fits at all. If none does, the preferred side is kept and the bubble
+// is pushed inside the window.
+//
+//   between(pos, size, taken, column)   a placed bubble that still covers one of `taken`,
+//                                       moved sideways into `column` ({ left, right })
+//   under(pos, size, box, bounds)       a placed bubble that still covers `box`, moved below it
+//   centred(size, bounds, taken)        where a bubble with no target goes: the middle
 
 const GAP = 16; // room between target and bubble: the tail lives here
 const MARGIN = 8; // the bubble never comes closer than this to the window's edge
@@ -57,9 +62,9 @@ function attempt(rect, size, side, at, bounds) {
 }
 
 const overlaps = (a, b) => a.left < b.left + b.w && a.left + a.w > b.left && a.top < b.top + b.h && a.top + a.h > b.top;
-const SLIDE_GAP = 18; // between a bubble slid aside and the one it was covering: room for its tail
+const SLIDE_GAP = 18; // between a bubble slid aside and what it was covering: room for its tail
 
-/** The bubble slid away from its target, past every bubble it covers, or null when that leaves the window. */
+/** The bubble slid away from its target, past everything taken that it covers, or null when that leaves the window. */
 function slid(p, size, bounds, taken) {
   const box = { left: p.left, top: p.top, w: size.w, h: size.h };
   for (let i = 0; i < taken.length; i++) {
@@ -87,6 +92,36 @@ export function place(rect, size, side = 'bottom', at = 0.5, bounds, taken = [])
   first.left = clamp(first.left, MARGIN, bounds.w - size.w - MARGIN);
   first.top = clamp(first.top, MARGIN, bounds.h - size.h - MARGIN);
   return first;
+}
+
+/**
+ * A placed bubble that still covers one of `taken` moved sideways into `column`, its tail
+ * following. The tour's Back and Next sit at mid-height on the window's edges, and a small
+ * window leaves nowhere clear of both: the column between them always is.
+ */
+export function between(p, size, taken, column) {
+  if (!taken.some((t) => overlaps({ left: p.left, top: p.top, w: size.w, h: size.h }, t))) return p;
+  const left = clamp(p.left, column.left, column.right - size.w);
+  return { ...p, left, tx: clamp(p.tx + p.left - left, TAIL_MIN, size.w - TAIL_MIN) };
+}
+
+/**
+ * A placed bubble that still covers `box` moved down to just under it, as far as the room
+ * allows. The tour's Skip button sits at the top of the window: in a small one, a bubble
+ * above its target would lie across it.
+ */
+export function under(p, size, box, bounds) {
+  if (!overlaps({ left: p.left, top: p.top, w: size.w, h: size.h }, box)) return p;
+  const top = clamp(box.top + box.h, MARGIN, bounds.h - size.h - MARGIN);
+  return { ...p, top, ty: clamp(p.ty + p.top - top, TAIL_MIN, size.h - TAIL_MIN) };
+}
+
+/** Where a bubble with no target goes: the middle of the room, below anything taken it would cover there. */
+export function centred(size, bounds, taken = []) {
+  const left = (bounds.w - size.w) / 2;
+  let top = (bounds.h - size.h) / 2;
+  for (const t of taken) if (overlaps({ left, top, w: size.w, h: size.h }, t)) top = t.top + t.h;
+  return { left, top: clamp(top, MARGIN, bounds.h - size.h - MARGIN), side: '', tx: 0, ty: 0 };
 }
 
 /** Whether a target is on screen enough to point at: some of it inside the bounds. */

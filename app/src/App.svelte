@@ -60,5 +60,5 @@
 <Toasts />
 <PadHints />
 {#if SHOWCASE}<ShowcaseBanner />{/if}
-<!-- The first-run tour: on by itself in the showcase, from Settings anywhere else. -->
+<!-- Each section's tutorial: on by itself in the showcase, from Settings anywhere else. -->
 <Tour />

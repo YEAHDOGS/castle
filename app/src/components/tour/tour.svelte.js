@@ -1,20 +1,19 @@
-// The tour: what a first visit to the demo is told, and what it has already been told.
+// The tour: a short tutorial on each section, as a stepper. One pop-up at a time, Back and
+// Next at the left and right edges of the window, four pop-ups at most (Steps.svelte draws
+// it; the words are steps.js).
 //
-// Two layers (see Tour.svelte). First the carousel: one to three big cards, shown once, that
-// say what Castle is, that this is sample data, and how the wheel works. Then the blurbs:
-// comic-book speech bubbles anchored to real parts of the interface (BLURBS in blurbs.js),
-// each put away on its own or all at once.
-//
-// What has been seen is kept in localStorage, so a second visit is left alone. The showcase
-// (the public demo, lib/showcase.js) turns the tour on by itself the first time; the
-// everyday app only shows it from Settings > Look and feel > Show the tour again.
+// Which sections have been toured is kept in localStorage, so each section's tutorial shows
+// once. The showcase (the public demo, lib/showcase.js) starts a section's tutorial by itself
+// on a first visit to that section; the everyday app only does after Settings > Look and
+// feel > Show the tutorial again was pressed.
 
-import { SvelteSet } from 'svelte/reactivity';
 import { SHOWCASE } from '../../lib/showcase.js';
-import { BLURBS } from './blurbs.js';
+import { TOURS } from './steps.js';
 
-const KEY = 'castle-tour-v1';
+const KEY = 'castle-tour-v2';
+export const MAX_STEPS = 4;
 
+/** @returns {{ seen?: Record<string, boolean>, asked?: boolean }} what this device remembers of the tour */
 function readSaved() {
   try {
     return JSON.parse(localStorage.getItem(KEY)) || {};
@@ -24,57 +23,73 @@ function readSaved() {
 }
 
 class Tour {
-  /** The tour is showing (either layer). Off, it costs nothing: Tour.svelte renders nothing. */
+  /** A tutorial is showing. Off, it costs nothing: Tour.svelte renders nothing. */
   on = $state(false);
-  /** The carousel is the layer showing; false means the blurbs are. */
-  carousel = $state(false);
-  /** Ids of blurbs that were put away. */
-  dismissed = new SvelteSet();
+  /** The step showing, from zero. */
+  at = $state(0);
+  /** Which way the last step went: 1 on, -1 back. The words come in from that side. */
+  dir = $state(1);
+  /** The section showing, whose tutorial this is. */
+  section = $state('');
 
-  constructor() {
+  /** A section's steps, never more than MAX_STEPS. */
+  steps(section = this.section) {
+    return (TOURS[section] || []).slice(0, MAX_STEPS);
+  }
+
+  /**
+   * Tour.svelte calls this with every section shown. Leaving a section in the middle of its
+   * tutorial counts as skipping it; a first visit to the new one starts its own.
+   */
+  arrive(section) {
+    if (section === this.section) return;
+    if (this.on) this.finish();
+    this.section = section;
     const saved = readSaved();
-    for (const id of saved.dismissed || []) this.dismissed.add(id);
-    // A first visit to the showcase gets the whole tour; one that has put it all away does not.
-    if (SHOWCASE && !saved.done) {
-      this.on = true;
-      this.carousel = !saved.carouselSeen;
-    }
+    if ((SHOWCASE || saved.asked) && !saved.seen?.[section]) this.start();
   }
 
-  /** The carousel is over (skipped or read to the end): the blurbs take over. */
-  endCarousel() {
-    this.carousel = false;
-    this.save({ carouselSeen: true });
-  }
-
-  /** Puts one blurb away for good. Once every blurb is gone, the tour is over. */
-  dismiss(id) {
-    this.dismissed.add(id);
-    const done = BLURBS.every((b) => this.dismissed.has(b.id));
-    if (done) this.on = false;
-    this.save({ dismissed: [...this.dismissed], done });
-  }
-
-  /** Puts every blurb away and ends the tour. */
-  dismissAll() {
-    for (const b of BLURBS) this.dismissed.add(b.id);
-    this.on = false;
-    this.save({ dismissed: [...this.dismissed], done: true });
-  }
-
-  /** Settings > Show the tour again: from the first card, as on a first visit. */
-  restart() {
-    this.dismissed.clear();
-    this.save({ carouselSeen: false, dismissed: [], done: false });
-    this.carousel = true;
+  /** This section's tutorial, from its first step. A section without one shows nothing. */
+  start() {
+    if (!this.steps().length) return;
+    this.at = 0;
+    this.dir = 1;
     this.on = true;
+  }
+
+  /** Settings > Show the tutorial again: every section is new again, and this one's replays now. */
+  restart() {
+    this.save({ asked: true, seen: {} });
+    this.start();
+  }
+
+  /** One step on. Past the last one, the tutorial is over. */
+  next() {
+    if (this.at >= this.steps().length - 1) {
+      this.finish();
+      return;
+    }
+    this.dir = 1;
+    this.at += 1;
+  }
+
+  back() {
+    if (this.at === 0) return;
+    this.dir = -1;
+    this.at -= 1;
+  }
+
+  /** Ends the tutorial (read to the end, or skipped) and remembers this section had it. */
+  finish() {
+    this.on = false;
+    this.save({ seen: { ...readSaved().seen, [this.section]: true } });
   }
 
   save(changes) {
     try {
       localStorage.setItem(KEY, JSON.stringify({ ...readSaved(), ...changes }));
     } catch {
-      /* storage blocked: the tour will show again next visit */
+      /* storage blocked: the tutorial will show again next visit */
     }
   }
 }
