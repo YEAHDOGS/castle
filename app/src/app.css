@@ -20,6 +20,7 @@
   --color-text-faint: rgba(255, 255, 255, 0.38);
   --color-violet: #a78bfa; /* third person tone in the people menu */
   --color-live: #4ade80; /* running / healthy state dots in Clones and AI */
+  --color-tour: #ff4fa8; /* the tutorial's own colour: its pop-up, arrows, ring and Skip button (components/tour). Nothing else uses it, so the tutorial reads as a layer apart */
 
   --font-hud: "Inter", "Outfit", system-ui, sans-serif;
   --font-mono2: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
