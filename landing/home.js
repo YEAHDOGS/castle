@@ -1,5 +1,4 @@
-// Castle landing page: the header, reveal-on-scroll, and the waitlist form (email, then a
-// confirmation code).
+// Castle landing page: the header, reveal-on-scroll, and the waitlist form.
 (function () {
   'use strict';
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -35,121 +34,112 @@
   }
 
   // ================================================================
-  // WAITLIST: one integration point, the same contract as before.
+  // WAITLIST: the address is saved by the DOGS API Worker (api.dogs.red, D1). Nothing is
+  // emailed yet; the list is what we write to when the Kickstarter opens.
   //
-  // window.CASTLE_WAITLIST_API is the base URL of the waitlist backend (planned: one
-  // Cloudflare Worker). Empty means placeholder mode: the form checks the email and goes to
-  // thanks.html, which says honestly that nothing was stored.
+  //   POST <API>/waitlist { email, site: "castle", token } -> { joined: true }
   //
-  //   POST <API>/waitlist/join    { email }        -> { ok: true } (emails a code)
-  //   POST <API>/waitlist/confirm { email, code }  -> { ok: true } | { ok: false, error }
-  //   GET  <API>/waitlist/count                    -> { ok: true, count }
-  //   "Resend it" re-POSTs /waitlist/join for the same email.
-  // The count line shows a real number from the backend, never a made-up one.
+  // `token` is a Cloudflare Turnstile proof that a person sent it, in invisible mode: no box or
+  // puzzle is shown. Its script loads only when the form is submitted, never before.
   // ================================================================
-  var API = (window.CASTLE_WAITLIST_API || '').replace(/\/+$/, '');
+  var API = 'https://api.dogs.red';
+  var SITE = 'castle';
+  var TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  var TURNSTILE_SITE_KEY = '0x4AAAAAAFn0k2xvNoVQuLjj';
+  var TURNSTILE_ACTION = 'waitlist';
+  var TOKEN_TIMEOUT_MS = 15000;
+  var JOINED_KEY = 'castle-waitlist-joined';
   var steps = {
     email: document.querySelector('[data-step="email"]'),
-    code: document.querySelector('[data-step="code"]'),
     done: document.querySelector('[data-step="done"]'),
   };
   if (!steps.email) return;
   var emailInput = document.getElementById('email');
   var emailError = document.getElementById('email-error');
   var emailButton = steps.email.querySelector('button[type="submit"]');
-  var codeInput = document.getElementById('code');
-  var codeError = document.getElementById('code-error');
-  var codeButton = steps.code.querySelector('button[type="submit"]');
-  var resendButton = steps.code.querySelector('[data-resend]');
-  var emailEcho = steps.code.querySelector('[data-email-echo]');
-  var countLine = document.querySelector('[data-count-line]');
-  var pendingEmail = '';
-
-  if (API && countLine) {
-    fetch(API + '/waitlist/count', { headers: { Accept: 'application/json' } })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && typeof d.count === 'number' && d.count > 0) {
-          countLine.textContent = d.count.toLocaleString() + (d.count === 1 ? ' person is' : ' people are') + ' already in line.';
-        }
-      })
-      .catch(function () { /* keep the founding line */ });
-  }
 
   function showStep(name) {
     Object.keys(steps).forEach(function (k) { steps[k].hidden = k !== name; });
   }
-  function setError(input, el, msg) {
-    el.textContent = msg;
-    if (input) input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  function setError(msg) {
+    emailError.textContent = msg;
+    emailInput.setAttribute('aria-invalid', msg ? 'true' : 'false');
   }
-  function setLoading(btn, on) {
-    btn.classList.toggle('loading', on);
-    btn.disabled = on;
+  function setLoading(on) {
+    emailButton.classList.toggle('loading', on);
+    emailButton.disabled = on;
   }
   function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
   var WORDS = {
-    bad_code: 'That code does not match. Even a dog can tell. Try again.',
-    expired: 'That code expired. Ask for a fresh one below.',
-    too_many: 'Too many tries. Take a breath and try again in a bit.',
     invalid_email: 'That does not look like an email address. Even a dog can tell.',
+    too_many: 'Too many tries. Take a breath and try again in a minute.',
+    tomorrow: 'The list is resting for today. Please try again tomorrow.',
+    failed: 'Something went wrong on our end. Try again in a bit.',
+    offline: 'Could not reach the waitlist. Check your connection and try again.',
   };
-  function friendly(data, fallback) { return (data && data.error && WORDS[data.error]) || fallback; }
-  function post(path, body) {
-    return fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          return { ok: res.ok && data.ok !== false, data: data };
+  var STATUS_WORDS = { 400: WORDS.invalid_email, 429: WORDS.too_many, 503: WORDS.tomorrow };
+
+  var turnstileLoad = null;
+  function loadTurnstile() {
+    if (turnstileLoad) return turnstileLoad;
+    turnstileLoad = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = TURNSTILE_SCRIPT;
+      script.async = true;
+      script.onload = function () { resolve(window.turnstile); };
+      script.onerror = function () { turnstileLoad = null; reject(new Error('turnstile')); };
+      document.head.appendChild(script);
+    });
+    return turnstileLoad;
+  }
+  // One single-use token. The invisible widget draws nothing but needs an element to live in.
+  function turnstileToken() {
+    return loadTurnstile().then(function (turnstile) {
+      return new Promise(function (resolve, reject) {
+        var host = document.createElement('div');
+        host.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden';
+        document.body.appendChild(host);
+        var widget = null;
+        function finish(settle, value) {
+          clearTimeout(timer);
+          if (widget !== null) turnstile.remove(widget);
+          host.remove();
+          settle(value);
+        }
+        var timer = setTimeout(function () { finish(reject, new Error('turnstile')); }, TOKEN_TIMEOUT_MS);
+        widget = turnstile.render(host, {
+          sitekey: TURNSTILE_SITE_KEY,
+          action: TURNSTILE_ACTION,
+          callback: function (token) { finish(resolve, token); },
+          'error-callback': function () { finish(reject, new Error('turnstile')); return true; },
         });
       });
+    });
   }
-  var OFFLINE = 'Could not reach the waitlist. Check your connection and try again.';
 
-  emailInput.addEventListener('input', function () { setError(emailInput, emailError, ''); });
-  codeInput.addEventListener('input', function () { setError(codeInput, codeError, ''); });
+  // Someone who already joined on this browser sees the thank-you, not an empty form.
+  try { if (localStorage.getItem(JOINED_KEY)) showStep('done'); } catch (e) { /* storage is optional */ }
+
+  emailInput.addEventListener('input', function () { setError(''); });
 
   steps.email.addEventListener('submit', function (e) {
     e.preventDefault();
-    var value = emailInput.value.trim();
-    if (!value) return setError(emailInput, emailError, 'Please enter your email address.');
-    if (!validEmail(value)) return setError(emailInput, emailError, WORDS.invalid_email);
-    setError(emailInput, emailError, '');
-    if (!API) {
-      setLoading(emailButton, true);
-      setTimeout(function () { window.location.href = './thanks.html'; }, 600);
-      return;
-    }
-    pendingEmail = value;
-    setLoading(emailButton, true);
-    post('/waitlist/join', { email: value }).then(function (r) {
-      setLoading(emailButton, false);
-      if (!r.ok) return setError(emailInput, emailError, friendly(r.data, 'Something went wrong on our end. Try again in a bit.'));
-      emailEcho.textContent = pendingEmail;
-      showStep('code');
-      codeInput.focus();
-    }).catch(function () { setLoading(emailButton, false); setError(emailInput, emailError, OFFLINE); });
-  });
-
-  steps.code.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var value = codeInput.value.trim();
-    if (!value) return setError(codeInput, codeError, 'Please enter the confirmation code.');
-    setError(codeInput, codeError, '');
-    setLoading(codeButton, true);
-    post('/waitlist/confirm', { email: pendingEmail, code: value }).then(function (r) {
-      setLoading(codeButton, false);
-      if (!r.ok) return setError(codeInput, codeError, friendly(r.data, 'That code did not work. Try again.'));
+    var value = emailInput.value.trim().toLowerCase();
+    if (!value) return setError('Please enter your email address.');
+    if (!validEmail(value)) return setError(WORDS.invalid_email);
+    setError('');
+    setLoading(true);
+    turnstileToken().then(function (token) {
+      return fetch(API + '/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value, site: SITE, token: token }),
+      });
+    }).then(function (res) {
+      setLoading(false);
+      if (!res.ok) return setError(STATUS_WORDS[res.status] || WORDS.failed);
+      try { localStorage.setItem(JOINED_KEY, '1'); } catch (e) { /* storage is optional */ }
       showStep('done');
-    }).catch(function () { setLoading(codeButton, false); setError(codeInput, codeError, OFFLINE); });
+    }).catch(function () { setLoading(false); setError(WORDS.offline); });
   });
-
-  if (resendButton) {
-    resendButton.addEventListener('click', function () {
-      if (!API || !pendingEmail) return;
-      setError(codeInput, codeError, '');
-      post('/waitlist/join', { email: pendingEmail }).then(function (r) {
-        codeError.textContent = r.ok ? 'Fresh code sent. Check your inbox.' : friendly(r.data, 'Could not resend the code. Try again.');
-      }).catch(function () { setError(codeInput, codeError, OFFLINE); });
-    });
-  }
 })();
