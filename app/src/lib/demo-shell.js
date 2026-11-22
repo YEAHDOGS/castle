@@ -333,6 +333,56 @@ const DEMO_TARGETS = [
   { id: 'mac', name: 'macOS Bootstrap (OpenCore)', description: 'Bare-metal bootstrap shim.', family: 'macos', runtime: '', cloud: false, inject: false, built: false, disks: 0 },
 ];
 
+/** The Walmart example's script, as the box ships it (clonewars/automation/examples). */
+const DEMO_WALMART_SCRIPT = `castle 1
+# Walmart motor oil prices: what 0W-20 costs a quart today, and whether today is a good day to buy.
+
+website walmart.com
+
+element search box    = input[name="q"]
+element search button = button[aria-label="Search"]
+element robot check   = text "Robot or human?"
+list listings         = [data-item-id]
+  field id    = @data-item-id
+  field title = [data-automation-id="product-title"]
+  field price = [data-testid="unified-global-product-price-a11y-text"]
+  field link  = a @href
+
+pause whenever robot check is shown "Walmart asks whether this is a robot. Open this bot's screen, take control, and press and hold the button."
+type "0W-20 motor oil" into search box
+click search button
+wait for listings
+scroll to the bottom
+read listings
+keep listings unique by id
+keep listings where title matches "0W-?20"
+measure listings title in quarts as quarts
+keep listings where quarts is not empty
+divide listings price by quarts as price per quart
+sort listings by price per quart lowest first
+
+count listings as listings found
+average listings price per quart as average price per quart
+lowest listings price per quart as best deal
+post listings to castle
+post best deal to castle
+track average price per quart lower is better
+say "{listings found} listings of 0W-20 motor oil, {average price per quart} a quart on average"
+`;
+
+/** Three weeks of the Walmart example's daily average, a dollar figure a quart, oldest first. */
+const DEMO_OIL_DAYS = [7.12, 7.05, 6.98, 7.09, 6.91, 6.84, 6.97, 7.02, 6.95, 6.88, 6.79, 6.93, 6.99, 6.86, 6.81, 6.74, 6.9, 6.83, 6.77, 6.69, 6.58];
+const DEMO_LISTINGS = [
+  ['Quaker State Full Synthetic 0W-20 Motor Oil, 5-Quart', 26.97, 5],
+  ['Castrol EDGE 0W-20 Advanced Full Synthetic Motor Oil, 5 Quarts', 31.97, 5],
+  ['Mobil 1 Advanced Fuel Economy Full Synthetic Motor Oil 0W-20, 5 Quart', 31.97, 5],
+  ['Pennzoil Platinum Full Synthetic 0W-20 Motor Oil, 5 Quart', 32.48, 5],
+  ['Valvoline Advanced Protection Full Synthetic 0W-20 Motor Oil 5 Quart', 33.97, 5],
+  ['Valvoline MaxLife Full Synthetic High Mileage 0W-20 Motor Oil 5 Quart', 33.97, 5],
+  ['Valvoline Restore & Protect Full Synthetic 0W-20 Motor Oil 5 Quart', 38.97, 5],
+  ['Castrol EDGE 0W-20 Advanced Full Synthetic Motor Oil, 1 Quart', 9.97, 1],
+];
+
 const DEMO_FIELDS = [
   { env: 'PENGUIN_USERNAME', label: 'Username', secret: false },
   { env: 'PENGUIN_PASSWORD', label: 'Password', secret: true },
@@ -348,13 +398,47 @@ export class DemoClones {
       id: 'penguin', name: 'Penguin AutoSurf', description: 'Signs in to Club Penguin Journey and plays Cart Surfer on a loop for coins.',
       target: 'debian-x11', source: '../../penguin-autosurf', sourceTrusted: true, repoPresent: true, memoryGb: 4, cores: 8, screen: '1440x900',
       apt: [], pacman: [], tasks: [], fields: DEMO_FIELDS, restart: false, stopAfterMinutes: 0, temporary: false, builtin: true,
-      bots: [{ id: 'main', name: 'Penguin 1', saved: {}, startedAt: 0, state: 'stopped' }],
+      bots: [{ id: 'main', name: 'Penguin 1', saved: {}, startedAt: 0, state: 'stopped' }], kind: 'project', script: '', schedule: '',
+    }, {
+      id: 'walmart-motor-oil', name: 'Walmart Motor Oil Prices', description: 'Searches Walmart for 0W-20 motor oil, works out what each listing costs a quart, and says whether today is a good day to buy.',
+      target: 'container-debian', source: '', sourceTrusted: true, repoPresent: true, memoryGb: 4, cores: 2, screen: '1440x900',
+      apt: [], pacman: [], tasks: [], fields: [], restart: false, stopAfterMinutes: 30, temporary: false, builtin: true,
+      kind: 'script', script: DEMO_WALMART_SCRIPT, schedule: '08:00',
+      bots: [{ id: 'main', name: 'Price checker', saved: {}, startedAt: 0, state: 'stopped' }],
     }];
+    this.results = this.oilResults();
     this.machines = DEMO_TARGETS.filter((t) => t.built).map((t) => ({ id: t.id, key: `m:${t.id}`, name: t.name, target: t.id, kind: 'main', state: 'stopped', diskBytes: 6.2 * GB, log: [] }));
     this.bench = [
       { at: Date.now() - 2 * HOUR, label: 'Debian 13 (minimal X11 desktop)', target: 'debian-x11', mode: 'existing', firstBoot: false, prepSeconds: 1.4, readySeconds: 11.8, ok: true },
       { at: Date.now() - 26 * HOUR, label: 'Debian 13 (minimal X11 desktop)', target: 'debian-x11', mode: 'new', firstBoot: true, prepSeconds: 38.2, readySeconds: 214.5, ok: true },
     ];
+  }
+
+  /** The Walmart example's results: three weeks of daily runs at 8 in the morning. */
+  oilResults() {
+    const today = new Date();
+    today.setHours(8, 0, 0, 0);
+    const at = (daysAgo) => today.getTime() - daysAgo * 24 * HOUR;
+    const n = DEMO_OIL_DAYS.length;
+    const runs = DEMO_OIL_DAYS.map((v, i) => ({
+      id: `demo-${i}`, bot: 'main', started: at(n - 1 - i), finished: at(n - 1 - i) + 74_000, status: 'done', line: 47, said: `${DEMO_LISTINGS.length} listings of 0W-20 motor oil, $${v.toFixed(2)} a quart on average`,
+      message: '', update: '', trigger: 'schedule', shots: [], rows: DEMO_LISTINGS.length + 1,
+    })).reverse();
+    const last = DEMO_OIL_DAYS.at(-1);
+    const before = DEMO_OIL_DAYS.slice(0, -1);
+    const avg = before.reduce((a, b) => a + b, 0) / before.length;
+    runs[0].update = `Average price per quart — buy today: $${last.toFixed(2)} is the lowest in ${before.length} days, ${Math.round(((avg - last) / avg) * 100)}% under the ${before.length}-day average of $${avg.toFixed(2)}. Over ${n} days it has been lowest on Tuesdays.`;
+    const listings = DEMO_LISTINGS.map(([title, price, quarts], i) => ({ id: `DEMO${i}`, title, price: `Price $${price.toFixed(2)}`, link: 'https://www.walmart.com/', quarts, 'price per quart': +(price / quarts).toFixed(4) }));
+    return {
+      runs,
+      update: runs[0].update,
+      metrics: [{ name: 'average price per quart', better: 'lower', points: DEMO_OIL_DAYS.map((value, i) => ({ at: at(n - 1 - i), value })) }],
+      datasets: [
+        { name: 'listings', run: runs[0].id, at: runs[0].started, total: listings.length, columns: Object.keys(listings[0]), rows: listings },
+        { name: 'best deal', run: runs[0].id, at: runs[0].started, total: 1, columns: Object.keys(listings[0]), rows: [listings[0]] },
+      ],
+      log: [{ at: runs[0].started, line: 30, text: `${DEMO_LISTINGS.length} listings found` }, { at: runs[0].finished, line: 47, text: runs[0].said }],
+    };
   }
 
   /** A bot's state and log by wall-clock time, so polling shows a launch moving along. */
@@ -379,7 +463,8 @@ export class DemoClones {
   view(a) {
     const bots = a.bots.map((bot, index) => this.botView(a, bot, index));
     const state = bots.some((b) => b.state === 'running') ? 'running' : bots.some((b) => b.state === 'launching') ? 'launching' : 'stopped';
-    return { ...a, state, bots };
+    const latest = a.kind === 'script' && a.id === 'walmart-motor-oil' ? { run: this.results.runs[0], update: this.results.update } : null;
+    return { ...a, state, bots, latest };
   }
 
   find(id) {
@@ -445,6 +530,18 @@ export class DemoClones {
     const bot = a.bots.find((b) => b.id === (botId || 'main'));
     if (bot) bot.state = 'stopped';
     return this.view(a);
+  }
+
+  /** The demo has no box to compile on: it only looks for the version line. */
+  async cloneScriptCheck(script) {
+    const first = String(script || '').split('\n').find((l) => l.trim() && !l.trim().startsWith('#')) || '';
+    if (first && !/^castle\s+1\s*$/i.test(first.trim()) && /^castle\s/i.test(first.trim())) return { ok: false, problems: [{ line: 1, message: 'this Castle reads version 1 scripts' }] };
+    return { ok: true, problems: [], python: '# The demo has no box, so nothing is compiled here.\n# On a real box this is the Python the script becomes.\n' };
+  }
+
+  async cloneResults(id) {
+    if (id === 'walmart-motor-oil') return structuredClone(this.results);
+    return { runs: [], datasets: [], metrics: [], log: [], update: '' };
   }
 
   async cloneLive() {

@@ -1,15 +1,24 @@
 <!-- AutomationEditor: makes an automation, or changes one. An automation is a recipe: the
-     system it runs on (in a virtual machine, or in a container, which is far lighter), the
-     project it brings, what to install, the tasks to run in order, the rules it runs under,
-     and the sign-in fields each of its bots fills in. On Android the tasks are commands for
-     the phone's own shell, and the project's APKs are installed. -->
+     system it runs on (in a virtual machine, or in a container, which is far lighter), what it
+     does, the rules it runs under, and the sign-in fields each of its bots fills in. What it
+     does is either a Castle script, written here (Castle compiles it and brings the castle
+     library), or a project of its own with tasks to run in order. On Android the tasks are
+     commands for the phone's own shell, and the project's APKs are installed. -->
 <script>
   import { X, Plus, Trash2, Save, Sparkles } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { INPUT, BTN, BTN_PRIMARY, LABEL, words } from '../../lib/clones-ui.js';
+  import ScriptEditor from './ScriptEditor.svelte';
 
-  /** initial: the automation being changed, or null for a new one. targets: the catalogue. */
-  let { initial, targets, busy, onsave, onclose } = $props();
+  /** initial: the automation being changed, or null for a new one. targets: the catalogue.
+      examples: the built-in automations, to start a new one from. check: the box's script check. */
+  let { initial, targets, examples = [], busy, check, onsave, onclose } = $props();
+
+  const KINDS = [
+    { id: 'script', label: 'CASTLE SCRIPT', help: 'Written here, step by step. Castle turns it into a Python project, brings the castle library, and keeps what it finds in its database.' },
+    { id: 'project', label: 'A PROJECT OF ITS OWN', help: 'A folder or a git repository with its own code, and the commands that start it.' },
+  ];
+  const BLANK_SCRIPT = 'castle 1\nwebsite example.com\n\nelement heading = h1\n\nread heading as title\nsay "The page says {title}"\npost title to castle\n';
 
   const automatable = $derived(targets.filter((t) => t.automatable ?? t.inject));
   const isContainer = (t) => t?.runtime === 'container';
@@ -34,8 +43,19 @@
     restart: true,
     stopAfterMinutes: 0,
     temporary: false,
+    kind: 'project',
+    script: '',
+    daily: false,
+    dailyAt: '08:00',
   };
-  const BLANK = { ...EXAMPLE, name: '', description: '', source: '', cores: 4, packages: '', tasks: [{ name: '', command: '', root: false }], fields: [], restart: false };
+  const BLANK = { ...EXAMPLE, name: '', description: '', source: '', target: 'container-debian', cores: 2, packages: '', tasks: [{ name: '', command: '', root: false }], fields: [], restart: false, kind: 'script', script: BLANK_SCRIPT };
+  const walmart = $derived(examples.find((a) => a.kind === 'script'));
+
+  /** A new automation that starts as a copy of the Walmart example's script. */
+  function fromWalmart() {
+    if (!walmart) return;
+    form = { ...structuredClone(BLANK), name: 'My price checker', description: 'A copy of the Walmart motor oil script to change.', target: walmart.target, memoryGb: walmart.memoryGb, cores: walmart.cores, stopAfterMinutes: walmart.stopAfterMinutes, script: walmart.script };
+  }
 
   function formOf(a) {
     if (!a) return structuredClone(BLANK);
@@ -44,6 +64,7 @@
       packages: [...new Set([...a.apt, ...a.pacman])].join(' '),
       tasks: a.tasks.map((t) => ({ ...t })), fields: a.fields.map((f) => ({ ...f })),
       restart: a.restart, stopAfterMinutes: a.stopAfterMinutes, temporary: a.temporary,
+      kind: a.kind || 'project', script: a.script || '', daily: !!a.schedule, dailyAt: a.schedule || '08:00',
     };
   }
 
@@ -53,14 +74,29 @@
   const engine = $derived(isContainer(current) ? 'container' : 'vm');
   const choices = $derived(automatable.filter((t) => isContainer(t) === (engine === 'container')));
   const android = $derived(current?.family === 'android');
+  const scripted = $derived(form.kind === 'script');
+  /** A built-in keeps its kind; anything else can switch. Scripts run on Linux only. */
+  const canSwitch = $derived(!initial?.builtin);
+  const choicesHere = $derived(scripted ? choices.filter((t) => t.family !== 'android') : choices);
 
   /** Moves the automation to the other engine, on the same kind of system where there is one. */
   function setEngine(id) {
     if (id === engine) return;
     const family = current?.family || 'linux';
-    const pool = automatable.filter((t) => isContainer(t) === (id === 'container'));
+    const pool = automatable.filter((t) => isContainer(t) === (id === 'container') && (!scripted || t.family !== 'android'));
     const next = pool.find((t) => t.family === family) || pool[0];
     if (next) form.target = next.id;
+  }
+
+  /** Script or project. A script needs a Linux system, so an Android pick moves to Linux. */
+  function pickKind(id) {
+    form.kind = id;
+    if (id !== 'script') return;
+    if (!form.script.trim()) form.script = BLANK_SCRIPT;
+    if (android) {
+      const linux = automatable.find((t) => t.family === 'linux' && isContainer(t) === (engine === 'container')) || automatable.find((t) => t.family === 'linux');
+      if (linux) form.target = linux.id;
+    }
   }
 
   function save() {
@@ -76,7 +112,9 @@
       screen: form.screen,
       apt: pkgs,
       pacman: pkgs,
-      tasks: form.tasks.filter((t) => t.command.trim()),
+      script: scripted ? form.script : '',
+      schedule: form.daily ? form.dailyAt : '',
+      tasks: scripted ? [] : form.tasks.filter((t) => t.command.trim()),
       fields: form.fields.filter((f) => f.env.trim()),
       restart: form.restart,
       stopAfterMinutes: Number(form.stopAfterMinutes) || 0,
@@ -92,7 +130,8 @@
     <header class="flex items-center gap-3">
       <h2 class="flex-1 text-[18px] font-bold text-white">{initial ? `Change ${initial.name}` : 'New automation'}</h2>
       {#if !initial}
-        <button type="button" class={BTN} onclick={() => (form = structuredClone(EXAMPLE))}><Sparkles class="h-3.5 w-3.5" /> START FROM THE PENGUIN EXAMPLE</button>
+        {#if walmart}<button type="button" class={BTN} onclick={fromWalmart}><Sparkles class="h-3.5 w-3.5" /> WALMART EXAMPLE</button>{/if}
+        <button type="button" class={BTN} onclick={() => (form = structuredClone(EXAMPLE))}><Sparkles class="h-3.5 w-3.5" /> PENGUIN EXAMPLE</button>
       {/if}
       <button type="button" class={BTN} onclick={onclose} aria-label="Close"><X class="h-4 w-4" /></button>
     </header>
@@ -102,11 +141,23 @@
       <label class="block">
         <span class={LABEL}>RUNS ON</span>
         <select bind:value={form.target} class={INPUT}>
-          {#each choices as t (t.id)}<option value={t.id} class="bg-black">{t.name}</option>{/each}
+          {#each choicesHere as t (t.id)}<option value={t.id} class="bg-black">{t.name}</option>{/each}
         </select>
       </label>
       <label class="block sm:col-span-2"><span class={LABEL}>WHAT IT DOES</span><input bind:value={form.description} class={INPUT} /></label>
     </div>
+
+    {#if canSwitch}
+      <div>
+        <p class={LABEL}>WHAT IT RUNS</p>
+        <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="What it runs">
+          {#each KINDS as k (k.id)}
+            <button type="button" role="radio" aria-checked={form.kind === k.id} class="{BTN} {form.kind === k.id ? '!border-chiral/70 !text-chiral' : ''}" onclick={() => pickKind(k.id)}>{k.label}</button>
+          {/each}
+        </div>
+        <p class="mt-1 text-[12px] leading-relaxed text-text-dim">{KINDS.find((k) => k.id === form.kind)?.help}</p>
+      </div>
+    {/if}
 
     <div>
       <p class={LABEL}>RUNS IN</p>
@@ -125,6 +176,9 @@
       <p class="mt-1 text-[12px] leading-relaxed text-text-dim">{ENGINES.find((e) => e.id === engine)?.help}</p>
     </div>
 
+    {#if scripted}
+      <ScriptEditor bind:value={form.script} {check} />
+    {:else}
     <div>
       <label class="block">
         <span class={LABEL}>PROJECT IT BRINGS</span>
@@ -136,12 +190,16 @@
       </p>
     </div>
 
+    {/if}
+
     {#if !android}
       <label class="block">
-        <span class={LABEL}>PACKAGES TO INSTALL</span>
-        <input bind:value={form.packages} spellcheck="false" placeholder="python3-venv firefox-esr" class={INPUT} />
+        <span class={LABEL}>{scripted ? 'MORE PACKAGES TO INSTALL (A WEBSITE SCRIPT ALREADY GETS PYTHON AND CHROMIUM)' : 'PACKAGES TO INSTALL'}</span>
+        <input bind:value={form.packages} spellcheck="false" placeholder={scripted ? 'none needed' : 'python3-venv firefox-esr'} class={INPUT} />
       </label>
     {/if}
+
+    {#if !scripted}
 
     <div>
       <p class={LABEL}>{android ? 'TASKS ON THE PHONE, RUN IN THIS ORDER' : 'TASKS, RUN IN THIS ORDER'}</p>
@@ -167,11 +225,17 @@
         <p class="mt-1 text-[12px] text-text-dim">The built-in example has its own setup; tasks here run after it.</p>
       {/if}
     </div>
+    {/if}
 
     <div>
       <p class={LABEL}>RULES</p>
       <div class="space-y-2 text-[13px] text-text-dim">
-        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.restart} class="accent-chiral" /> When the tasks finish, run them again</label>
+        <label class="flex flex-wrap items-center gap-2">
+          <input type="checkbox" bind:checked={form.daily} class="accent-chiral" /> Run every day at
+          <input bind:value={form.dailyAt} type="time" disabled={!form.daily} class="{INPUT} !w-32" aria-label="Time of day" />
+          <span class="text-[12px]">on the box's clock</span>
+        </label>
+        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.restart} class="accent-chiral" /> {scripted ? 'When the script finishes, run it again (otherwise its machine stops when it is done)' : 'When the tasks finish, run them again'}</label>
         <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.temporary} class="accent-chiral" /> Temporary: every run starts clean and nothing it writes is kept</label>
         <label class="flex items-center gap-2">
           Shut the machine down after

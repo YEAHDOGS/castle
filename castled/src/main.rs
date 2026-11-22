@@ -26,7 +26,9 @@ mod lookup;
 mod media_tags;
 mod network;
 mod presence;
+mod results;
 mod saves;
+mod script;
 mod security;
 mod steam;
 mod stream;
@@ -1033,6 +1035,9 @@ fn vtt_response(text: String) -> Response {
 
 /// A contacts file is at most this big. Comms' own import is streamed and has no cap.
 const CONTACTS_UPLOAD_MAX: usize = 64 * 1024 * 1024;
+/// A report from a script run carries at most one picture of its screen.
+const CLONES_REPORT_MAX: usize = 10 * 1024 * 1024;
+const CLONES_REPORT_PATH: &str = "/api/v1/clones/report";
 
 /// The person a box has until it grows accounts (the app's OWNER).
 fn owner() -> String {
@@ -1605,8 +1610,9 @@ async fn clones_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::V
             .filter_map(|dir| program_folder(&dir).ok())
             .find(|dir| clones::looks_like_clonewars(dir))
             .ok_or_else(|| ApiError(StatusCode::CONFLICT, "No clonewars folder was found near the box. Start the box with --clonewars and its path.".into()))?;
-        let clones = clones::Clones::new(dir, st.root.join(META_DIR).join("clones"), st.loopback);
-        *st.clones.write().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))? = Some(Arc::new(clones));
+        let port = st.listen.parse::<SocketAddr>().map(|a| a.port()).unwrap_or(8787);
+        let clones = running_clones(clones::Clones::new(dir, st.root.join(META_DIR).join("clones"), st.loopback), port);
+        *st.clones.write().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))? = Some(clones);
         Ok(Json(serde_json::json!({ "on": true })))
     })
     .await
@@ -1629,6 +1635,68 @@ async fn arcade_enable(State(st): State<Shared>) -> ApiResult<Json<serde_json::V
 }
 
 type ClonesJson = ApiResult<Json<serde_json::Value>>;
+
+/// Clones as the box runs it: script runs report to this port, and the scheduler is going.
+fn running_clones(clones: clones::Clones, port: u16) -> Arc<clones::Clones> {
+    clones.set_port(port);
+    let clones = Arc::new(clones);
+    clones.background();
+    clones
+}
+
+#[derive(Deserialize)]
+struct ScriptBody {
+    #[serde(default)]
+    script: String,
+}
+
+async fn clones_script_check(State(st): State<Shared>, Json(b): Json<ScriptBody>) -> ClonesJson {
+    clones_call(st, move |c| Ok(c.check_script(&b.script))).await
+}
+
+async fn clones_results(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ClonesJson {
+    clones_call(st, move |c| c.results_of(&q.path)).await
+}
+
+async fn clones_result_shot(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Response> {
+    let bytes = tokio::task::spawn_blocking(move || match st.clones.read().ok().and_then(|slot| slot.clone()) {
+        Some(clones) => clones.result_shot(&q.path).map_err(|msg| ApiError(StatusCode::NOT_FOUND, msg)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --clonewars".into())),
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))??;
+    let mut res = Response::new(Body::from(bytes));
+    res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=86400"));
+    Ok(res)
+}
+
+/// A Castle script reporting from inside its machine: steps, rows, tracked values, pictures,
+/// and how it ended. It carries its run's own secret (`Authorization: Run <secret>`), which
+/// opens nothing but that run's results, so this route needs no box token.
+async fn clones_report(State(st): State<Shared>, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Json<serde_json::Value>> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Run "))
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    tokio::task::spawn_blocking(move || {
+        let Some(clones) = st.clones.read().ok().and_then(|slot| slot.clone()) else {
+            return Err(ApiError(StatusCode::NOT_FOUND, "this box was not started with --clonewars".into()));
+        };
+        // The secret is checked before the body is parsed, so a stranger learns nothing from it.
+        let report = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).map_err(|_| ApiError::bad("that is not a report"));
+        if !clones.run_known(&token) {
+            st.security.note_denied("/clones/report");
+            return Err(ApiError(StatusCode::UNAUTHORIZED, clones::REFUSED.into()));
+        }
+        clones.report(&token, &report(&body)?).map(Json).map_err(|msg| ApiError(StatusCode::CONFLICT, msg))
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?
+}
 
 async fn clones_list(State(st): State<Shared>) -> ApiResult<Json<Vec<serde_json::Value>>> {
     clones_call(st, |c| Ok(c.list())).await
@@ -2152,7 +2220,10 @@ fn content_policy(listen: SocketAddr) -> HeaderValue {
 /// that, a web page elsewhere could point a name of its own at 127.0.0.1 and have the
 /// browser talk to the box as if it were that page's own server (DNS rebinding).
 async fn harden(State(st): State<Shared>, req: Request, next: Next) -> Response {
-    if st.loopback {
+    // A script run reports from inside its machine, which knows the box as host.docker.internal
+    // or 10.0.2.2. That one route is let through: it answers only to a run's own secret and
+    // gives a page nothing to read, so rebinding a name to it gains nothing.
+    if st.loopback && req.uri().path() != CLONES_REPORT_PATH {
         let host = req.headers().get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
         let name = host.rsplit_once(':').map_or(host, |(name, _port)| name);
         if !matches!(name, "127.0.0.1" | "localhost" | "[::1]") {
@@ -2333,6 +2404,9 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
         .route("/clones/live", post(clones_live))
+        .route("/clones/script/check", post(clones_script_check))
+        .route("/clones/results", get(clones_results))
+        .route("/clones/results/shot", get(clones_result_shot))
         .route("/arcade/enable", post(arcade_enable))
         .route("/clones/automation/save", post(clones_automation_save))
         .route("/clones/automation/delete", post(clones_automation_delete))
@@ -2380,9 +2454,11 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
 
     // Play links carry their own permission (see theater.rs), so a video player can use them.
     // Presence nodes report with their own key, which opens nothing else (see presence.rs).
+    // Script runs report with their run's own secret, which opens nothing else (see clones.rs).
     let api = Router::new()
         .route("/hello", get(hello))
         .route("/presence/report", post(presence_report).layer(DefaultBodyLimit::max(presence::MAX_REPORT_BYTES)))
+        .route("/clones/report", post(clones_report).layer(DefaultBodyLimit::max(CLONES_REPORT_MAX)))
         .route("/media/{ticket}", get(media))
         .route("/media/{ticket}/sub/{n}", get(media_subtitle))
         .route("/media/{ticket}/captions", get(media_captions))
@@ -2445,7 +2521,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         token: RwLock::new(token.clone()),
         security,
         stars: Mutex::new(stars),
-        clones: RwLock::new(clones.map(Arc::new)),
+        clones: RwLock::new(clones.map(|c| running_clones(c, addr.port()))),
         arcade: RwLock::new(arcade.map(Arc::new)),
         network: network::Network::new(),
         system: system::System::new(),

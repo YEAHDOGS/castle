@@ -6,7 +6,7 @@
      Benchmarks shows how long launches took. -->
 <script>
   import { untrack } from 'svelte';
-  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText, Container, Smartphone, Zap } from '@lucide/svelte';
+  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText, Container, Smartphone, Zap, FileCode, CalendarClock } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -18,6 +18,7 @@
   import BotPanel from '../clones/BotPanel.svelte';
   import LaunchDialog from '../clones/LaunchDialog.svelte';
   import AutomationEditor from '../clones/AutomationEditor.svelte';
+  import ResultsPanel from '../clones/ResultsPanel.svelte';
 
   const SECOND_MS = 1000;
   const CONFIRM_MS = 4000;
@@ -379,7 +380,7 @@
     {/if}
   {:else if view === 'automations'}
     <div class="mb-4 flex items-center gap-3">
-      <p class="flex-1 text-[13px] text-text-dim">A recipe and its bots. Each bot signs in as itself and runs on its own machine, so several can run at once.</p>
+      <p class="flex-1 text-[13px] text-text-dim">A recipe and its bots. Write one as a Castle script, or bring a project of your own. Each bot signs in as itself and runs on its own machine, so several can run at once.</p>
       <button class={BTN_PRIMARY} onclick={() => (editing = { initial: null })}><Plus class="h-4 w-4" /> NEW AUTOMATION</button>
     </div>
     <div class="space-y-4">
@@ -387,14 +388,16 @@
         <article class="hud-corners glass">
           <header class="flex flex-wrap items-center gap-3 border-b border-hairline px-5 py-4">
             <span class="grid h-10 w-10 shrink-0 place-items-center border border-chiral/60 bg-chiral-dim">
-              <Bot class="h-5 w-5 text-chiral" strokeWidth={1.5} />
+              {#if a.kind === 'script'}<FileCode class="h-5 w-5 text-chiral" strokeWidth={1.5} />{:else}<Bot class="h-5 w-5 text-chiral" strokeWidth={1.5} />{/if}
             </span>
             <div class="min-w-0 flex-1">
               <h2 class="text-[17px] font-bold text-white">{a.name}</h2>
               <p class="text-[13px] text-text-dim">{a.description}</p>
               <p class="micro mt-1 flex flex-wrap gap-x-3 text-text-faint">
+                {#if a.kind === 'script'}<span class="text-chiral">CASTLE SCRIPT</span>{/if}
                 <span>{targetName(a.target)}</span>
                 <span>{a.cores} CORES · {a.memoryGb} GB</span>
+                {#if a.schedule}<span class="flex items-center gap-1 text-live"><CalendarClock class="h-3 w-3" /> EVERY DAY {a.schedule}</span>{/if}
                 {#if a.builtin}<span>EXAMPLE</span>{/if}
                 {#if a.temporary}<span>TEMPORARY</span>{/if}
                 {#if a.restart}<span>LOOPS</span>{/if}
@@ -409,6 +412,9 @@
             {/if}
           </header>
           <div class="p-5">
+            {#if a.kind === 'script'}
+              <div class="mb-4"><ResultsPanel {source} automation={a} /></div>
+            {/if}
             {#if !a.repoPresent}
               <p class="mb-3 text-[12px] text-text-dim">Its project is not on the box yet. It is fetched on the first start when the project is a git address; a folder has to be put there by hand.</p>
             {/if}
@@ -473,5 +479,5 @@
   <LaunchDialog target={picked} machines={lab.machines.filter((m) => m.target === picked.id && m.kind !== 'temporary')} {busy} onstart={launch} onclose={() => (picked = null)} />
 {/if}
 {#if editing}
-  <AutomationEditor initial={editing.initial} targets={lab.targets} {busy} onsave={saveAutomation} onclose={() => (editing = null)} />
+  <AutomationEditor initial={editing.initial} targets={lab.targets} examples={automations.filter((a) => a.builtin)} check={(script) => source.cloneScriptCheck(script)} {busy} onsave={saveAutomation} onclose={() => (editing = null)} />
 {/if}

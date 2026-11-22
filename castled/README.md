@@ -90,6 +90,14 @@ machine alone.
 | `POST /clones/login` `{id, username, password}` | Saves the login to the project's `.env`. An empty password keeps the saved one. |
 | `POST /clones/start` `{id}` | Launches the VM. If the project is not checked out next to Castle, it is cloned first from the address in `CASTLE_PENGUIN_REPO`. Refused while one is running. |
 | `POST /clones/stop` `{id}` | Sends the VM a power-button shutdown over its QMP port. |
+| `POST /clones/automation/save` `{..., script, schedule}` | `script` is a Castle script (`app/clonewars/automation/README.md`); it is compiled on save and refused with its first problem and line. `schedule` is `HH:MM`: the first bot starts every day at that time on the box's clock. |
+| `POST /clones/script/check` `{script}` | Compiles a script without running it: `{ok, problems: [{line, message}], python, web, datasets, tracked, fields}`. |
+| `GET /clones/results?path=<id>` | An automation's runs (status, the line it is on or failed at, its pictures), the rows each dataset holds after its newest post, its tracked values over 180 days, the newest run's log, and the update in words. |
+| `GET /clones/results/shot?path=<run>/<n>` | One picture a run took, as PNG. |
+| `POST /clones/report` | **No box token.** A script reporting from inside its machine, with `Authorization: Run <secret>`: the secret Castle wrote into that run's `castle-run.json`, kept only as a hash. It opens that one run's results until the run ends, and nothing else. The machine reaches the box as `host.docker.internal` (container) or `10.0.2.2` (QEMU), so this one route skips the check that the request names this computer. |
+
+A script run's results are in `<vault>/.castle/clones/results.db` (SQLite: runs, rows,
+tracked values, log lines, the daily schedule) and its pictures in `shots/` beside it.
 
 "Running" means a QEMU process is using that automation's disk in this clonewars folder,
 whoever started it.

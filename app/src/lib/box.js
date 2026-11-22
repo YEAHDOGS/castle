@@ -380,6 +380,22 @@ export class HttpAdapter extends StorageAdapter {
     return URL.createObjectURL(await res.blob());
   }
 
+  /** Checks a Castle script without running it: { ok, problems: [{ line, message }], python, ... }. */
+  async cloneScriptCheck(script) {
+    return (await this.post('/clones/script/check', { script })).json();
+  }
+
+  /** An automation's runs, the rows its datasets hold now, its tracked values and its update. */
+  async cloneResults(id) {
+    return (await this.call(`/clones/results?path=${encodeURIComponent(id)}`)).json();
+  }
+
+  /** @returns {Promise<string>} an object URL of a picture a run took ("<run>/<n>"); revoke it when done */
+  async cloneResultShot(path) {
+    const res = await this.call(`/clones/results/shot?path=${encodeURIComponent(path)}`);
+    return URL.createObjectURL(await res.blob());
+  }
+
   // ---- Network: the box's own connection ----
 
   async network() {

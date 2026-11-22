@@ -27,14 +27,19 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
+        atomic::{AtomicU16, AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
+
+use crate::{
+    results::{Results, RunRef},
+    script,
+};
 
 const LOG_TAIL_LINES: usize = 60;
 const MAX_VALUE_LEN: usize = 200;
@@ -64,6 +69,21 @@ const BOT_ENV_FILE: &str = "castle-bot.env";
 const PROJECT_ZIP: &str = "project.zip";
 /// Git hosts a project may be fetched from. Anything else has to be put on the box by hand.
 const TRUSTED_HOSTS: [&str; 4] = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"];
+const WALMART_ID: &str = "walmart-motor-oil";
+const WALMART_SCRIPT: &str = include_str!("../../app/clonewars/automation/examples/walmart-motor-oil.castle");
+/// The castle library and its runner, inside the clonewars folder.
+const LIBRARY_DIR: &str = "automation/castle";
+/// What a script run brings with it into the machine.
+const RUN_FILE: &str = "castle-run.json";
+const SCRIPT_TASK: &str = "bash castle/run.sh";
+/// How often the scheduler looks at the clock and at runs that asked to be stopped.
+const TICK: Duration = Duration::from_secs(5);
+/// A finished script's machine is stopped this long after it said so, to let it exit cleanly.
+const STOP_AFTER_FINISH: Duration = Duration::from_secs(4);
+/// The scheduler looks at the clock every this many ticks (half a minute).
+const SCHEDULE_EVERY_TICKS: u64 = 6;
+/// What `report` answers for a secret the box never gave out.
+pub const REFUSED: &str = "this run needs its own secret";
 /// Hides the console of helper processes on Windows; the VM's own window still appears.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -149,6 +169,11 @@ pub struct AutomationDef {
     temporary: bool,
     builtin: bool,
     bots: Vec<Bot>,
+    /// A Castle script (see script.rs). When there is one it is the automation: Castle
+    /// compiles it, brings the castle library and runs it, and `source` and `tasks` are unused.
+    script: String,
+    /// "HH:MM": start the first bot every day at that time on the box's clock. Empty: never.
+    schedule: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -296,6 +321,12 @@ pub struct Clones {
     /// Held while one of the saved lists (automations, machines, benchmarks) is rewritten.
     files: Arc<Mutex<()>>,
     serial: AtomicU64,
+    /// What script runs found (results.rs), opened on first use.
+    results: OnceLock<Option<Results>>,
+    /// The port the box listens on: a script reports to it from inside its machine.
+    port: AtomicU16,
+    /// Units whose script finished, to be stopped by the scheduler's next tick.
+    to_stop: Mutex<Vec<(String, Instant)>>,
 }
 
 fn hidden(mut cmd: Command) -> Command {
@@ -523,6 +554,113 @@ fn penguin() -> AutomationDef {
     }
 }
 
+/// The second example: a Castle script that checks Walmart's motor oil prices and says, day by
+/// day, whether today is a good day to buy. It runs in a container by default; a VM works too.
+fn walmart() -> AutomationDef {
+    AutomationDef {
+        id: WALMART_ID.into(),
+        name: "Walmart Motor Oil Prices".into(),
+        description: "Searches Walmart for 0W-20 motor oil, works out what each listing costs a quart, and says whether today is a good day to buy.".into(),
+        target: "container-debian".into(),
+        memory_gb: 4,
+        cores: 2,
+        screen: "1440x900".into(),
+        stop_after_minutes: 30,
+        builtin: true,
+        script: WALMART_SCRIPT.replace("\r\n", "\n"),
+        bots: vec![Bot { id: MAIN_BOT.into(), name: "Price checker".into(), values: HashMap::new() }],
+        ..Default::default()
+    }
+}
+
+/// The examples every box has. They can be changed, not removed.
+fn builtins() -> Vec<AutomationDef> {
+    vec![penguin(), walmart()]
+}
+
+/// "HH:MM" on a 24-hour clock, as (hour, minute).
+fn schedule_time(text: &str) -> Option<(u32, u32)> {
+    let (h, m) = text.trim().split_once(':')?;
+    let (h, m) = (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
+    (h < 24 && m < 60 && text.trim().len() == 5).then_some((h, m))
+}
+
+/// The first problem of a script that did not compile, with its line.
+fn first_problem(problems: &[script::Diagnostic]) -> String {
+    match problems.first() {
+        Some(d) if problems.len() > 1 => format!("line {}: {} (and {} more problems)", d.line, d.message, problems.len() - 1),
+        Some(d) => format!("line {}: {}", d.line, d.message),
+        None => "the script did not compile".into(),
+    }
+}
+
+/// Standard base64 (with or without padding) to bytes. None when it is not base64.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a') as u32 + 26),
+            b'0'..=b'9' => Some((c - b'0') as u32 + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let clean: Vec<u8> = text.bytes().filter(|c| !c.is_ascii_whitespace()).collect();
+    let body = clean.strip_suffix(b"==").or_else(|| clean.strip_suffix(b"=")).unwrap_or(&clean);
+    let mut out = Vec::with_capacity(body.len() * 3 / 4);
+    for chunk in body.chunks(4) {
+        if chunk.len() == 1 {
+            return None;
+        }
+        let mut n = 0u32;
+        for (i, c) in chunk.iter().enumerate() {
+            n |= value(*c)? << (18 - 6 * i);
+        }
+        out.push((n >> 16) as u8);
+        if chunk.len() > 2 {
+            out.push((n >> 8) as u8);
+        }
+        if chunk.len() > 3 {
+            out.push(n as u8);
+        }
+    }
+    Some(out)
+}
+
+fn sha256_hex(text: &str) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn random_hex(bytes: usize) -> String {
+    let mut buf = vec![0u8; bytes];
+    getrandom::fill(&mut buf).expect("the operating system provides randomness");
+    buf.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Copies the castle library into a project. Shell and Python files are read by Linux, so
+/// they lose any Windows line endings a checkout gave them.
+fn copy_library(from: &Path, to: &Path) -> ClonesResult<()> {
+    let unreadable = |_| format!("could not read the castle library in {}", from.display());
+    std::fs::create_dir_all(to).map_err(unreadable)?;
+    for entry in std::fs::read_dir(from).map_err(unreadable)?.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        if path.is_dir() {
+            if name != "__pycache__" {
+                copy_library(&path, &to.join(&name))?;
+            }
+            continue;
+        }
+        let text_file = path.extension().is_some_and(|e| e == "sh" || e == "py");
+        let bytes = std::fs::read(&path).map_err(unreadable)?;
+        let bytes = if text_file { String::from_utf8_lossy(&bytes).replace("\r\n", "\n").into_bytes() } else { bytes };
+        std::fs::write(to.join(&name), bytes).map_err(|_| "could not write the project for the machine".to_string())?;
+    }
+    Ok(())
+}
+
 /// The one command a made-in-the-app automation runs in the guest's desktop session:
 /// unpack the project, give it this bot's sign-in, then run the tasks in order.
 fn session_command(a: &AutomationDef) -> Option<String> {
@@ -675,6 +813,9 @@ impl Clones {
             targets: Mutex::new(None),
             files: Arc::new(Mutex::new(())),
             serial: AtomicU64::new(1),
+            results: OnceLock::new(),
+            port: AtomicU16::new(8787),
+            to_stop: Mutex::new(Vec::new()),
         }
     }
 
@@ -1171,8 +1312,15 @@ impl Clones {
 
     // ---- automations ----
 
+    /// The saved automations, with every built-in example the list does not have yet.
     fn all_automations(&self) -> Vec<AutomationDef> {
-        load(&self.automations_file()).unwrap_or_else(|| vec![penguin()])
+        let mut all: Vec<AutomationDef> = load(&self.automations_file()).unwrap_or_default();
+        for (at, example) in builtins().into_iter().enumerate() {
+            if !all.iter().any(|a| a.id == example.id) {
+                all.insert(at.min(all.len()), example);
+            }
+        }
+        all
     }
 
     fn automation(&self, id: &str) -> ClonesResult<AutomationDef> {
@@ -1261,6 +1409,7 @@ impl Clones {
             .map(|bot| {
                 let unit = self.bot_unit(a, bot);
                 let state = self.state_of(&unit);
+                self.settle_run(a, bot, state);
                 if state == "running" || (state == "launching" && any_live != "running") || (state == "failed" && any_live == "stopped") {
                     any_live = state;
                 }
@@ -1288,6 +1437,8 @@ impl Clones {
             "memoryGb": a.memory_gb, "cores": a.cores, "screen": a.screen, "apt": a.apt, "pacman": a.pacman,
             "tasks": a.tasks, "fields": a.fields, "restart": a.restart, "stopAfterMinutes": a.stop_after_minutes,
             "temporary": a.temporary, "builtin": a.builtin, "state": any_live, "bots": bots,
+            "kind": if a.script.is_empty() { "project" } else { "script" }, "script": a.script, "schedule": a.schedule,
+            "latest": if a.script.is_empty() { Value::Null } else { self.results().ok().and_then(|r| r.latest(&a.id)).unwrap_or(Value::Null) },
             "family": self.runtime_kind(&a.target), "engine": self.unit(String::new(), &a.target, None).engine.label(),
         })
     }
@@ -1305,6 +1456,22 @@ impl Clones {
         self.require_loopback()?;
         def.name = def.name.trim().to_string();
         def.source = def.source.trim().to_string();
+        def.script = def.script.replace("\r\n", "\n");
+        def.schedule = def.schedule.trim().to_string();
+        if !def.schedule.is_empty() && schedule_time(&def.schedule).is_none() {
+            return Err("a daily time is written like 08:00 or 18:30".into());
+        }
+        if def.script.len() > 64 * 1024 {
+            return Err("a script can be 64 KB at most".into());
+        }
+        if def.script.trim().is_empty() {
+            def.script = String::new();
+        } else {
+            // The script is the automation: it brings its own project and its one task.
+            script::compile(&def.script).map_err(|e| first_problem(&e))?;
+            def.source = String::new();
+            def.tasks.clear();
+        }
         def.apt = trimmed(&def.apt);
         def.pacman = trimmed(&def.pacman);
         def.tasks.retain(|t| !t.command.trim().is_empty());
@@ -1322,6 +1489,9 @@ impl Clones {
         if !(target.inject || (target.family == "android" && !target.runtime.is_empty())) {
             return Err("this operating system cannot be set up from the host yet. Pick one marked as scriptable".into());
         }
+        if !def.script.is_empty() && target.family == "android" {
+            return Err("Castle scripts run on Linux machines. Pick a Linux system or container".into());
+        }
         if is_git_address(&def.source) && !trusted_source(&def.source) {
             return Err(format!("a project address must be https on one of: {}", TRUSTED_HOSTS.join(", ")));
         }
@@ -1337,6 +1507,8 @@ impl Clones {
         }
         let creating = def.id.is_empty();
         let mut id = wanted.clone();
+        let schedule = def.schedule.clone();
+        let mut schedule_before = String::new();
         self.change_automations(|all| {
             if creating {
                 let mut n = 2;
@@ -1351,6 +1523,7 @@ impl Clones {
                 all.push(def);
             } else {
                 let existing = all.iter_mut().find(|a| a.id == id).ok_or_else(|| "unknown automation".to_string())?;
+                schedule_before = existing.schedule.clone();
                 def.setup = existing.setup.clone();
                 def.builtin = existing.builtin;
                 def.bots = std::mem::take(&mut existing.bots);
@@ -1358,6 +1531,9 @@ impl Clones {
             }
             Ok(())
         })?;
+        if schedule != schedule_before {
+            self.schedule_changed(&id, &schedule);
+        }
         self.automation_status(&id)
     }
 
@@ -1374,6 +1550,9 @@ impl Clones {
             all.retain(|x| x.id != id);
             Ok(())
         })?;
+        if let Ok(results) = self.results() {
+            let _ = results.forget(id);
+        }
         Ok(self.list())
     }
 
@@ -1443,16 +1622,97 @@ impl Clones {
     }
 
     pub fn start(&self, id: &str, bot: &str) -> ClonesResult<Value> {
+        self.start_as(id, bot, "start")
+    }
+
+    /// Starts a bot. `trigger` says who asked: "start" from the app, "schedule" from the clock.
+    fn start_as(&self, id: &str, bot: &str, trigger: &str) -> ClonesResult<Value> {
         self.require_loopback()?;
         let a = self.automation(id)?;
-        let bot = a.bots.iter().find(|b| b.id == bot || (bot.is_empty() && b.id == MAIN_BOT)).ok_or_else(|| "unknown bot".to_string())?;
-        let unit = self.bot_unit(&a, bot);
+        let bot = a.bots.iter().find(|b| b.id == bot || (bot.is_empty() && b.id == MAIN_BOT)).cloned().ok_or_else(|| "unknown bot".to_string())?;
+        let unit = self.bot_unit(&a, &bot);
         if matches!(self.state_of(&unit), "running" | "launching") {
             return Err("it is already running".into());
         }
-        self.ensure_source(&a)?;
-        let env = self.source_env(&a);
-        let sources = Self::field_sources(&a, bot, &env);
+        // A Castle script runs as a project Castle writes for this run (see script_run).
+        let (a, run) = if a.script.trim().is_empty() {
+            (a, None)
+        } else {
+            let env = self.source_env(&a);
+            if let Some((field, _)) = a.fields.iter().zip(Self::field_sources(&a, &bot, &env)).find(|(_, (from, _))| *from == "missing") {
+                return Err(format!("this bot has no {} yet", field.label.to_lowercase()));
+            }
+            let (def, run) = self.script_run(&a, &bot, &unit, trigger)?;
+            (def, Some(run))
+        };
+        let started = self.start_unit(&a, &bot, unit);
+        if let (Err(e), Some(run), Ok(results)) = (&started, &run, self.results()) {
+            let _ = results.end(run, "failed", Some(0), "starting the machine", e);
+        }
+        started?;
+        self.automation_status(id)
+    }
+
+    /// Writes the project a script run takes into its machine: the compiled script, the
+    /// castle library, and this run's ticket (castle-run.json: where to report, and the
+    /// secret that lets it). Returns the automation as the launch sees it, and the run.
+    fn script_run(&self, a: &AutomationDef, bot: &Bot, unit: &Unit, trigger: &str) -> ClonesResult<(AutomationDef, RunRef)> {
+        if self.runtime_kind(&a.target) == "android" {
+            return Err("Castle scripts run on Linux machines. Pick a Linux system or container".into());
+        }
+        let compiled = script::compile(&a.script).map_err(|e| first_problem(&e))?;
+        if let Some(f) = compiled.fields.iter().find(|f| !a.fields.iter().any(|x| &x.env == *f)) {
+            return Err(format!("the script uses {{{f}}}: add a field called {f} under What each bot fills in"));
+        }
+        let library = self.dir.join(LIBRARY_DIR);
+        if !library.join("__init__.py").is_file() {
+            return Err(format!("the castle library is missing from {}", library.display()));
+        }
+        let results = self.results()?;
+        let project = self.data().join("automations").join(Self::file_key(&format!("{}-{}", a.id, bot.id)));
+        let _ = std::fs::remove_dir_all(&project);
+        let write_fail = |_| "could not write the project for the machine".to_string();
+        std::fs::create_dir_all(&project).map_err(write_fail)?;
+        copy_library(&library, &project.join("castle"))?;
+        std::fs::write(project.join("main.py"), &compiled.python).map_err(write_fail)?;
+        std::fs::write(project.join("automation.castle"), a.script.replace("
+
+", "
+")).map_err(write_fail)?;
+
+        let token = random_hex(32);
+        let id = format!("{:x}-{}", now_ms(), random_hex(3));
+        let port = self.port.load(Ordering::Relaxed);
+        // The box as the machine sees it: Docker's name for the host from a container, QEMU's
+        // user network (10.0.2.2) from a VM. Both reach the box's own 127.0.0.1.
+        let hosts: &[&str] = match unit.engine {
+            Engine::Container(_) => &["host.docker.internal", "172.17.0.1", "10.0.2.2"],
+            _ => &["10.0.2.2", "host.docker.internal"],
+        };
+        let urls: Vec<String> = hosts.iter().map(|h| format!("http://{h}:{port}")).collect();
+        let ticket = json!({ "run": id, "token": token, "urls": urls, "automation": a.id, "bot": bot.id, "web": compiled.web });
+        std::fs::write(project.join(RUN_FILE), serde_json::to_vec_pretty(&ticket).unwrap_or_default()).map_err(write_fail)?;
+        results.begin(&id, &a.id, &bot.id, &sha256_hex(&token), trigger)?;
+
+        let mut def = a.clone();
+        def.source = project.to_string_lossy().into_owned();
+        def.setup = String::new();
+        def.tasks = vec![Task { name: "Run the script".into(), command: SCRIPT_TASK.into(), root: false }];
+        if compiled.web {
+            def.apt.extend(["python3-venv", "chromium", "fonts-liberation"].map(String::from));
+            def.pacman.extend(["python", "chromium", "ttf-liberation"].map(String::from));
+        } else {
+            def.apt.push("python3-venv".into());
+            def.pacman.push("python".into());
+        }
+        Ok((def, RunRef { id, automation: a.id.clone(), bot: bot.id.clone(), finished: false }))
+    }
+
+    /// Launches a bot's machine with the automation as given.
+    fn start_unit(&self, a: &AutomationDef, bot: &Bot, unit: Unit) -> ClonesResult<()> {
+        self.ensure_source(a)?;
+        let env = self.source_env(a);
+        let sources = Self::field_sources(a, bot, &env);
         if let Some((field, _)) = a.fields.iter().zip(&sources).find(|(_, (from, _))| *from == "missing") {
             return Err(format!("this bot has no {} yet", field.label.to_lowercase()));
         }
@@ -1467,7 +1727,7 @@ impl Clones {
         // Android: the project's APKs are installed and its other files pushed to the phone;
         // the tasks run on the phone as castle-tasks.sh, with the fields as variables.
         if self.runtime_kind(&a.target) == "android" {
-            if let Some(dir) = self.source_dir(&a) {
+            if let Some(dir) = self.source_dir(a) {
                 copy_into(&dir, &copy_dir)?;
                 // The project's git history and its .env have no business on the phone; the
                 // fields the tasks need are in the script.
@@ -1483,12 +1743,11 @@ impl Clones {
                 .map(|(f, (from, saved))| (f.env.clone(), if *from == "saved" { saved.clone() } else { env_value(&env, &f.env).unwrap_or_default() }))
                 .collect();
             let shutdown = if in_container { 0 } else { a.stop_after_minutes };
-            std::fs::write(copy_dir.join(TASKS_FILE), android_tasks_script(&a, &bot.name, &values, shutdown)).map_err(|_| "could not prepare the tasks for the phone".to_string())?;
+            std::fs::write(copy_dir.join(TASKS_FILE), android_tasks_script(a, &bot.name, &values, shutdown)).map_err(|_| "could not prepare the tasks for the phone".to_string())?;
             if a.memory_gb > 0 && !in_container {
                 env_vars.push(("CASTLE_AVD_RAM_MB".into(), (a.memory_gb * 1024).to_string()));
             }
-            self.launch(Plan { label, mode: "automation", profile: None, snapshot: a.temporary, base: None, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: true, env: env_vars, unit })?;
-            return self.automation_status(id);
+            return self.launch(Plan { label, mode: "automation", profile: None, snapshot: a.temporary, base: None, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: true, env: env_vars, unit });
         }
 
         // The bot's own sign-in: the project's .env with this bot's values written over it.
@@ -1509,7 +1768,7 @@ impl Clones {
             setup: a.setup.clone(),
             ..Default::default()
         };
-        if let Some(dir) = self.source_dir(&a) {
+        if let Some(dir) = self.source_dir(a) {
             let zip = if a.setup.is_empty() { PROJECT_ZIP.to_string() } else { format!("{}.zip", dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into())) };
             let include = if dir.join(".env").is_file() { vec![".env".to_string()] } else { Vec::new() };
             profile.payload.push((dir, zip, include));
@@ -1517,7 +1776,7 @@ impl Clones {
         if a.setup.is_empty() {
             profile.apt.push("libarchive-tools".into());
             profile.pacman.push("libarchive".into());
-            profile.user.extend(session_command(&a));
+            profile.user.extend(session_command(a));
         } else {
             profile.user = a.tasks.iter().filter(|t| !t.root).map(|t| t.command.clone()).collect();
         }
@@ -1528,8 +1787,7 @@ impl Clones {
         profile.env = env_vars;
         // A bot with a disk of its own starts from the target's built disk when there is one.
         let base = self.target(&a.target).ok().filter(|t| t.runtime.is_empty()).map(|t| self.main_disk(&t)).filter(|disk| unit.instance.is_some() && Self::is_built(disk));
-        self.launch(Plan { label, mode: "automation", profile: Some(profile), snapshot: a.temporary, base, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: false, env: Vec::new(), unit })?;
-        self.automation_status(id)
+        self.launch(Plan { label, mode: "automation", profile: Some(profile), snapshot: a.temporary, base, memory_gb: a.memory_gb, cores: a.cores, copy_dir: Some(copy_dir), payload_only: false, env: Vec::new(), unit })
     }
 
     pub fn stop(&self, id: &str, bot: &str) -> ClonesResult<Value> {
@@ -1537,6 +1795,11 @@ impl Clones {
         let a = self.automation(id)?;
         let bot = a.bots.iter().find(|b| b.id == bot || (bot.is_empty() && b.id == MAIN_BOT)).ok_or_else(|| "unknown bot".to_string())?;
         self.halt(&self.bot_unit(&a, bot))?;
+        if let (false, Ok(results)) = (a.script.trim().is_empty(), self.results()) {
+            if let Some(run) = results.open_run(&a.id, &bot.id) {
+                let _ = results.end(&run, "stopped", None, "", "stopped from Castle");
+            }
+        }
         self.automation_status(id)
     }
 
@@ -1577,6 +1840,192 @@ impl Clones {
             }
         }
         failed
+    }
+
+    // ---- script runs: what they report, the results they leave, the clock ----
+
+    /// The results database, opened on first use beside the automations list.
+    fn results(&self) -> ClonesResult<&Results> {
+        self.results
+            .get_or_init(|| Results::open(&self.log_dir).map_err(|e| eprintln!("castled: results: {e}")).ok())
+            .as_ref()
+            .ok_or_else(|| "the results database could not be opened".to_string())
+    }
+
+    /// The port the box listens on, which script runs report to.
+    pub fn set_port(&self, port: u16) {
+        self.port.store(port, Ordering::Relaxed);
+    }
+
+    /// True when `token` is the secret of a run this box started.
+    pub fn run_known(&self, token: &str) -> bool {
+        token.len() >= 32 && self.results().is_ok_and(|r| r.by_token(&sha256_hex(token)).is_some())
+    }
+
+    /// A report from a script inside its machine (see the castle library). The run's own
+    /// secret is the only key: it opens this run's results and nothing else, and only until
+    /// the run ends. `Err(REFUSED)` means the secret is not one the box gave out.
+    pub fn report(&self, token: &str, body: &Value) -> ClonesResult<Value> {
+        let results = self.results()?;
+        if token.len() < 32 {
+            return Err(REFUSED.into());
+        }
+        let run = results.by_token(&sha256_hex(token)).ok_or_else(|| REFUSED.to_string())?;
+        if run.finished {
+            return Ok(json!({ "ok": false, "ended": true }));
+        }
+        let text = |key: &str, max: usize| -> String { body[key].as_str().unwrap_or_default().chars().take(max).collect() };
+        let line = body["line"].as_i64().unwrap_or(0).clamp(0, 1_000_000);
+        match body["kind"].as_str().unwrap_or_default() {
+            "hello" => results.running(&run.id)?,
+            "step" => results.step(&run.id, line, &text("said", 400))?,
+            "log" => results.log(&run.id, line, &text("text", 2000))?,
+            "rows" => {
+                let dataset = text("dataset", 60);
+                let rows = body["rows"].as_array().ok_or("rows must be a list")?;
+                if dataset.trim().is_empty() || !rows.iter().all(Value::is_object) {
+                    return Err("rows are a dataset name and a list of objects".into());
+                }
+                let kept = results.rows(&run, dataset.trim(), rows)?;
+                return Ok(json!({ "ok": true, "kept": kept }));
+            }
+            "metric" => {
+                let value = body["value"].as_f64().ok_or("a tracked value is a number")?;
+                let better = match text("better", 10).as_str() {
+                    b @ ("lower" | "higher") => b.to_string(),
+                    _ => String::new(),
+                };
+                results.metric(&run, &text("name", 60), value, &better)?;
+            }
+            "shot" => {
+                let png = base64_decode(body["png"].as_str().unwrap_or_default()).ok_or("a picture is a base64 PNG")?;
+                results.shot(&run.id, &text("label", 120), &png)?;
+            }
+            kind @ ("finish" | "fail") => {
+                let failed = kind == "fail";
+                let ended = results.end(&run, if failed { "failed" } else { "done" }, failed.then_some(line), &text("said", 400), &text("message", 1000))?;
+                if ended {
+                    self.stop_when_done(&run);
+                }
+            }
+            _ => return Err("unknown report".into()),
+        }
+        Ok(json!({ "ok": true }))
+    }
+
+    /// A script that ended has done its work: its machine is stopped shortly, unless the
+    /// automation runs its tasks again and again.
+    fn stop_when_done(&self, run: &RunRef) {
+        let Ok(a) = self.automation(&run.automation) else { return };
+        if a.restart {
+            return;
+        }
+        if let Some(bot) = a.bots.iter().find(|b| b.id == run.bot) {
+            let key = self.bot_unit(&a, bot).key;
+            self.to_stop.lock().unwrap().push((key, Instant::now() + STOP_AFTER_FINISH));
+        }
+    }
+
+    /// Checks a script without running it: its problems, or the Python it becomes.
+    pub fn check_script(&self, text: &str) -> Value {
+        match script::compile(text) {
+            Ok(c) => json!({ "ok": true, "problems": [], "python": c.python, "web": c.web, "datasets": c.datasets, "tracked": c.tracked, "fields": c.fields }),
+            Err(problems) => json!({ "ok": false, "problems": problems }),
+        }
+    }
+
+    /// An automation's runs, the rows its datasets hold now, and its tracked values.
+    pub fn results_of(&self, id: &str) -> ClonesResult<Value> {
+        self.automation(id)?;
+        self.results()?.overview(id)
+    }
+
+    pub fn result_shot(&self, path: &str) -> ClonesResult<Vec<u8>> {
+        self.results()?.shot_bytes(path)
+    }
+
+    /// A run whose machine is no longer up never said how it ended: it is ended here.
+    fn settle_run(&self, a: &AutomationDef, bot: &Bot, state: &str) {
+        if a.script.trim().is_empty() || state == "launching" || state == "running" {
+            return;
+        }
+        let Ok(results) = self.results() else { return };
+        if let Some(run) = results.open_run(&a.id, &bot.id) {
+            let (status, message) = if state == "failed" {
+                ("failed", "the machine did not start; its launch log says why")
+            } else {
+                ("stopped", "the machine stopped before the script finished")
+            };
+            let _ = results.end(&run, status, None, "", message);
+        }
+    }
+
+    /// The scheduler: once a day at each automation's time it starts the first bot, and it
+    /// stops machines whose script has finished. Runs for as long as the box does.
+    pub fn background(self: &Arc<Self>) {
+        let clones = Arc::downgrade(self);
+        std::thread::spawn(move || {
+            let mut ticks: u64 = 0;
+            loop {
+                std::thread::sleep(TICK);
+                let Some(clones) = clones.upgrade() else { return };
+                clones.stop_finished();
+                if ticks % SCHEDULE_EVERY_TICKS == 0 {
+                    clones.run_schedules(chrono::Local::now().naive_local());
+                }
+                ticks += 1;
+            }
+        });
+    }
+
+    fn stop_finished(&self) {
+        let due: Vec<String> = {
+            let mut list = self.to_stop.lock().unwrap();
+            let now = Instant::now();
+            let (due, later): (Vec<_>, Vec<_>) = list.drain(..).partition(|(_, at)| *at <= now);
+            *list = later;
+            due.into_iter().map(|(key, _)| key).collect()
+        };
+        for key in due {
+            if let Ok(unit) = self.unit_for(&key) {
+                if let Err(e) = self.halt(&unit) {
+                    eprintln!("castled: could not stop {key} after its script finished: {e}");
+                }
+            }
+        }
+    }
+
+    /// Starts every automation whose time has come today and has not run for it yet. A box
+    /// that was off at that time runs it when it is next up, the same day.
+    fn run_schedules(&self, now: chrono::NaiveDateTime) {
+        if !self.loopback {
+            return;
+        }
+        let Ok(results) = self.results() else { return };
+        let today = now.date().to_string();
+        for a in self.all_automations() {
+            let Some((h, m)) = schedule_time(&a.schedule) else { continue };
+            let due = now.time() >= chrono::NaiveTime::from_hms_opt(h, m, 0).unwrap_or_default();
+            if !due || results.last_scheduled(&a.id).as_deref() == Some(today.as_str()) {
+                continue;
+            }
+            let _ = results.set_last_scheduled(&a.id, &today);
+            let Some(bot) = a.bots.first() else { continue };
+            match self.start_as(&a.id, &bot.id, "schedule") {
+                Ok(_) => eprintln!("castled: started {} on its schedule ({})", a.name, a.schedule),
+                Err(e) => eprintln!("castled: {} did not start on its schedule: {e}", a.name),
+            }
+        }
+    }
+
+    /// When a schedule is set or changed after its time today, today counts as done: the
+    /// first run is tomorrow, not the moment it is saved.
+    fn schedule_changed(&self, id: &str, schedule: &str) {
+        let (Some((h, m)), Ok(results)) = (schedule_time(schedule), self.results()) else { return };
+        let now = chrono::Local::now().naive_local();
+        if now.time() >= chrono::NaiveTime::from_hms_opt(h, m, 0).unwrap_or_default() {
+            let _ = results.set_last_scheduled(id, &now.date().to_string());
+        }
     }
 
     // ---- machines ----
@@ -2000,6 +2449,60 @@ mod tests {
         bot.values.insert("PENGUIN_USERNAME".into(), "Other".into());
         assert_eq!(Clones::field_sources(&a, &bot, "")[0], ("saved", "Other".to_string()));
         assert_eq!(Clones::field_sources(&a, &bot, "")[1].0, "missing");
+    }
+
+    #[test]
+    fn every_box_has_both_examples_and_keeps_its_own_changes() {
+        let dir = std::env::temp_dir().join(format!("castle-clones-builtins-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let clones = Clones::new(dir.clone(), dir.join("log"), true);
+        let ids: Vec<String> = clones.all_automations().into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, ["penguin", WALMART_ID]);
+        // A list saved before the Walmart example existed gets it, after what it had.
+        let mut mine = penguin();
+        mine.description = "changed".into();
+        save(&clones.automations_file(), &vec![mine, AutomationDef { id: "mine".into(), ..Default::default() }]).unwrap();
+        let all = clones.all_automations();
+        assert_eq!(all.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["penguin", WALMART_ID, "mine"]);
+        assert_eq!(all[0].description, "changed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_walmart_example_is_a_script_that_compiles() {
+        let w = walmart();
+        assert!(w.builtin && w.setup.is_empty() && w.source.is_empty());
+        let compiled = script::compile(&w.script).unwrap();
+        assert!(compiled.web && compiled.fields.is_empty());
+    }
+
+    #[test]
+    fn daily_times_are_hours_and_minutes() {
+        assert_eq!(schedule_time("08:00"), Some((8, 0)));
+        assert_eq!(schedule_time("23:59"), Some((23, 59)));
+        assert_eq!(schedule_time("24:00"), None);
+        assert_eq!(schedule_time("8:00"), None);
+        assert_eq!(schedule_time("08-00"), None);
+    }
+
+    #[test]
+    fn pictures_arrive_as_base64() {
+        assert_eq!(base64_decode("iVBORw==").unwrap(), b"\x89PNG");
+        assert_eq!(base64_decode("aGk").unwrap(), b"hi");
+        assert!(base64_decode("a").is_none() && base64_decode("!!!!").is_none());
+    }
+
+    #[test]
+    fn the_library_loses_windows_line_endings_on_the_way_in() {
+        let dir = std::env::temp_dir().join(format!("castle-clones-lib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("from").join("__pycache__")).unwrap();
+        std::fs::write(dir.join("from").join("run.sh"), "echo hi\r\n").unwrap();
+        std::fs::write(dir.join("from").join("__pycache__").join("x.pyc"), "junk").unwrap();
+        copy_library(&dir.join("from"), &dir.join("to")).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("to").join("run.sh")).unwrap(), "echo hi\n");
+        assert!(!dir.join("to").join("__pycache__").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -1,0 +1,47 @@
+castle 1
+# Walmart motor oil prices. Searches Walmart for 0W-20 motor oil, reads every listing,
+# works out what each one costs a quart, and posts the listings, the cheapest one and the
+# average to Castle. Castle keeps the average day after day and says whether today is a
+# good day to buy. Turn on "Run every day" in its rules to get that update each morning.
+#
+# Walmart sometimes asks "Robot or human?" and wants a button pressed and held. Castle does
+# not answer it for you: the run waits up to ten minutes and says so in Clones. Open the bot's
+# screen, take control, and press and hold it; the run goes on by itself. The browser keeps
+# what Walmart remembers about it, so the runs after that usually get through.
+
+website walmart.com
+
+element search box    = input[name="q"]
+element search button = button[aria-label="Search"]
+element robot check   = text "Robot or human?"
+list listings         = [data-item-id]
+  field id    = @data-item-id
+  field title = [data-automation-id="product-title"]
+  field price = [data-testid="unified-global-product-price-a11y-text"]
+  field link  = a @href
+
+pause whenever robot check is shown "Walmart asks whether this is a robot. Open this bot's screen, take control, and press and hold the button."
+type "0W-20 motor oil" into search box
+click search button
+wait for listings
+scroll to the bottom
+read listings
+screenshot "the search results"
+fail if listings is empty "Walmart showed no listings: see the screenshot."
+
+keep listings unique by id
+keep listings where title matches "0W-?20"
+measure listings title in quarts as quarts
+keep listings where quarts is not empty
+divide listings price by quarts as price per quart
+sort listings by price per quart lowest first
+fail if listings is empty "No 0W-20 listing said how many quarts it holds."
+
+count listings as listings found
+average listings price per quart as average price per quart
+lowest listings price per quart as best deal
+
+post listings to castle
+post best deal to castle
+track average price per quart lower is better
+say "{listings found} listings of 0W-20 motor oil, {average price per quart} a quart on average"
