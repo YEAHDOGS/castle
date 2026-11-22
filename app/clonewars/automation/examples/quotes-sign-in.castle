@@ -1,0 +1,29 @@
+castle 1
+# Quotes: signs in with the bot's own username and password, reads two pages.
+website quotes.toscrape.com/login
+
+element username = #username
+element password = #password
+element log in   = input[type="submit"]
+element log out  = text "Logout"
+list quotes = div.quote
+  field text   = span.text
+  field author = small.author
+  field tags   = .tags
+  field about  = a @href
+
+type "{QUOTES_USER}" into username
+type "{QUOTES_PASSWORD}" into password
+click log in
+wait for log out
+
+read quotes
+count quotes as first page count
+post quotes to castle as "page 1"
+
+go to quotes.toscrape.com/page/2/
+read quotes
+keep quotes where tags has "life"
+post quotes to castle as "page 2 about life"
+
+say "Signed in. {first page count} quotes on the first page."

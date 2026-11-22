@@ -952,6 +952,35 @@ mod tests {
         assert!(c.python.trim_end().ends_with("run.finish()"));
     }
 
+    /// Every whole script the language's pages show (```castle blocks) and every file in
+    /// examples/ compiles, so the documentation cannot drift from the language.
+    #[test]
+    fn the_documentation_and_the_examples_compile() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/clonewars/automation");
+        let mut scripts = Vec::new();
+        for dir in [root.clone(), root.join("docs")] {
+            for path in std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.path()) {
+                if path.extension().is_some_and(|e| e == "md") {
+                    let text = std::fs::read_to_string(&path).unwrap().replace("\r\n", "\n");
+                    for (i, block) in text.split("```castle\n").skip(1).enumerate() {
+                        scripts.push((format!("{} (script {})", path.display(), i + 1), block.split("```").next().unwrap_or_default().to_string()));
+                    }
+                }
+            }
+        }
+        for path in std::fs::read_dir(root.join("examples")).unwrap().flatten().map(|e| e.path()) {
+            if path.extension().is_some_and(|e| e == "castle") {
+                scripts.push((path.display().to_string(), std::fs::read_to_string(&path).unwrap()));
+            }
+        }
+        assert!(scripts.len() >= 6, "found only {} scripts", scripts.len());
+        for (name, script) in scripts {
+            if let Err(e) = compile(&script) {
+                panic!("{name} does not compile: {e:?}");
+            }
+        }
+    }
+
     #[test]
     fn names_with_spaces_are_matched_longest_first() {
         let c = compile("website example.com\nelement search = #s\nelement search button = #b\nclick search button\nclick search\n").unwrap();

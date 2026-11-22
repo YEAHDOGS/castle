@@ -1,0 +1,17 @@
+castle 1
+# Mystery book prices: the tutorial's first script.
+website books.toscrape.com/catalogue/category/books/mystery_3/index.html
+
+list books = article.product_pod
+  field title = h3 a @title
+  field price = .price_color
+  field stock = .availability
+  field link  = h3 a @href
+
+read books
+fail if books is empty "The mystery shelf showed no books."
+
+average books price as average in pounds
+post books to castle
+track average in pounds lower is better
+say "{average in pounds} on average across the mystery shelf"
