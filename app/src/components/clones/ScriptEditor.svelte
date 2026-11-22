@@ -144,6 +144,7 @@
         <dd class="text-[12px] leading-relaxed text-text-dim">{meaning}</dd>
       {/each}
     </dl>
+    <p class="mt-1 text-[12px] text-text-dim">The whole language, a tutorial and recipes are under <span class="text-white">Clones → Castle script</span>.</p>
   {/if}
   {#if showPython && python}
     <pre class="mt-3 max-h-72 overflow-auto border border-hairline bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-text-dim">{python}</pre>

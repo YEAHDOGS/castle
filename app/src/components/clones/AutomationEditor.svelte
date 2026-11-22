@@ -12,7 +12,8 @@
 
   /** initial: the automation being changed, or null for a new one. targets: the catalogue.
       examples: the built-in automations, to start a new one from. check: the box's script check. */
-  let { initial, targets, examples = [], busy, check, onsave, onclose } = $props();
+  /** draft: { name, script, fields } for a new automation started from a script in the guide. */
+  let { initial, draft = null, targets, examples = [], busy, check, onsave, onclose } = $props();
 
   const KINDS = [
     { id: 'script', label: 'CASTLE SCRIPT', help: 'Written here, step by step. Castle turns it into a Python project, brings the castle library, and keeps what it finds in its database.' },
@@ -68,7 +69,7 @@
     };
   }
 
-  let form = $state(untrack(() => formOf(initial)));
+  let form = $state(untrack(() => (draft && !initial ? { ...structuredClone(BLANK), name: draft.name, script: draft.script, fields: (draft.fields || []).map((f) => ({ ...f })) } : formOf(initial))));
 
   const current = $derived(targets.find((t) => t.id === form.target));
   const engine = $derived(isContainer(current) ? 'container' : 'vm');

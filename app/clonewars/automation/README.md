@@ -35,6 +35,9 @@ it tells you whether today is a good day to buy:
 
 ## Read on
 
+These pages are also in the app, under **Clones → Castle script**, where every whole script
+has a **Try this script** button that starts a new automation from it.
+
 | | |
 |---|---|
 | **[Your first script](docs/tutorial.md)** | Start here. Two small scripts on practice sites: read a list, work out a number, keep it, sign in, run every day. |

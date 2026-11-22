@@ -6,7 +6,7 @@
      Benchmarks shows how long launches took. -->
 <script>
   import { untrack } from 'svelte';
-  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText, Container, Smartphone, Zap, FileCode, CalendarClock } from '@lucide/svelte';
+  import { Boxes, Bot, Monitor, Play, Square, Power, Plus, Trash2, Pencil, Search, Timer, LayoutGrid, ScrollText, Container, Smartphone, Zap, FileCode, CalendarClock, BookOpen } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -19,6 +19,8 @@
   import LaunchDialog from '../clones/LaunchDialog.svelte';
   import AutomationEditor from '../clones/AutomationEditor.svelte';
   import ResultsPanel from '../clones/ResultsPanel.svelte';
+  /** The guide carries the language's pages and a Markdown reader: loaded when it is opened. */
+  const loadGuide = () => import('../clones/ScriptGuide.svelte');
 
   const SECOND_MS = 1000;
   const CONFIRM_MS = 4000;
@@ -28,6 +30,7 @@
     { id: 'boxes', label: 'Boxes', icon: Container },
     { id: 'automations', label: 'Automations', icon: Bot },
     { id: 'systems', label: 'Systems', icon: LayoutGrid },
+    { id: 'guide', label: 'Castle script', icon: BookOpen },
     { id: 'benchmarks', label: 'Benchmarks', icon: Timer },
   ];
   const KIND_LABEL = { main: 'MAIN DISK', instance: 'OWN DISK', temporary: 'TEMPORARY' };
@@ -62,7 +65,7 @@
   let engineFilter = $state('');
   let throwaway = $state(false); // quick boxes: removed when they stop
   let picked = $state(null); // the system whose launch dialog is open
-  let editing = $state(null); // { initial } while the automation editor is open
+  let editing = $state(null); // { initial, draft } while the automation editor is open
   let openMachine = $state(''); // id of the machine whose log and screen are shown
   let confirming = $state(''); // id of the thing whose delete button was pressed once
 
@@ -183,7 +186,10 @@
   }
 
   async function saveAutomation(def) {
-    if (await actAutomation(() => source.cloneAutomationSave(def), def.id ? 'Saved' : 'Automation created')) editing = null;
+    if (await actAutomation(() => source.cloneAutomationSave(def), def.id ? 'Saved' : 'Automation created')) {
+      editing = null;
+      if (view === 'guide') view = 'automations';
+    }
   }
 
   /** Deleting takes two presses: the first arms the button for a few seconds. */
@@ -222,7 +228,13 @@
   active={view}
   onselect={(id) => (view = id)}
 >
-  {#if !allowed}
+  {#if view === 'guide'}
+    {#await loadGuide()}
+      <p class="micro text-text-faint">OPENING THE GUIDE</p>
+    {:then { default: ScriptGuide }}
+      <ScriptGuide ontry={allowed && source && loaded && !problem ? (draft) => (editing = { initial: null, draft }) : null} />
+    {/await}
+  {:else if !allowed}
     <Notice icon={Boxes} title="ADMINS ONLY">
       Clones start virtual machines on the box, so only an admin can use this section. Switch person from the Castle mark, top left.
     </Notice>
@@ -380,7 +392,7 @@
     {/if}
   {:else if view === 'automations'}
     <div class="mb-4 flex items-center gap-3">
-      <p class="flex-1 text-[13px] text-text-dim">A recipe and its bots. Write one as a Castle script, or bring a project of your own. Each bot signs in as itself and runs on its own machine, so several can run at once.</p>
+      <p class="flex-1 text-[13px] text-text-dim">A recipe and its bots. Write one as a <button type="button" class="text-bridge underline" onclick={() => (view = 'guide')}>Castle script</button>, or bring a project of your own. Each bot signs in as itself and runs on its own machine, so several can run at once.</p>
       <button class={BTN_PRIMARY} onclick={() => (editing = { initial: null })}><Plus class="h-4 w-4" /> NEW AUTOMATION</button>
     </div>
     <div class="space-y-4">
@@ -479,5 +491,5 @@
   <LaunchDialog target={picked} machines={lab.machines.filter((m) => m.target === picked.id && m.kind !== 'temporary')} {busy} onstart={launch} onclose={() => (picked = null)} />
 {/if}
 {#if editing}
-  <AutomationEditor initial={editing.initial} targets={lab.targets} examples={automations.filter((a) => a.builtin)} check={(script) => source.cloneScriptCheck(script)} {busy} onsave={saveAutomation} onclose={() => (editing = null)} />
+  <AutomationEditor initial={editing.initial} draft={editing.draft} targets={lab.targets} examples={automations.filter((a) => a.builtin)} check={(script) => source.cloneScriptCheck(script)} {busy} onsave={saveAutomation} onclose={() => (editing = null)} />
 {/if}
