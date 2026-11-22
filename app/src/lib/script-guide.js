@@ -2,8 +2,9 @@
 // (clonewars/automation/README.md and docs/*.md) and its example scripts, read at build time
 // so the app and the repository say the same thing. Each page is rendered once to HTML with
 // heading anchors, links between pages turned into in-app jumps, and every whole script
-// (a ```castle block) numbered so the page can offer to try it.
-import { Marked } from 'marked';
+// (a ```castle block) numbered so the page can offer to try it. The Markdown reader is
+// Castle's own (markdown.js): the guide needs no library.
+import { markdown, esc } from './markdown.js';
 
 const ROOT = 'app/clonewars/automation';
 const REPO = 'https://github.com/YEAHDOGS/castle/blob/master/';
@@ -51,8 +52,6 @@ function examplesMarkdown() {
   return parts.join('\n');
 }
 
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
 /** GitHub's anchor for a heading, so links written for the repository work here too. */
 function slug(text) {
   return text
@@ -79,48 +78,43 @@ function render(page) {
   const toc = [];
   const used = new Map();
   let lastHeading = '';
-  const md = new Marked({ gfm: true });
-  md.use({
-    renderer: {
-      heading({ tokens, depth }) {
-        const inner = this.parser.parseInline(tokens);
-        let id = slug(inner);
-        const n = used.get(id) || 0;
-        used.set(id, n + 1);
-        if (n) id = `${id}-${n}`;
-        const plain = inner.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-        if (depth === 2) toc.push({ id, text: plain });
-        if (depth > 1) lastHeading = plain;
-        return `<h${depth} id="${id}">${inner}</h${depth}>`;
-      },
-      code({ text, lang }) {
-        if (lang === 'castle') {
-          const i = scripts.push({ script: text + '\n', name: scriptName(text, page.id === 'overview' ? 'My Castle script' : lastHeading || 'My Castle script') }) - 1;
-          return `<div class="guide-script"><div class="guide-script-bar"><span>CASTLE SCRIPT</span><button type="button" data-try="${i}">TRY THIS SCRIPT</button></div><pre><code>${esc(text)}</code></pre></div>`;
-        }
-        return `<pre class="guide-code"${lang ? ` data-lang="${esc(lang)}"` : ''}><code>${esc(text)}</code></pre>`;
-      },
-      link({ href, title, tokens }) {
-        const inner = this.parser.parseInline(tokens);
-        const t = title ? ` title="${esc(title)}"` : '';
-        if (/^https?:\/\//.test(href)) return `<a href="${esc(href)}"${t} target="_blank" rel="noreferrer noopener">${inner}</a>`;
-        if (href.startsWith('#')) return `<a href="${esc(href)}" data-anchor="${esc(href.slice(1))}"${t}>${inner}</a>`;
-        const [path, anchor = ''] = href.split('#');
-        const target = resolve(dir, path).replace(/\/$/, '');
-        const known = ORDER.find((p) => p.path === target || (p.id === 'examples' && target.startsWith(`${ROOT}/examples`)));
-        if (known) return `<a href="#${esc(anchor)}" data-page="${known.id}" data-anchor="${esc(anchor)}"${t}>${inner}</a>`;
-        return `<a href="${esc(REPO + target)}"${t} target="_blank" rel="noreferrer noopener">${inner}</a>`;
-      },
-      table(token) {
-        // Wide tables scroll inside the page rather than pushing it sideways.
-        const head = token.header.map((c) => `<th>${this.parser.parseInline(c.tokens)}</th>`).join('');
-        const body = token.rows.map((r) => `<tr>${r.map((c) => `<td>${this.parser.parseInline(c.tokens)}</td>`).join('')}</tr>`).join('');
-        return `<div class="guide-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-      },
+  const hooks = {
+    heading({ depth, inner }) {
+      let id = slug(inner);
+      const n = used.get(id) || 0;
+      used.set(id, n + 1);
+      if (n) id = `${id}-${n}`;
+      const plain = inner.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+      if (depth === 2) toc.push({ id, text: plain });
+      if (depth > 1) lastHeading = plain;
+      return `<h${depth} id="${id}">${inner}</h${depth}>`;
     },
-  });
+    code({ text, lang }) {
+      if (lang === 'castle') {
+        const i = scripts.push({ script: text + '\n', name: scriptName(text, page.id === 'overview' ? 'My Castle script' : lastHeading || 'My Castle script') }) - 1;
+        return `<div class="guide-script"><div class="guide-script-bar"><span>CASTLE SCRIPT</span><button type="button" data-try="${i}">TRY THIS SCRIPT</button></div><pre><code>${esc(text)}</code></pre></div>`;
+      }
+      return `<pre class="guide-code"${lang ? ` data-lang="${esc(lang)}"` : ''}><code>${esc(text)}</code></pre>`;
+    },
+    link({ href, title, inner }) {
+      const t = title ? ` title="${esc(title)}"` : '';
+      if (/^https?:\/\//.test(href)) return `<a href="${esc(href)}"${t} target="_blank" rel="noreferrer noopener">${inner}</a>`;
+      if (href.startsWith('#')) return `<a href="${esc(href)}" data-anchor="${esc(href.slice(1))}"${t}>${inner}</a>`;
+      const [path, anchor = ''] = href.split('#');
+      const target = resolve(dir, path).replace(/\/$/, '');
+      const known = ORDER.find((p) => p.path === target || (p.id === 'examples' && target.startsWith(`${ROOT}/examples`)));
+      if (known) return `<a href="#${esc(anchor)}" data-page="${known.id}" data-anchor="${esc(anchor)}"${t}>${inner}</a>`;
+      return `<a href="${esc(REPO + target)}"${t} target="_blank" rel="noreferrer noopener">${inner}</a>`;
+    },
+    table({ header, rows }) {
+      // Wide tables scroll inside the page rather than pushing it sideways.
+      const head = header.map((c) => `<th>${c}</th>`).join('');
+      const body = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
+      return `<div class="guide-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    },
+  };
   const text = page.id === 'examples' ? examplesMarkdown() : source(page.path);
-  const html = md.parse(text);
+  const html = markdown(text, hooks);
   const title = (text.match(/^# (.+)$/m)?.[1] || page.label).replace(/`/g, '');
   return { ...page, html, scripts, toc, title };
 }

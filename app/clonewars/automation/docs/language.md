@@ -441,7 +441,7 @@ fail if listings is empty "Walmart showed no listings: see the screenshot."
 fail if page title is empty
 ```
 
-Ends the run, as failed, with the message (or "<name> is empty"). Put one after `read` and
+Ends the run, as failed, with the message (or `<name> is empty`). Put one after `read` and
 after every `keep`: a run that ends saying *why* beats one that posts nothing.
 
 #### `fail if <element> is shown ["<message>"]`
