@@ -73,11 +73,12 @@ folder; everything that is part of the app lives in `app/`.
 |---|---|
 | `app/` | **The Castle app**: the interface (Svelte, `app/src`), its desktop and phone shell (Tauri, `app/src-tauri`), and everything the app runs on. |
 | `app/ai/` | DOGS AI, which the AI section shows. It is its own project and standalone app, [YEAHDOGS/dogs-ai](https://github.com/YEAHDOGS/dogs-ai), imported here as a git submodule: clone with `--recurse-submodules`, or `start.sh` fetches it. Castle and the standalone app share one engine and one data folder, so models, history and chats are the same in both. |
+| `app/phoenix/` | Phoenix, which the Phoenix section shows: a cleaner that frees disk space on this PC or on an Android phone on USB, and the set-up of a fresh Windows PC (a searchable Chocolatey app list, a set-up script, a Windows answer file). It is its own project and standalone app, [YEAHDOGS/phoenix](https://github.com/YEAHDOGS/phoenix), imported here as a git submodule. Its engine is Windows PowerShell, so a box on Linux has no Phoenix. Both share one app list. |
 | `app/clonewars/` | The Clones engine: QEMU virtual machines, Docker containers and the Android emulator, with the automations that drive them. |
 | `app/gatehouse/` | Firmware for the Presence radar nodes (ESP32 + LD2450). |
 | `app/data/` | Everything live or generated, never committed: Clones' disks, ISOs and Android SDK (`app/data/clonewars`), and the vault a plain `cargo run` of the daemon uses (`app/data/castle`). |
 | `Dockerfile`, `compose.yml` | The box in Docker: the daemon serving the app, with the vault on whatever drive `.env` names (`docker-box.env.example`). See `castled/README.md`. |
-| `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage, Arcade, Theater, Comms, Contacts, Links, Clones, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
+| `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage, Arcade, Theater, Comms, Contacts, Links, Clones, Phoenix, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
 | `os/` | Castle OS: the Arch-based install image and its tools. |
 | `landing/` | castle.dogs.red, the landing page. |
 | `scripts/` | Repo scripts, such as building the website, and `demo-media.mjs`, which builds the demo's images (all public domain or freely licensed) into `media/`, never committed: its contents are hosted at data.wearedogs.net/castle, with their credits in `CREDITS.md` there. |

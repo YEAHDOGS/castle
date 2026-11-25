@@ -26,6 +26,7 @@ mod links;
 mod lookup;
 mod media_tags;
 mod network;
+mod phoenix;
 mod places;
 mod presence;
 mod results;
@@ -126,6 +127,8 @@ struct AppState {
     dns: Mutex<Option<SocketAddr>>,
     /// DOGS AI's server, which the AI section shows.
     ai: ai::Ai,
+    /// Phoenix's engine: the cleaner and the set-up of a fresh Windows PC (see phoenix.rs).
+    phoenix: phoenix::Phoenix,
     /// The content policy sent with every answer (see harden).
     policy: HeaderValue,
     /// What the daemon was started with, for the app's Settings screen.
@@ -1528,6 +1531,97 @@ async fn ai_stop(State(st): State<Shared>) -> ApiResult<Json<ai::Status>> {
 }
 
 // ---------------------------------------------------------------------------------------
+// Phoenix: the cleaner and the set-up of a fresh Windows PC (see phoenix.rs)
+// ---------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct PhoenixCleanQuery {
+    #[serde(default)]
+    platform: String,
+    #[serde(default)]
+    serial: String,
+}
+
+#[derive(Deserialize)]
+struct PhoenixCleanBody {
+    #[serde(default)]
+    platform: String,
+    #[serde(default)]
+    serial: String,
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct PhoenixSearchQuery {
+    #[serde(default)]
+    q: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PhoenixAnswerBody {
+    admin_password: String,
+    #[serde(default)]
+    user_password: String,
+}
+
+async fn phoenix_status(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    let can_change = st.loopback;
+    blocking(st, move |st| {
+        let mut status = st.phoenix.status();
+        status["canChange"] = serde_json::json!(can_change);
+        Ok(status)
+    })
+    .await
+    .map(Json)
+}
+
+async fn phoenix_devices(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, |st| st.phoenix.devices()).await.map(Json)
+}
+
+/// Looks, and deletes nothing. A PC with a full Temp folder takes ten to twenty seconds.
+async fn phoenix_scan(State(st): State<Shared>, Query(q): Query<PhoenixCleanQuery>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, move |st| st.phoenix.scan(&q.platform, &q.serial)).await.map(Json)
+}
+
+/// Deleting files on this computer, or on a phone plugged into it, only from this computer.
+async fn phoenix_clean(State(st): State<Shared>, Json(b): Json<PhoenixCleanBody>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    blocking(st, move |st| {
+        let done = st.phoenix.clean(&b.platform, &b.serial, &b.ids)?;
+        let freed = done["freedBytes"].as_u64().unwrap_or(0);
+        st.security.record("phoenix.cleaned", &format!("{} rules, {} MB freed", b.ids.len(), freed / 1_048_576));
+        Ok(done)
+    })
+    .await
+    .map(Json)
+}
+
+async fn phoenix_setup(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, |st| st.phoenix.setup()).await.map(Json)
+}
+
+async fn phoenix_setup_save(State(st): State<Shared>, Json(b): Json<serde_json::Value>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    blocking(st, move |st| st.phoenix.save_setup(&b)).await.map(Json)
+}
+
+async fn phoenix_choco(State(st): State<Shared>, Query(q): Query<PhoenixSearchQuery>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, move |st| st.phoenix.search(&q.q)).await.map(Json)
+}
+
+async fn phoenix_script(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    blocking(st, |st| st.phoenix.script()).await.map(Json)
+}
+
+/// Takes account passwords, so only from this computer, where they never cross the network.
+async fn phoenix_answer_file(State(st): State<Shared>, Json(b): Json<PhoenixAnswerBody>) -> ApiResult<Json<serde_json::Value>> {
+    local_only(&st)?;
+    blocking(st, move |st| st.phoenix.answer_file(&b.admin_password, &b.user_password)).await.map(Json)
+}
+
+// ---------------------------------------------------------------------------------------
 // Clones: machines and automations in Clonewars VMs (see clones.rs)
 // ---------------------------------------------------------------------------------------
 
@@ -2509,6 +2603,13 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/ai", get(ai_status))
         .route("/ai/start", post(ai_start))
         .route("/ai/stop", post(ai_stop))
+        .route("/phoenix", get(phoenix_status))
+        .route("/phoenix/devices", get(phoenix_devices))
+        .route("/phoenix/clean", get(phoenix_scan).post(phoenix_clean))
+        .route("/phoenix/setup", get(phoenix_setup).put(phoenix_setup_save))
+        .route("/phoenix/choco", get(phoenix_choco))
+        .route("/phoenix/script", post(phoenix_script))
+        .route("/phoenix/answerfile", post(phoenix_answer_file))
         .route("/clones", get(clones_list))
         .route("/clones/enable", post(clones_enable))
         .route("/clones/screen", get(clones_screen))
@@ -2661,6 +2762,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),
         ai: ai::Ai::new(addr, &root.join(META_DIR)),
+        phoenix: phoenix::Phoenix::new(&root.join(META_DIR)),
         policy: content_policy(addr),
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),

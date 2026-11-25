@@ -568,6 +568,53 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call(`/contacts/photo?${query}`, init)).json();
   }
 
+  // ---- Phoenix: the cleaner and the set-up of a fresh Windows PC (see castled/src/phoenix.rs) ----
+
+  /** Whether Phoenix can run on the box: { available, reason?, engine, isAdmin, android, canChange }. */
+  async phoenixStatus() {
+    return (await this.call('/phoenix')).json();
+  }
+
+  /** Android phones plugged into the box: { devices: [{ serial, state, model }] }. */
+  async phoenixDevices() {
+    return (await this.call('/phoenix/devices')).json();
+  }
+
+  /** What could be cleaned, rule by rule. Deletes nothing. `platform` is 'windows' or 'android'. */
+  async phoenixScan(platform = 'windows', serial = '') {
+    return (await this.call(`/phoenix/clean?platform=${encodeURIComponent(platform)}&serial=${encodeURIComponent(serial)}`)).json();
+  }
+
+  /** Deletes what the rules in `ids` cover, and only those. */
+  async phoenixClean(platform, serial, ids) {
+    return (await this.post('/phoenix/clean', { platform, serial: serial || '', ids })).json();
+  }
+
+  /** The app list, Phoenix's catalog, the account names and the hardening choices. */
+  async phoenixSetup() {
+    return (await this.call('/phoenix/setup')).json();
+  }
+
+  /** Saves any of { apps, computerName, adminName, userName, harden: { enabled, chosen } }. */
+  async phoenixSaveSetup(body) {
+    return (await this.call('/phoenix/setup', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  }
+
+  /** Chocolatey packages matching `q`: [{ id, title, version, summary, downloads }]. */
+  async phoenixChoco(q) {
+    return (await this.call(`/phoenix/choco?q=${encodeURIComponent(q)}`)).json();
+  }
+
+  /** The set-up script for the saved list: { script, apps, harden }. */
+  async phoenixScript() {
+    return (await this.post('/phoenix/script', {})).json();
+  }
+
+  /** A Windows answer file for the saved set-up: { xml, accounts, apps, warnings }. */
+  async phoenixAnswerFile(adminPassword, userPassword = '') {
+    return (await this.post('/phoenix/answerfile', { adminPassword, userPassword })).json();
+  }
+
   // ---- Links: pages a person saved from the internet (see castled/src/links.rs) ----
 
   /** A person's links, newest first; with `q`, only those that hold every word of it. */

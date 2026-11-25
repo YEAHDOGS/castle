@@ -8,6 +8,7 @@ import { DemoPresence } from './demo-presence.js';
 import { DemoContacts } from './demo-contacts.js';
 import { DemoComms } from './demo-comms.js';
 import { DemoLinks } from './demo-links.js';
+import { DemoPhoenix } from './demo-phoenix.js';
 import { prefs } from './prefs.svelte.js';
 import { SHOWCASE, readOnly } from './showcase.js';
 
@@ -48,6 +49,7 @@ class Shell {
   demoContacts = readOnly(new DemoContacts());
   demoComms = readOnly(new DemoComms());
   demoLinks = readOnly(new DemoLinks());
+  demoPhoenix = readOnly(new DemoPhoenix());
 
   /**
    * What a section was opened to show, when another section sent the person there:
@@ -148,6 +150,12 @@ class Shell {
   /** Where Links reads from, by the same rule. */
   get linksSource() {
     if (store.isDemo) return this.demoLinks;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Where Phoenix reads from, by the same rule. */
+  get phoenixSource() {
+    if (store.isDemo) return this.demoPhoenix;
     return store.boxUrl ? store.adapter : null;
   }
 

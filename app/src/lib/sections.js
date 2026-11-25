@@ -3,7 +3,7 @@
 // is a letter of the section's name, and no two share one. The digits 1 to 9 also work, in
 // wheel order.
 
-import { House, HardDrive, BrainCircuit, Gamepad2, Clapperboard, MessagesSquare, BookUser, Bookmark, Boxes, Globe, ShieldCheck, Settings } from '@lucide/svelte';
+import { House, HardDrive, BrainCircuit, Gamepad2, Clapperboard, MessagesSquare, BookUser, Bookmark, Boxes, Flame, Globe, ShieldCheck, Settings } from '@lucide/svelte';
 
 export const SECTIONS = [
   { id: 'home', key: 'h', label: 'Home', tagline: 'The box at a glance', icon: House },
@@ -15,6 +15,7 @@ export const SECTIONS = [
   { id: 'contacts', key: 'o', label: 'Contacts', tagline: 'Everyone you know, backed up', icon: BookUser },
   { id: 'links', key: 'l', label: 'Links', tagline: 'Pages you saved, read and searchable', icon: Bookmark },
   { id: 'clones', key: 'c', label: 'Clones', tagline: 'Virtual machines and automations', icon: Boxes },
+  { id: 'phoenix', key: 'p', label: 'Phoenix', tagline: 'Free up space, set up a fresh PC', icon: Flame },
   { id: 'network', key: 'n', label: 'Network', tagline: 'Live traffic, speed and your provider', icon: Globe },
   { id: 'security', key: 'r', label: 'Security', tagline: 'Checks, the activity record and audits', icon: ShieldCheck },
   { id: 'settings', key: 'g', label: 'Settings', tagline: 'Connections and everything configurable', icon: Settings },

@@ -158,6 +158,29 @@ Debian 13's cloud image with Xorg + Openbox (no desktop environment), Firefox, P
 .\start.ps1 -Profile penguin
 ```
 
+### Windows with your own answer file
+
+`win11-pro` and `win11-home` install from an ISO that carries an answer file. To install
+with a different one, such as the file the Castle app's Phoenix section makes, name it:
+
+```powershell
+$env:CASTLE_UNATTEND_XML = "C:\somewhere\autounattend.xml"
+.\start.ps1 win11-pro -Instance phoenix-test
+```
+
+On the first boot the file rides in on a small USB disk. Windows Setup reads the root of
+removable drives before the installer CD, so it wins over the one in the ISO, the same way
+a USB stick does on a real PC. The disk image holds whatever passwords the answer file
+holds, sits next to the VM's disk (`<disk>.answer.qcow2`), and is removed the next time
+the installed machine starts.
+
+**Windows restarts end the VM on this host.** Under WHPX (QEMU 11), each restart Windows
+Setup makes shows up in QEMU as `WHPX: Unexpected VP exit code 4`: after the image is
+applied the screen freezes on "Computer will now reboot", and every later restart makes
+QEMU exit. Nothing is lost, the install is on the disk. Run the same `start.ps1` line
+again and it carries on from the disk; a full install needs that about five times. The
+pipeline does not do this by itself yet.
+
 ### Android: run apps / APKs locally
 Two targets, pick by what you need:
 

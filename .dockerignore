@@ -14,6 +14,7 @@ vault
 **/dist-showcase
 app/data
 app/ai
+app/phoenix
 app/gatehouse
 app/src-tauri
 app/clonewars/*

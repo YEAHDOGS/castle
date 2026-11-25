@@ -348,6 +348,17 @@ build_ai_app() {
     (cd "$AI_APP_DIR" && npm run build) || say 'DOGS AI did not build, so AI stays off.'
 }
 
+# Phoenix (app/phoenix), which the box runs for its Phoenix section: the cleaner and the
+# set-up of a fresh Windows PC. It is the phoenix project as a git submodule, fetched here
+# when the checkout does not have it yet. Only Windows can run it (its engine is Windows
+# PowerShell). A failure leaves the section saying so; Castle still starts.
+fetch_phoenix() {
+    (( ON_WINDOWS )) || return 0
+    [[ -f "$ROOT/app/phoenix/scripts/engine/phoenix.ps1" ]] && return 0
+    say 'Fetching Phoenix (app/phoenix, the phoenix project).'
+    git -C "$ROOT" submodule update --init app/phoenix || say 'Phoenix could not be fetched, so its section stays off.'
+}
+
 DAEMON_SOURCES=("$DAEMON_DIR/src" "$DAEMON_DIR/Cargo.toml" "$DAEMON_DIR/audits")
 WEB_SOURCES=("$CLIENT_DIR/src" "$CLIENT_DIR/index.html" "$CLIENT_DIR/package.json" "$CLIENT_DIR/public")
 APP_SOURCES=("${WEB_SOURCES[@]}" "$CLIENT_DIR/src-tauri/src" "$CLIENT_DIR/src-tauri/Cargo.toml" "$CLIENT_DIR/src-tauri/tauri.conf.json")
@@ -448,6 +459,8 @@ if (( RELEASE )); then
     fi
 
     build_ai_app
+
+    fetch_phoenix
     start_box || exit 1
     TOKEN="$(tr -d '[:space:]' < "$DATA/.castle/token")"
     LINK="$URL/#connect=$TOKEN"
@@ -482,6 +495,7 @@ fi
 need_cargo; need_npm
 install_packages
 build_ai_app
+fetch_phoenix
 # An earlier ./start.sh (still running, or closed while Tauri left its children behind, as it
 # often does on Windows) may hold the dev app and the live interface's port. Those are
 # ours: close them so this run takes their place. Anything else is left alone.

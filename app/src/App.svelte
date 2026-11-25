@@ -17,6 +17,7 @@
   import ContactsSection from './components/sections/ContactsSection.svelte';
   import LinksSection from './components/sections/LinksSection.svelte';
   import ClonesSection from './components/sections/ClonesSection.svelte';
+  import PhoenixSection from './components/sections/PhoenixSection.svelte';
   import NetworkSection from './components/sections/NetworkSection.svelte';
   import SecuritySection from './components/sections/SecuritySection.svelte';
   import SettingsSection from './components/sections/SettingsSection.svelte';
@@ -33,7 +34,7 @@
   import { SHOWCASE } from './lib/showcase.js';
   import { watchForShares } from './lib/share.js';
 
-  const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, theater: TheaterSection, comms: CommsSection, contacts: ContactsSection, links: LinksSection, clones: ClonesSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
+  const SECTION_VIEWS = { home: HomeSection, storage: StorageSection, ai: AiSection, arcade: ArcadeSection, theater: TheaterSection, comms: CommsSection, contacts: ContactsSection, links: LinksSection, clones: ClonesSection, phoenix: PhoenixSection, network: NetworkSection, security: SecuritySection, settings: SettingsSection };
   const Section = $derived(SECTION_VIEWS[shell.section] || StorageSection);
 
   onMount(() => {

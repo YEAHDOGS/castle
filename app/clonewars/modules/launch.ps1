@@ -719,6 +719,34 @@ function Build-QemuArgs {
         )
     }
 
+    # A Windows answer file from outside the ISO (CASTLE_UNATTEND_XML: a path to an
+    # autounattend.xml, from Phoenix or the Castle app). Windows Setup looks at the
+    # root of removable read/write drives before the root of the installer CD, so a
+    # small writable USB disk holding the file overrides whatever the ISO carries,
+    # the same way a Phoenix USB stick does on a real PC. qemu-img turns a folder
+    # with just that file into the disk image. The image holds the account
+    # passwords the answer file holds, so it is removed once the disk is installed.
+    $AnswerImage = "$DiskPath.answer.qcow2"
+    if ($OsFamily -eq "windows" -and $FirstBoot -and $env:CASTLE_UNATTEND_XML) {
+        if (-not (Test-Path -LiteralPath $env:CASTLE_UNATTEND_XML)) { throw "CASTLE_UNATTEND_XML: no file at $($env:CASTLE_UNATTEND_XML)" }
+        $AnswerDir = Join-Path ([IO.Path]::GetTempPath()) ("castle-answer-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $AnswerDir -Force | Out-Null
+        try {
+            Copy-Item -LiteralPath $env:CASTLE_UNATTEND_XML -Destination (Join-Path $AnswerDir "autounattend.xml") -Force
+            if (Test-Path -LiteralPath $AnswerImage) { Remove-Item -LiteralPath $AnswerImage -Force }
+            & $Script:QemuImg convert -q -f vvfat -O qcow2 "fat:16:$($AnswerDir -replace '\\', '/')" $AnswerImage | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $AnswerImage)) { throw "qemu-img could not build the answer-file disk (exit $LASTEXITCODE)." }
+        }
+        finally { Remove-Item -LiteralPath $AnswerDir -Recurse -Force -ErrorAction SilentlyContinue }
+        $Args += @(
+            "-drive", "file=$($AnswerImage -replace ',', ',,'),if=none,id=castleanswer,format=qcow2"
+            "-device", "usb-storage,drive=castleanswer,removable=on"
+        )
+        Write-Host "  [*] Answer file: $($env:CASTLE_UNATTEND_XML)  (on a USB disk; overrides the one in the ISO)" -ForegroundColor White
+    }
+    elseif (-not $FirstBoot -and (Test-Path -LiteralPath $AnswerImage)) {
+        Remove-Item -LiteralPath $AnswerImage -Force -ErrorAction SilentlyContinue
+    }
     # The copy payload (app/data/clonewars/copy) is a second share of the same kind. vvfat
     # simulates a fixed 504 MB FAT16 disk whatever fat-type is asked for, so
     # start.ps1 refuses bigger payloads up front instead of QEMU failing late.

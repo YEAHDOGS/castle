@@ -2,3 +2,7 @@
 	path = app/ai
 	url = https://github.com/YEAHDOGS/dogs-ai.git
 	branch = master
+[submodule "app/phoenix"]
+	path = app/phoenix
+	url = https://github.com/YEAHDOGS/phoenix.git
+	branch = master

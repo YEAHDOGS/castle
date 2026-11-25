@@ -98,6 +98,33 @@ All under `/api/v1`. Ids are vault paths with `/` separators; the top folder is 
 | `POST /restore` `{id}` | Restore a `trash:<key>` item. |
 | `POST /delete` `{id}` | Delete for good (a live item or a trash item). |
 
+## Phoenix
+
+The cleaner and the set-up of a fresh Windows PC (`src/phoenix.rs`). Phoenix is its own
+project, the git submodule `app/phoenix/`. The box runs its PowerShell engine
+(`scripts/engine/phoenix.ps1`) and hands the result on; it builds no PowerShell itself.
+Which copy runs: `CASTLE_PHOENIX_DIR`, else `app/phoenix/`, else a `phoenix` checkout
+beside Castle. The app list is the one the standalone Phoenix app keeps
+(`%APPDATA%\Phoenix\phoenix.config.json`, or `PHOENIX_CONFIG`).
+
+| Route | What it does |
+| --- | --- |
+| `GET /phoenix` | Whether Phoenix can run here: `{ available, reason, engine, isAdmin, android, canChange }`. A box on Linux answers `available: false` with the reason. |
+| `GET /phoenix/clean?platform=&serial=` | Scans. Deletes nothing. Per rule: bytes, files, the biggest files, the folders looked in, programs to close first, `blocked: "needs-admin"`. `platform` is `windows` (default) or `android`. About 20 seconds on a full PC. |
+| `POST /phoenix/clean` `{platform, serial, ids}` | Deletes what the named rules cover, and only those. An empty `ids` is refused. |
+| `GET /phoenix/devices` | Android phones on USB. |
+| `GET /phoenix/setup` | The app list, Phoenix's catalog, the account names and the hardening choices. |
+| `PUT /phoenix/setup` `{apps, computerName, adminName, userName, harden}` | Saves any of them into the shared config. |
+| `GET /phoenix/choco?q=` | Searches Chocolatey's community feed (Phoenix's catalog when the feed cannot be reached). |
+| `POST /phoenix/script` | The set-up script for the saved list: Chocolatey, the apps, the hardening if chosen. |
+| `POST /phoenix/answerfile` `{adminPassword, userPassword}` | A Windows answer file for the saved set-up, which runs that script at the first logon. The passwords go to the engine in a file it deletes as it reads, and into the answer file; the answer file is handed back and not kept. |
+
+Looking is allowed from any device. Deleting, saving and making an answer file work only
+from the computer the box runs on, like turning Clones on.
+
+What a cleaning rule may touch is decided by Phoenix, not by the caller: the routes take
+rule ids, never paths. See `app/phoenix/docs/CLEANER.md`.
+
 ## Links
 
 Pages a person saved from the internet. The box fetches the page once and keeps what it

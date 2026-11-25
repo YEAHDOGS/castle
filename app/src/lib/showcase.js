@@ -52,6 +52,8 @@ const READS = new Set([
   'comms', 'commsThread', 'commsSearch', 'commsFile',
   // Links
   'links', 'link', 'linkPicture',
+  // Phoenix (the showcase scans its pretend PC; it cleans and saves nothing)
+  'phoenixStatus', 'phoenixDevices', 'phoenixScan', 'phoenixSetup', 'phoenixChoco', 'phoenixScript',
   // AI
   'aiStatus',
 ]);
