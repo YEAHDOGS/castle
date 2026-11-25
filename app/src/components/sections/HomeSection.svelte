@@ -23,7 +23,7 @@
   // What a tile says when its section has nothing live to report: a word or two, no more.
   const SHORT = {
     storage: 'Files', ai: 'Images and chat', arcade: 'Games', theater: 'Films and music', comms: 'Texts and calls',
-    contacts: 'People', clones: 'Machines', network: 'Traffic', security: 'Checks', settings: 'Configure',
+    contacts: 'People', links: 'Saved pages', clones: 'Machines', network: 'Traffic', security: 'Checks', settings: 'Configure',
   };
   const SECOND_MS = 1000;
   const MINUTE_MS = 60 * SECOND_MS;
@@ -152,6 +152,10 @@
       contacts: async () => {
         const list = await shell.contactsSource.contacts(shell.user.id);
         return `${list.length} ${list.length === 1 ? 'person' : 'people'}`;
+      },
+      links: async () => {
+        const list = await shell.linksSource.links(shell.user.id);
+        return `${list.length} ${list.length === 1 ? 'link' : 'links'}`;
       },
       comms: async () => {
         const { conversations } = await shell.commsSource.comms(shell.user.id);

@@ -23,6 +23,29 @@ app's Connect screen (the server icon in the top bar).
 | `--web` built Castle app to serve at `/` | none | `CASTLE_WEB_DIR` |
 | `--clonewars` Castle's `clonewars` folder, to run automations | none | `CASTLE_CLONEWARS_DIR` |
 | `--arcade` a games folder (`Consoles/` + `Roms/`) to show in Arcade | none | `CASTLE_ARCADE_DIR` |
+| `--places` a folder whose subfolders the vault may be moved to from the app | none | `CASTLE_PLACES` |
+| `--state` a folder outside the vault where that choice is kept (goes with `--places`) | none | `CASTLE_STATE_DIR` |
+
+## Run it in Docker
+
+The box as one container, serving the app at its own address. From the top of the repo:
+
+```sh
+cp docker-box.env.example .env      # then say where the drives are
+docker compose up -d --build
+docker compose logs castle          # prints  open: http://0.0.0.0:8787/#connect=<token>
+```
+
+Open that link from any device at home, with the computer's own address in place of
+`0.0.0.0`. `.env` names the folder the box starts on (`CASTLE_VAULT`), up to two more drives
+(`CASTLE_DRIVE_1=F:/:/drives/big`), a media folder for Theater and the port. Each drive under
+`/drives` is a place the vault can be moved to from Settings > Storage (see Storage places
+below). The container restarts with the computer.
+
+What the container does not have: Clones and Arcade (they start programs on the computer
+itself), DOGS AI, and the rest of the computer in Storage. It is plain HTTP, like any box
+that listens beyond `127.0.0.1`: for the home network or a Tailscale link, never a port
+forwarded from the router.
 
 ## What it guarantees
 
@@ -74,6 +97,57 @@ All under `/api/v1`. Ids are vault paths with `/` separators; the top folder is 
 | `POST /trash` `{id}` | Move to trash. |
 | `POST /restore` `{id}` | Restore a `trash:<key>` item. |
 | `POST /delete` `{id}` | Delete for good (a live item or a trash item). |
+
+## Links
+
+Pages a person saved from the internet. The box fetches the page once and keeps what it
+says, so the link can be searched and read from the box whether or not the page still
+exists. As with Contacts and Comms, `person` defaults to `owner`.
+
+| Call | Does |
+|---|---|
+| `GET /links?person=&q=` | A person's links, newest first, without their text. With `q`, only those holding every word of it (title, site, note, tags, description, ingredients, steps, the page's text), with the words around the match as `snippet`. |
+| `GET /links/item?person=&id=` | One link with everything kept: its text, its recipe, the addresses a video's description named. |
+| `GET /links/picture?person=&id=` | The link's picture, copied to the box when it was saved. |
+| `POST /links/add` `{person, url, note}` | Saves an address. `url` may be the words a phone's Share sends, with the address in them. The page is read before the call answers. The same address twice is one link. |
+| `POST /links/refresh` `{person, id}` | Reads the page again. If it has gone, the saved copy stays and the reason is added. |
+| `POST /links/update` `{person, id, title, note, tags}` | Changes what the person wrote on it. Any of the three. |
+| `POST /links/delete` `{person, id}` | Deletes the link and its picture. |
+
+**What is read.** The title, publisher, author, description and picture a page declares
+(Open Graph and the ordinary `<meta>` tags), its text without menus, scripts and forms, and
+its recipe when it carries one as schema.org `Recipe` data (what recipe sites publish for
+search engines): servings, times, ingredients and steps. A YouTube address is kept with its
+full description; up to four addresses in that description are fetched once, and the first
+that holds a recipe gives the video its recipe, marked with where it came from.
+
+**On disk.** `<vault>/.castle/links/<person>/<id>.json`, one file per link holding all of
+the above, and `<id>.jpg` (or `.png`, `.webp`, `.gif`) beside it. No index and no database:
+search reads the files into memory once per start.
+
+**Limits.** A page is fetched as `Castle/<version>`, with no cookies and no script run. A
+site that refuses that (some answer 403 to anything that is not a browser) is not worked
+around: the link is saved with the reason. Pages built entirely by script have little text
+to keep. Pages over 4 MB and pictures over 5 MB are not kept.
+
+**It does not read the home network.** Every name is looked up before it is fetched, and an
+address on this computer, a private network, a Tailscale range or a link-local range is
+refused, at the first address and at every redirect. The connection goes to the addresses
+that were checked.
+
+## Storage places (needs `--places` and `--state`)
+
+| Call | Does |
+|---|---|
+| `GET /storage/places` | `{current, canChoose, missing, places: [{id, name, path, free, total, current, hasVault}]}`. The first place is the vault the box was started with (`id` `""`); the rest are the folders under `--places`, each holding its vault in a folder named `Castle`. `missing` names a chosen place that was not there at start. |
+| `POST /storage/place` `{id}` | Makes that place the vault. A new vault gets a copy of the token and the settings, so devices stay connected. The choice is written to `<state>/vault`, and the box stops so that what runs it starts it again there. |
+
+Files are not moved. The vault that was in use stays where it is, whole, and choosing its
+place again opens it. A place can only be named by a folder directly under `--places`, so
+this cannot point the box at any other folder. It stops the box on purpose: use it only
+where something restarts the box (the Docker image does). When the chosen drive is not
+there at start, the box says so and opens the vault it was started with, rather than
+making an empty vault where the drive should have been.
 
 ## Clones (needs `--clonewars`)
 
@@ -154,8 +228,8 @@ traffic of the machine it runs on, not of every device in the house.
 | `POST /network/speedtest` | Times a 50 MB download and a 10 MB upload against Cloudflare's speed-test service, and a response time. Takes 10 to 30 seconds. |
 | `GET /network/provider` | Asks ipinfo.io who the internet provider is. That service sees the public address. |
 
-The speed test and the provider lookup are the only calls that reach the internet, and
-they run only when asked for.
+The speed test and the provider lookup here reach the internet, and they run only when
+asked for. (So do saving a link, and looking up a game, film or album.)
 
 ## Settings and box facts
 

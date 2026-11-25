@@ -1,0 +1,21 @@
+# The image is built from app/ (the interface) and castled/ (the daemon) only.
+.git
+.claude
+.github
+landing
+os
+scripts
+site-dist
+media
+vault
+**/node_modules
+**/target
+**/dist
+**/dist-showcase
+app/data
+app/ai
+app/gatehouse
+app/src-tauri
+app/clonewars/*
+!app/clonewars/automation
+**/.env

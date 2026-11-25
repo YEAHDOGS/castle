@@ -50,6 +50,9 @@ app/data/
 # data.wearedogs.net/castle/ (arcade/, theater/, CREDITS.md). Never committed.
 /media/
 
+# Castle in Docker (compose.yml): its settings are .env, and its vault when none is named
+/vault/
+
 # Rust build output (castled, app/src-tauri, app/ai/app/src-tauri)
 target/
 

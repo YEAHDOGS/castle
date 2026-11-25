@@ -426,6 +426,16 @@ export class HttpAdapter extends StorageAdapter {
     return (await this.call('/box')).json();
   }
 
+  /** Where the vault is and where it could be: { current, canChoose, missing, places: [{ id, name, path, free, total, current, hasVault }] } */
+  async storagePlaces() {
+    return (await this.call('/storage/places')).json();
+  }
+
+  /** Moves the vault to a place by its id. The box restarts there; files are not moved. */
+  async storagePlaceChoose(id) {
+    return (await this.post('/storage/place', { id })).json();
+  }
+
   /** Processor, memory, disk and uptime of the machine the box runs on. */
   async system() {
     return (await this.call('/system')).json();
@@ -556,6 +566,50 @@ export class HttpAdapter extends StorageAdapter {
     const query = `person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}`;
     const init = { method: 'PUT', body: file || new Blob([]), headers: { 'Content-Type': file?.type || 'application/octet-stream' } };
     return (await this.call(`/contacts/photo?${query}`, init)).json();
+  }
+
+  // ---- Links: pages a person saved from the internet (see castled/src/links.rs) ----
+
+  /** A person's links, newest first; with `q`, only those that hold every word of it. */
+  async links(person, q = '') {
+    return (await this.call(`/links?person=${encodeURIComponent(person)}&q=${encodeURIComponent(q)}`)).json();
+  }
+
+  /** One link with everything the box read: its text, its recipe, the addresses it named. */
+  async link(person, id) {
+    return (await this.call(`/links/item?person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}`)).json();
+  }
+
+  /** Saves an address (or shared words with one in them). The box reads the page before it answers. */
+  async linkAdd(person, url, note = '') {
+    return (await this.post('/links/add', { person, url, note })).json();
+  }
+
+  /** Reads a link's page again. */
+  async linkRefresh(person, id) {
+    return (await this.post('/links/refresh', { person, id })).json();
+  }
+
+  /** Changes what the person wrote on a link: { title, note, tags }, any of them. */
+  async linkUpdate(person, id, changes) {
+    return (await this.post('/links/update', { person, id, ...changes })).json();
+  }
+
+  async linkDelete(person, id) {
+    await this.post('/links/delete', { person, id });
+  }
+
+  /** A link's picture as an address the page can show, or null. Kept for the visit. */
+  async linkPicture(person, id) {
+    const key = `link:${person}:${id}`;
+    if (this.art.has(key)) return this.art.get(key);
+    try {
+      const blob = await (await this.call(`/links/picture?person=${encodeURIComponent(person)}&id=${encodeURIComponent(id)}`)).blob();
+      this.art.set(key, URL.createObjectURL(blob));
+    } catch {
+      this.art.set(key, null);
+    }
+    return this.art.get(key);
   }
 
   // ---- Comms: each person's texts, calls, email and chats (see castled/src/comms.rs) ----

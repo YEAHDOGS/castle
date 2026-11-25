@@ -22,9 +22,11 @@ mod contacts;
 mod dns;
 mod drives;
 mod host;
+mod links;
 mod lookup;
 mod media_tags;
 mod network;
+mod places;
 mod presence;
 mod results;
 mod saves;
@@ -114,6 +116,8 @@ struct AppState {
     contacts: contacts::Contacts,
     /// Each person's texts, calls, email and chats.
     comms: comms::Comms,
+    /// Each person's saved pages from the internet.
+    links: links::Links,
     /// Radar nodes on the walls, and what they see (see presence.rs).
     presence: presence::Presence,
     /// Steam games kept for every PC in the home.
@@ -129,6 +133,10 @@ struct AppState {
     loopback: bool,
     /// Serialises writes to settings.json.
     settings: Mutex<()>,
+    /// Where the vault may be moved to, when the box was started with --places and --state.
+    places: Option<places::Places>,
+    /// The chosen place that was not there at start (an unplugged drive), if any.
+    missing_place: Option<String>,
     /// Told when the box is asked to stop (POST /box/stop).
     stop: tokio::sync::Notify,
 }
@@ -1220,6 +1228,61 @@ async fn comms_file(State(st): State<Shared>, Query(q): Query<PersonItemQuery>, 
     Ok(stream::file(&path, headers.get(header::RANGE), &mime, offer).await?)
 }
 
+// ---------------------------------------------------------------------------------------
+// Links: pages a person saved from the internet (see links.rs)
+// ---------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct LinkAddBody {
+    #[serde(default = "owner")]
+    person: String,
+    /// An address, or the words a phone's Share sent with one in them.
+    url: String,
+    #[serde(default)]
+    note: String,
+}
+
+#[derive(Deserialize)]
+struct LinkUpdateBody {
+    #[serde(default = "owner")]
+    person: String,
+    id: String,
+    title: Option<String>,
+    note: Option<String>,
+    tags: Option<Vec<String>>,
+}
+
+async fn links_list(State(st): State<Shared>, Query(q): Query<CommsSearchQuery>) -> ApiResult<Json<Vec<links::Card>>> {
+    blocking(st, move |st| st.links.list(&q.person, &q.q)).await.map(Json)
+}
+
+async fn links_item(State(st): State<Shared>, Query(q): Query<PersonItemQuery>) -> ApiResult<Json<links::Link>> {
+    blocking(st, move |st| st.links.get(&q.person, &q.id)).await.map(Json).map_err(|_| ApiError::not_found())
+}
+
+async fn links_picture(State(st): State<Shared>, Query(q): Query<PersonItemQuery>, headers: HeaderMap) -> ApiResult<Response> {
+    let (path, mime) = blocking(st, move |st| st.links.picture(&q.person, &q.id)).await.map_err(|_| ApiError::not_found())?;
+    Ok(stream::file(&path, headers.get(header::RANGE), mime, stream::Offer::Inline).await?)
+}
+
+/// Reads the page before answering, which takes as long as the site does (a few seconds).
+async fn links_add(State(st): State<Shared>, Json(b): Json<LinkAddBody>) -> ApiResult<Json<links::Link>> {
+    blocking(st, move |st| st.links.add(&b.person, &b.url, &b.note)).await.map(Json)
+}
+
+async fn links_refresh(State(st): State<Shared>, Json(b): Json<PersonIdBody>) -> ApiResult<Json<links::Link>> {
+    blocking(st, move |st| st.links.refresh(&b.person, &b.id)).await.map(Json)
+}
+
+async fn links_update(State(st): State<Shared>, Json(b): Json<LinkUpdateBody>) -> ApiResult<Json<links::Link>> {
+    blocking(st, move |st| st.links.update(&b.person, &b.id, b.title, b.note, b.tags)).await.map(Json)
+}
+
+async fn links_delete(State(st): State<Shared>, Json(b): Json<PersonIdBody>) -> ApiResult<StatusCode> {
+    blocking(st, move |st| st.links.delete(&b.person, &b.id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// An export from a phone or a service, streamed to disk, then read in the background:
 /// a whole Takeout can take minutes. The app watches /comms until it is done. Contacts
 /// files found inside go to Contacts.
@@ -1984,6 +2047,37 @@ async fn box_stop(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>
     Ok(Json(serde_json::json!({ "stopping": true })))
 }
 
+/// Where the vault is, and where it could be (see places.rs). A box that cannot move its
+/// vault answers with the one it has and `canChoose: false`.
+async fn storage_places(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
+    let state = st.clone();
+    let places = tokio::task::spawn_blocking(move || state.places.as_ref().map(|places| places.list(&state.root)))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "storage error".into()))?;
+    Ok(Json(serde_json::json!({
+        "current": st.root.display().to_string().trim_start_matches(r"\\?\"),
+        "canChoose": places.is_some(),
+        "missing": st.missing_place,
+        "places": places.unwrap_or_default(),
+    })))
+}
+
+/// Moves the vault to another place, then stops the box so that whatever runs it (Docker,
+/// a service) starts it again there. Files are not moved.
+async fn storage_place(State(st): State<Shared>, Json(b): Json<IdBody>) -> ApiResult<Json<serde_json::Value>> {
+    if st.places.is_none() {
+        return Err(ApiError::conflict("This box was not started with places to choose from."));
+    }
+    let vault = blocking(st.clone(), move |st| st.places.as_ref().ok_or("no places".to_string())?.choose(&b.id, &st.root)).await?;
+    // After the answer has gone out.
+    let stopping = st.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        stopping.stop.notify_one();
+    });
+    Ok(Json(serde_json::json!({ "restarting": true, "vault": vault.display().to_string() })))
+}
+
 async fn box_info(State(st): State<Shared>) -> ApiResult<Json<serde_json::Value>> {
     let state = st.clone();
     let links = tokio::task::spawn_blocking(move || state.network.links())
@@ -2284,12 +2378,14 @@ struct Config {
     steam_cache_dir: Option<PathBuf>,
     /// Where the DNS server that sends Steam to the cache listens.
     dns: Option<String>,
+    places: Option<PathBuf>,
+    state: Option<PathBuf>,
 }
 
 fn usage() -> ! {
     eprintln!(
         "castled -- the Castle box daemon\n\n\
-         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR] [--host-files]\n                [--steam-cache ADDR:PORT] [--steam-cache-dir DIR] [--dns ADDR:PORT]\n\n\
+         usage: castled [--data DIR] [--bind ADDR:PORT] [--web DIR] [--clonewars DIR] [--arcade DIR] [--host-files]\n                [--steam-cache ADDR:PORT] [--steam-cache-dir DIR] [--dns ADDR:PORT]\n                [--places DIR --state DIR]\n\n\
          --data  the vault directory            (default {DEFAULT_DATA_DIR}, or CASTLE_DATA_DIR)\n\
          --bind  address to listen on           (default {DEFAULT_BIND}, or CASTLE_BIND)\n\
          --web   built Castle app to serve at / (optional, or CASTLE_WEB_DIR)
@@ -2298,7 +2394,9 @@ fn usage() -> ! {
          --host-files let Storage open the whole computer even when other machines can reach the box (or CASTLE_HOST_FILES=1)
          --steam-cache      where the Steam cache listens, e.g. 0.0.0.0:80 (or CASTLE_STEAM_CACHE)
          --steam-cache-dir  where it keeps games (default: the vault's private folder, or CASTLE_STEAM_CACHE_DIR)
-         --dns              run a DNS server that sends Steam to the cache, e.g. 0.0.0.0:53 (or CASTLE_DNS)"
+         --dns              run a DNS server that sends Steam to the cache, e.g. 0.0.0.0:53 (or CASTLE_DNS)
+         --places           a folder whose subfolders the vault may be moved to from the app (or CASTLE_PLACES)
+         --state            a folder outside the vault where that choice is kept (or CASTLE_STATE_DIR)"
     );
     std::process::exit(2)
 }
@@ -2314,6 +2412,8 @@ fn config() -> Config {
         steam_cache: std::env::var("CASTLE_STEAM_CACHE").ok(),
         steam_cache_dir: std::env::var("CASTLE_STEAM_CACHE_DIR").ok().map(PathBuf::from),
         dns: std::env::var("CASTLE_DNS").ok(),
+        places: std::env::var("CASTLE_PLACES").ok().map(PathBuf::from),
+        state: std::env::var("CASTLE_STATE_DIR").ok().map(PathBuf::from),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -2331,6 +2431,8 @@ fn config() -> Config {
             "--steam-cache" => cfg.steam_cache = Some(value),
             "--steam-cache-dir" => cfg.steam_cache_dir = Some(value.into()),
             "--dns" => cfg.dns = Some(value),
+            "--places" => cfg.places = Some(value.into()),
+            "--state" => cfg.state = Some(value.into()),
             _ => usage(),
         }
     }
@@ -2388,6 +2490,13 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/comms/delete", post(comms_delete))
         .route("/comms/file", get(comms_file))
         .route("/comms/import", put(comms_import).layer(DefaultBodyLimit::disable()))
+        .route("/links", get(links_list))
+        .route("/links/item", get(links_item))
+        .route("/links/picture", get(links_picture))
+        .route("/links/add", post(links_add))
+        .route("/links/refresh", post(links_refresh))
+        .route("/links/update", post(links_update))
+        .route("/links/delete", post(links_delete))
         .route("/steam", get(steam_overview))
         .route("/steam/art", get(steam_art))
         .route("/steam/search", get(steam_search))
@@ -2431,6 +2540,8 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/network/speedtest", post(network_speedtest))
         .route("/network/provider", get(network_provider))
         .route("/settings", get(settings_get).put(settings_put))
+        .route("/storage/places", get(storage_places))
+        .route("/storage/place", post(storage_place))
         .route("/box", get(box_info))
         .route("/box/stop", post(box_stop))
         .route("/system", get(system_vitals))
@@ -2483,7 +2594,20 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = config();
+    let mut cfg = config();
+    // A vault chosen from the app (Settings > Storage) wins over the one named at start.
+    let places = match (cfg.places.take(), cfg.state.take()) {
+        (Some(places), Some(state)) => Some(places::Places { places, state, default: cfg.data.clone() }),
+        (None, None) => None,
+        _ => return Err("--places and --state go together".into()),
+    };
+    let mut missing_place = None;
+    if let Some(places) = &places {
+        (cfg.data, missing_place) = places.at_start();
+        if let Some(name) = &missing_place {
+            eprintln!("[castled] the chosen storage place \"{name}\" is not there (is the drive plugged in?); using {}", cfg.data.display());
+        }
+    }
     std::fs::create_dir_all(cfg.data.join(META_DIR).join("trash"))?;
     let root = cfg.data.canonicalize()?;
     let token = load_or_create_token(&root)?;
@@ -2532,6 +2656,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         theater: theater::Theater::open(root.join(META_DIR).join("theater")),
         contacts: contacts::Contacts::open(root.join(META_DIR).join("contacts")),
         comms: comms::Comms::open(root.join(META_DIR).join("comms")),
+        links: links::Links::open(root.join(META_DIR).join("links")),
         presence: presence::Presence::open(root.join(META_DIR).join("presence")),
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),
@@ -2540,6 +2665,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         listen: addr.to_string(),
         loopback: addr.ip().is_loopback(),
         settings: Mutex::new(()),
+        places,
+        missing_place,
         stop: tokio::sync::Notify::new(),
     });
 

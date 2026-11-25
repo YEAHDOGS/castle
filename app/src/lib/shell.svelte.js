@@ -7,6 +7,7 @@ import { DEMO_USERS, DEMO_PIN, OWNER, DemoArcade, DemoClones, DemoNetwork, DemoB
 import { DemoPresence } from './demo-presence.js';
 import { DemoContacts } from './demo-contacts.js';
 import { DemoComms } from './demo-comms.js';
+import { DemoLinks } from './demo-links.js';
 import { prefs } from './prefs.svelte.js';
 import { SHOWCASE, readOnly } from './showcase.js';
 
@@ -46,11 +47,13 @@ class Shell {
   demoPresence = readOnly(new DemoPresence());
   demoContacts = readOnly(new DemoContacts());
   demoComms = readOnly(new DemoComms());
+  demoLinks = readOnly(new DemoLinks());
 
   /**
    * What a section was opened to show, when another section sent the person there:
    * { section, ... } (Contacts sends { section: 'comms', contact }, Comms sends
-   * { section: 'contacts', contactId } or { section: 'contacts', draft }). The section
+   * { section: 'contacts', contactId } or { section: 'contacts', draft }; a phone's Share
+   * sends { section: 'links', add }). The section
    * that reads it clears it.
    */
   focus = $state(null);
@@ -139,6 +142,12 @@ class Shell {
   /** Where Comms reads from, by the same rule. */
   get commsSource() {
     if (store.isDemo) return this.demoComms;
+    return store.boxUrl ? store.adapter : null;
+  }
+
+  /** Where Links reads from, by the same rule. */
+  get linksSource() {
+    if (store.isDemo) return this.demoLinks;
     return store.boxUrl ? store.adapter : null;
   }
 

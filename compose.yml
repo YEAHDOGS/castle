@@ -1,0 +1,39 @@
+# Castle's box, in Docker.
+#
+#   docker compose up -d --build      build and start it (and start it again after a reboot)
+#   docker compose logs castle        the line "open: http://0.0.0.0:8787/#connect=<token>"
+#   docker compose down               stop it
+#
+# Open that link from any device at home with the computer's own address in place of
+# 0.0.0.0 (http://192.168.1.20:8787/#connect=<token>) and the app is connected.
+#
+# Where things are kept is set in a file named .env beside this one (docker-box.env.example
+# has every setting, with examples for a USB drive). Nothing below needs editing.
+#
+# It is plain HTTP: for the home network, or through Tailscale. Do not forward this port
+# from the router to the internet.
+
+services:
+  castle:
+    build: .
+    image: castle-box
+    container_name: castle
+    restart: unless-stopped
+    ports:
+      - "${CASTLE_ADDRESS:-0.0.0.0}:${CASTLE_PORT:-8787}:8787"
+    volumes:
+      # The vault the box starts on: every file, every person's contacts, messages and
+      # links, and the box's own records (.castle).
+      - "${CASTLE_VAULT:-./vault}:/vault"
+      # More drives. Each one mounted under /drives is a place the vault can be moved to
+      # from the app (Settings > Storage); the vault goes in a folder named Castle on it.
+      - "${CASTLE_DRIVE_1:-./vault:/unused/1}"
+      - "${CASTLE_DRIVE_2:-./vault:/unused/2}"
+      # Which place was chosen. Small, and kept by Docker.
+      - "castle-state:/state"
+      # Films, shows, music and photos for Theater, read where they are. Add them in the
+      # app as /media/... (Theater > Libraries).
+      - "${CASTLE_MEDIA:-./vault}:/media:ro"
+
+volumes:
+  castle-state:

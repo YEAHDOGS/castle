@@ -365,7 +365,6 @@ mod unix {
     pub fn scan() -> Vec<Raw> {
         let Ok(disks) = sysinfo::Disks::new_with_refreshed_list() else { return Vec::new() };
         disks
-            .list()
             .iter()
             .map(|disk| {
                 let path = disk.mount_point().to_string_lossy().to_string();

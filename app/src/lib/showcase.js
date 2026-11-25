@@ -43,13 +43,15 @@ const READS = new Set([
   // Theater (a demo "play" opens the sample picture; nothing is streamed)
   'theater', 'theaterItems', 'theaterArt', 'theaterDetails', 'theaterPlay', 'theaterFolders',
   // Network, the box, Settings and Security
-  'network', 'networkProvider', 'system', 'settings', 'boxInfo',
+  'network', 'networkProvider', 'system', 'settings', 'boxInfo', 'storagePlaces',
   'security', 'securityLog', 'securityVerify', 'securityAudits', 'record',
   // Presence (radar nodes) and the spec card
   'presence', 'specs',
   // Contacts and Comms (exporting a .vcf is a download of a real file, so it is refused)
   'contacts', 'contactDuplicates', 'contactHistory', 'contactPhoto',
   'comms', 'commsThread', 'commsSearch', 'commsFile',
+  // Links
+  'links', 'link', 'linkPicture',
   // AI
   'aiStatus',
 ]);

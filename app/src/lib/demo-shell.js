@@ -708,6 +708,25 @@ export class DemoBox {
     return { ...this.saved };
   }
 
+  /** The demo box has its own disk and one big drive beside it. */
+  async storagePlaces() {
+    const at = this.place || '';
+    return {
+      current: at ? '/drives/big/Castle' : '/vault',
+      canChoose: true,
+      missing: null,
+      places: [
+        { id: '', name: 'Where the box started', path: '/vault', free: 412 * GB, total: 1000 * GB, current: at === '', hasVault: true },
+        { id: 'big', name: 'big', path: '/drives/big/Castle', free: 9100 * GB, total: 10000 * GB, current: at === 'big', hasVault: at === 'big' },
+      ],
+    };
+  }
+
+  async storagePlaceChoose(id) {
+    this.place = id;
+    return { restarting: true };
+  }
+
   async boxInfo() {
     return {
       version: '0.1.0',

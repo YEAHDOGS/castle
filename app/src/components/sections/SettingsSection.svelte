@@ -3,7 +3,9 @@
      it does something today or is saved for the feature that will read it. -->
 <script>
   import { untrack } from 'svelte';
-  import { Check, Copy, Info } from '@lucide/svelte';
+  import { Check, Copy, Info, HardDrive, LoaderCircle } from '@lucide/svelte';
+  import { ask } from '../../lib/ask.svelte.js';
+  import { fmtSize } from '../../lib/format.js';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
   import { prefs } from '../../lib/prefs.svelte.js';
@@ -16,11 +18,15 @@
   const BOX_PORT_FALLBACK = '8787';
   const TAILSCALE_RUNNING = 'Running';
   const COPIED_MS = 1600;
+  const RESTART_POLL_MS = 1500;
+  const RESTART_TRIES = 40; // a minute for the box to come back
 
   let group = $state(SETTING_GROUPS[0].id);
   let boxValues = $state(defaultsFor('box'));
   let info = $state(null); // facts the box reports about itself
   let copied = $state('');
+  let storage = $state(null); // where the vault is and could be (box.storagePlaces)
+  let moving = $state(''); // the name of the place the box is restarting on
 
   const source = $derived(shell.boxSource);
   const current = $derived(SETTING_GROUPS.find((g) => g.id === group));
@@ -72,10 +78,44 @@
     }
   }
 
+  /**
+   * Moves the vault to another place. The box restarts there, so this waits for it to
+   * answer again before saying it worked.
+   */
+  async function choosePlace(place) {
+    const from = source;
+    const opens = place.hasVault ? 'It already holds a Castle vault, which opens as it is.' : 'A new, empty vault is made there.';
+    const question = `Keep everything in “${place.name}” from now on? ${opens} Files are not moved: what is in the vault now stays where it is, and choosing that place again brings it back. Castle restarts.`;
+    if (!(await ask(question, { yes: 'Use this place' }))) return;
+    try {
+      await from.storagePlaceChoose(place.id);
+    } catch (err) {
+      return store.toast(err?.message || 'That place could not be used');
+    }
+    moving = place.name;
+    for (let tries = 0; tries < RESTART_TRIES; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
+      try {
+        const next = await from.storagePlaces();
+        if (!next.places.find((p) => p.id === place.id)?.current) continue;
+        storage = next;
+        moving = '';
+        return store.toast(`Castle now keeps everything in ${place.name}`);
+      } catch {
+        /* still restarting */
+      }
+    }
+    moving = '';
+    store.toast('The box has not come back yet. Check that it is running');
+  }
+
   async function load(from) {
     boxValues = defaultsFor('box');
     info = null;
+    storage = null;
     if (!from) return;
+    // Older boxes do not know about places; the rest of Settings still loads.
+    from.storagePlaces?.().then((places) => from === source && (storage = places)).catch(() => {});
     try {
       const [saved, facts] = await Promise.all([from.settings(), from.boxInfo()]);
       boxValues = { ...defaultsFor('box'), ...saved };
@@ -203,6 +243,41 @@
         <p class="mt-3 text-[12px] leading-relaxed text-text-dim">
           These are chosen when the box starts, not from this screen: a web page should not be able to point the box at a new folder of programs to run.
         </p>
+      </section>
+    {:else if group === 'storage' && storage}
+      <section class="glass mb-4 p-5">
+        <h2 class="flex items-center gap-2 text-[15px] font-bold text-white"><HardDrive class="h-4 w-4 text-chiral" />Where Castle keeps everything</h2>
+        <p class="mt-1 break-all font-mono text-[12px] text-bridge">{storage.current}</p>
+        {#if storage.missing}
+          <p class="mt-2 text-[13px] leading-relaxed text-bridge">The place chosen before, “{storage.missing}”, was not there when the box started (is the drive plugged in?), so it is using the folder above. Plug the drive in and restart the box, or choose a place below.</p>
+        {/if}
+        {#if moving}
+          <p class="micro mt-4 flex items-center gap-2 text-text-dim" aria-live="polite"><LoaderCircle class="h-3.5 w-3.5 animate-spin" />CASTLE IS RESTARTING ON {moving.toUpperCase()}</p>
+        {:else if storage.canChoose}
+          <ul class="mt-4 grid gap-2">
+            {#each storage.places as place (place.id)}
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-2 border px-3 py-2.5 {place.current ? 'border-chiral/50' : 'border-hairline'}">
+                <div class="min-w-[12rem] flex-1">
+                  <p class="text-[14px] font-semibold text-white">{place.name}{#if place.hasVault && !place.current}<span class="micro ml-2 text-text-faint">HAS A VAULT</span>{/if}</p>
+                  <p class="break-all font-mono text-[11px] text-text-faint">{place.path}</p>
+                  <p class="micro mt-1 text-text-dim">{fmtSize(place.free)} FREE OF {fmtSize(place.total)}</p>
+                </div>
+                {#if place.current}
+                  <span class="micro flex items-center gap-1.5 text-chiral"><Check class="h-3.5 w-3.5" />IN USE</span>
+                {:else}
+                  <button class="micro expo t-hover shrink-0 border border-chiral/60 px-3 py-2 font-bold text-chiral transition-colors hover:bg-chiral hover:text-black" onclick={() => choosePlace(place)}>USE THIS PLACE</button>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+          <p class="mt-3 text-[12px] leading-relaxed text-text-dim">
+            Each drive given to the box is a place. Choosing one restarts Castle there; nothing is moved or deleted, and every device stays connected. To add a drive, name it in the box's .env file (docker-box.env.example shows how).
+          </p>
+        {:else}
+          <p class="mt-3 text-[12px] leading-relaxed text-text-dim">
+            This box was started on that folder and cannot change it from here. Castle in Docker can: give it drives in its .env file and they are listed here. The desktop app's vault is set in its box.json.
+          </p>
+        {/if}
       </section>
     {:else if group === 'look'}
       <section class="glass mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-4">

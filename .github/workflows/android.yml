@@ -64,6 +64,10 @@ jobs:
       - name: Init Android target
         run: npx tauri android init
 
+      # Puts Castle in Android's Share menu, so a link can be sent to it from any app.
+      - name: Accept shared links
+        run: node scripts/android-share.mjs
+
       - name: Disk check before build
         run: df -h / | tail -1
 
