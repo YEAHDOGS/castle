@@ -1,13 +1,15 @@
 <!-- HomeSection: the box at a glance. A running uptime clock, one card of live meters for
      the machine it runs on, and a square tile for every other section with a few words on
-     its state right now. A tile opens its section. The Spec card tile, last, makes a picture
-     of the box's numbers, to post. -->
+     its state right now. A tile opens its section. Two tiles are not sections: Spec card makes
+     a picture of the box's numbers, to post, and TV remote switches TV remote mode on and off
+     (lib/tv.svelte.js), big enough to hit with a TV's cursor. -->
 <script>
   import { untrack } from 'svelte';
   import { fly } from 'svelte/transition';
-  import { House, IdCard } from '@lucide/svelte';
+  import { House, IdCard, Tv } from '@lucide/svelte';
   import { shell } from '../../lib/shell.svelte.js';
   import { store } from '../../lib/store.svelte.js';
+  import { tv, setTv } from '../../lib/tv.svelte.js';
   import { SECTIONS } from '../../lib/sections.js';
   import { fmtSize } from '../../lib/format.js';
   import { itemIn, reducedMotion } from '../../lib/motion.js';
@@ -272,6 +274,20 @@
           <span class="min-w-0">
             <span class="block truncate text-[14px] font-bold text-white">Spec card</span>
             <span class="mt-0.5 block truncate text-[11px] text-bridge">Make one</span>
+          </span>
+        </button>
+      </li>
+      <!-- Not a section either: the pointer becomes arrow keys, for a TV's remote. -->
+      <li in:fly={itemIn(tiles.length + 1)}>
+        <button
+          class="expo t-ui group flex aspect-square w-full flex-col justify-between border p-3 text-left active:scale-[0.97] {tv.on ? 'border-chiral bg-chiral/[0.12]' : 'border-hairline bg-white/[0.02] hover:border-chiral/60 hover:bg-white/[0.04]'}"
+          aria-pressed={tv.on}
+          onclick={() => setTv(!tv.on, tv.on ? 'TV remote off' : 'TV remote on: nudge the cursor to move')}
+        >
+          <Tv class="h-7 w-7 transition-colors {tv.on ? 'text-chiral' : 'text-text-faint group-hover:text-chiral'}" strokeWidth={1.25} />
+          <span class="min-w-0">
+            <span class="block truncate text-[14px] font-bold text-white">TV remote</span>
+            <span class="mt-0.5 block truncate text-[11px] {tv.on ? 'text-chiral' : 'text-text-dim'}">{tv.on ? 'On' : 'Off'}</span>
           </span>
         </button>
       </li>

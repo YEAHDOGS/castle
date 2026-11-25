@@ -29,6 +29,7 @@
   import Toasts from './components/Toasts.svelte';
   import AskDialog from './components/AskDialog.svelte';
   import PadHints from './components/PadHints.svelte';
+  import TvStrip from './components/TvStrip.svelte';
   import ShowcaseBanner from './components/ShowcaseBanner.svelte';
   import Tour from './components/tour/Tour.svelte';
   import { SHOWCASE } from './lib/showcase.js';
@@ -63,6 +64,7 @@
 <AskDialog />
 <Toasts />
 <PadHints />
+<TvStrip />
 {#if SHOWCASE}<ShowcaseBanner />{/if}
 <!-- Each section's tutorial: on by itself in the showcase, from Settings anywhere else. -->
 <Tour />

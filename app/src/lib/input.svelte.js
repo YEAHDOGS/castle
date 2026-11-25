@@ -19,12 +19,16 @@
 // so every handler written for the keyboard works for the controller too. The buttons a
 // keyboard does not have come as the PAD keys below, and carry `fromPad`.
 //
+// A TV remote's cursor can stand in for the arrows as well: see tv.svelte.js.
+//
 // It also keeps focus somewhere sensible: into a dialog when one opens, back to what
 // opened it when it closes, and onto the nearest thing when the focused one disappears.
 
 import { tick, untrack } from 'svelte';
 import { shell } from './shell.svelte.js';
 import { startGamepads } from './gamepad.js';
+import { store } from './store.svelte.js';
+import { installTv, tv } from './tv.svelte.js';
 
 /** Controller buttons with no key of their own. */
 export const PAD = {
@@ -433,6 +437,10 @@ export function installInput() {
   installed = true;
   document.documentElement.dataset.input = input.mode;
 
+  // TV remote mode (tv.svelte.js) goes first: while it is on, the pointer is a set of arrow
+  // keys, and its listeners must see each movement and click before the ones below.
+  installTv({ keys: () => setMode('keys'), accept, say: (msg) => store.toast(msg), modalOpen, home: () => shell.goHome() });
+
   window.addEventListener('keydown', onKeyFirst, true);
   window.addEventListener('keydown', onKey);
   // What was last used decides whether focus rings and hints show.
@@ -443,11 +451,11 @@ export function installInput() {
     },
     true
   );
-  window.addEventListener('pointerdown', () => setMode('pointer'), true);
+  window.addEventListener('pointerdown', () => !tv.on && setMode('pointer'), true);
   window.addEventListener(
     'pointermove',
     (e) => {
-      if (e.movementX || e.movementY) setMode('pointer');
+      if (!tv.on && (e.movementX || e.movementY)) setMode('pointer');
     },
     true
   );
