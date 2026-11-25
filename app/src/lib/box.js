@@ -7,6 +7,7 @@
 import { StorageAdapter, LocalStorageAdapter } from './adapter.js';
 import { isDemoRoute, demoNodes, demoComputer } from './demo.js';
 import { HOST_ROOT, isHostId, hostPath, hostId } from './computer.js';
+import { isBucketId, bucketKey, bucketId } from './bucket.js';
 import { SHOWCASE, readOnly } from './showcase.js';
 
 const BOX_KEY = 'castle-box-v1';
@@ -20,8 +21,12 @@ const TEXT_MIMES = ['application/json'];
 const UNREACHABLE = "Can't reach the box";
 const LOCAL_HOSTS = ['127.0.0.1', 'localhost']; // a connect link may only name a box on this computer
 // A folder on the computer can hold thousands of pictures: only this many get a thumbnail.
+// The same goes for a bucket, where every thumbnail is also a download from the provider.
 const HOST_PREVIEWS_PER_FOLDER = 48;
 const NO_STARS = 'Stars are for files in My Drive';
+const NO_MIXING = 'Moving between My Drive, the computer and a bucket is not here yet';
+const NO_BUCKET_TRASH = 'A bucket has no trash';
+const NOT_FOUND = 'not found'; // what the box says for a file that is not there
 
 /** @returns {{ url: string, token: string } | null} the remembered box, if any */
 export function readBox() {
@@ -151,8 +156,18 @@ export class HttpAdapter extends StorageAdapter {
     return node;
   }
 
-  /** Where the bytes of a vault file or a computer file are fetched from. */
+  /** Bucket item from the box -> UI node: ids carry "bucket:". Nothing there is starred, shared or trashed. */
+  toBucketNode(raw) {
+    const node = { ...raw, id: bucketId(raw.id), parentId: bucketId(raw.parentId), starred: false, trashed: false, shared: false };
+    const key = `${node.id}:${node.modified}`;
+    if (this.thumbs.has(key)) node.thumb = this.thumbs.get(key);
+    if (this.texts.has(key)) node.text = this.texts.get(key);
+    return node;
+  }
+
+  /** Where the bytes of a vault file, a computer file or a bucket file are fetched from. */
   fileUrl(id) {
+    if (isBucketId(id)) return `/bucket/file?path=${encodeURIComponent(bucketKey(id))}`;
     return isHostId(id) ? `/host/file?path=${encodeURIComponent(hostPath(id))}` : `/file?path=${encodeURIComponent(id)}`;
   }
 
@@ -167,7 +182,7 @@ export class HttpAdapter extends StorageAdapter {
         const isText = mime.startsWith('text/') || TEXT_MIMES.includes(mime);
         const wantsThumb = mime.startsWith('image/') && node.size <= THUMB_MAX_BYTES && !this.thumbs.has(key);
         const wantsText = isText && node.size <= TEXT_MAX_BYTES && !this.texts.has(key);
-        if (isHostId(node.id) && (wantsThumb || wantsText) && hostBudget-- <= 0) return;
+        if ((isHostId(node.id) || isBucketId(node.id)) && (wantsThumb || wantsText) && hostBudget-- <= 0) return;
         try {
           if (wantsThumb) {
             const blob = await (await this.call(this.fileUrl(node.id))).blob();
@@ -187,6 +202,10 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async listChildren(parentId) {
+    if (isBucketId(parentId)) {
+      const res = await this.call(`/bucket/list?path=${encodeURIComponent(bucketKey(parentId))}`);
+      return this.attachPreviews((await res.json()).map((n) => this.toBucketNode(n)));
+    }
     if (isHostId(parentId)) {
       const res = await this.call(`/host/list?path=${encodeURIComponent(hostPath(parentId))}`);
       return this.attachPreviews((await res.json()).map((n) => this.toHostNode(n)));
@@ -201,6 +220,7 @@ export class HttpAdapter extends StorageAdapter {
 
   async get(id) {
     try {
+      if (isBucketId(id)) return this.toBucketNode(await (await this.call(`/bucket/stat?path=${encodeURIComponent(bucketKey(id))}`)).json());
       if (isHostId(id)) return this.toHostNode(await (await this.call(`/host/stat?path=${encodeURIComponent(hostPath(id))}`)).json());
       return this.toNode(await (await this.call(`/stat?path=${encodeURIComponent(id)}`)).json());
     } catch {
@@ -209,22 +229,25 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async createFolder(name, parentId) {
+    if (isBucketId(parentId)) return this.toBucketNode(await (await this.post('/bucket/mkdir', { parent: bucketKey(parentId), name })).json());
     if (isHostId(parentId)) return this.toHostNode(await (await this.post('/host/mkdir', { parent: hostPath(parentId), name })).json());
     return this.toNode(await (await this.post('/mkdir', { parent: toBoxId(parentId), name })).json());
   }
 
   async rename(id, name) {
+    if (isBucketId(id)) return this.toBucketNode(await (await this.post('/bucket/rename', { path: bucketKey(id), name })).json());
     if (isHostId(id)) return this.toHostNode(await (await this.post('/host/rename', { path: hostPath(id), name })).json());
     return this.toNode(await (await this.post('/rename', { id, name })).json());
   }
 
   async toggleStar(id) {
-    if (isHostId(id)) throw new Error(NO_STARS);
+    if (isHostId(id) || isBucketId(id)) throw new Error(NO_STARS);
     return this.toNode(await (await this.post('/star', { id })).json());
   }
 
   /** A vault file goes to Castle's Trash; a computer file to the Recycle Bin. */
   async trash(id) {
+    if (isBucketId(id)) throw new Error(NO_BUCKET_TRASH); // the store asks, then deletes for good
     if (isHostId(id)) await this.post('/host/trash', { path: hostPath(id) });
     else await this.post('/trash', { id });
   }
@@ -234,12 +257,14 @@ export class HttpAdapter extends StorageAdapter {
   }
 
   async deleteForever(id) {
-    if (isHostId(id)) await this.post('/host/delete', { path: hostPath(id) });
+    if (isBucketId(id)) await this.post('/bucket/delete', { path: bucketKey(id) });
+    else if (isHostId(id)) await this.post('/host/delete', { path: hostPath(id) });
     else await this.post('/delete', { id });
   }
 
   async move(id, targetFolderId) {
-    if (isHostId(id) !== isHostId(targetFolderId)) throw new Error('Moving between My Drive and the computer is not here yet');
+    if (isHostId(id) !== isHostId(targetFolderId) || isBucketId(id) !== isBucketId(targetFolderId)) throw new Error(NO_MIXING);
+    if (isBucketId(id)) return this.toBucketNode(await (await this.post('/bucket/move', { path: bucketKey(id), target: bucketKey(targetFolderId) })).json());
     if (isHostId(id)) return this.toHostNode(await (await this.post('/host/move', { path: hostPath(id), target: hostPath(targetFolderId) })).json());
     return this.toNode(await (await this.post('/move', { id, target: toBoxId(targetFolderId) })).json());
   }
@@ -248,12 +273,14 @@ export class HttpAdapter extends StorageAdapter {
   async upload(files, parentId) {
     const made = [];
     const host = isHostId(parentId);
+    const bucket = isBucketId(parentId);
+    const route = bucket ? '/bucket/upload' : host ? '/host/upload' : '/upload';
     for (const file of files) {
-      const parent = host ? hostPath(parentId) : toBoxId(parentId);
+      const parent = bucket ? bucketKey(parentId) : host ? hostPath(parentId) : toBoxId(parentId);
       const query = `parent=${encodeURIComponent(parent)}&name=${encodeURIComponent(file.name || 'untitled')}`;
-      const res = await this.call(`${host ? '/host/upload' : '/upload'}?${query}`, { method: 'PUT', body: file });
+      const res = await this.call(`${route}?${query}`, { method: 'PUT', body: file });
       const raw = await res.json();
-      made.push(host ? this.toHostNode(raw) : this.toNode(raw));
+      made.push(bucket ? this.toBucketNode(raw) : host ? this.toHostNode(raw) : this.toNode(raw));
     }
     return made;
   }
@@ -310,6 +337,43 @@ export class HttpAdapter extends StorageAdapter {
   /** Times a drive. `write` false only reads files already on it. */
   async hostSpeedTest(path, write = true) {
     return (await this.post('/host/speedtest', { path, write })).json();
+  }
+
+  // ---- A cloud bucket: files kept with a storage provider (see bucket.js) ----
+
+  /** { connected, endpoint, bucket, publicUrl, keyId, quota }. The keys themselves stay on the box. */
+  async bucketStatus() {
+    return (await this.call('/bucket')).json();
+  }
+
+  /** Hands the box a bucket's address and keys. It keeps them only if the provider accepts them. */
+  async bucketConnect(details) {
+    return (await this.post('/bucket/connect', details)).json();
+  }
+
+  /** The box forgets the keys. Nothing in the bucket changes. */
+  async bucketDisconnect() {
+    return (await this.call('/bucket/disconnect', { method: 'POST' })).json();
+  }
+
+  /** { used, objects, quota, complete }: what the whole bucket holds. */
+  async bucketUsage() {
+    return (await this.call('/bucket/usage')).json();
+  }
+
+  /** The text of a small file in the bucket, or null when there is no such file. */
+  async bucketRead(key) {
+    try {
+      return await (await this.call(`/bucket/file?path=${encodeURIComponent(key)}`)).text();
+    } catch (err) {
+      if (err?.message === NOT_FOUND) return null;
+      throw err;
+    }
+  }
+
+  /** Replaces a small text file in the bucket, or makes it. */
+  async bucketWrite(key, text) {
+    return this.toBucketNode(await (await this.call(`/bucket/write?path=${encodeURIComponent(key)}`, { method: 'PUT', body: text })).json());
   }
 
   // ---- Clones: automations in Clonewars VMs (box started with --clonewars) ----

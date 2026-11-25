@@ -16,6 +16,7 @@
 
 mod ai;
 mod arcade;
+mod bucket;
 mod clones;
 mod comms;
 mod contacts;
@@ -117,6 +118,8 @@ struct AppState {
     contacts: contacts::Contacts,
     /// Each person's texts, calls, email and chats.
     comms: comms::Comms,
+    /// A cloud bucket shown in Storage beside the vault (see bucket.rs).
+    bucket: bucket::Bucket,
     /// Each person's saved pages from the internet.
     links: links::Links,
     /// Radar nodes on the walls, and what they see (see presence.rs).
@@ -846,6 +849,85 @@ async fn host_upload(State(st): State<Shared>, Query(q): Query<UploadQuery>, bod
 /// Times a drive. The write test puts one file on it and deletes it again.
 async fn host_speedtest(State(st): State<Shared>, Json(b): Json<SpeedBody>) -> ApiResult<Json<drives::SpeedResult>> {
     host_call(st, move |st, _| st.drives.speed_test(&b.path, b.write).map(Json).map_err(|msg| ApiError::conflict(&msg))).await
+}
+
+// ---------------------------------------------------------------------------------------
+// A cloud bucket: files kept with a storage provider (see bucket.rs)
+// ---------------------------------------------------------------------------------------
+
+impl From<bucket::Fail> for ApiError {
+    fn from(fail: bucket::Fail) -> Self {
+        match fail {
+            bucket::Fail::NotFound => Self::not_found(),
+            bucket::Fail::Bad(msg) => Self(StatusCode::BAD_REQUEST, msg),
+            bucket::Fail::Conflict(msg) => Self(StatusCode::CONFLICT, msg),
+            bucket::Fail::Refused(msg) => Self(StatusCode::FORBIDDEN, msg),
+            bucket::Fail::Upstream(msg) => Self(StatusCode::BAD_GATEWAY, msg),
+        }
+    }
+}
+
+async fn bucket_status(State(st): State<Shared>) -> Json<bucket::Status> {
+    Json(st.bucket.status())
+}
+
+/// Keeps a bucket's keys, once the provider has accepted them.
+async fn bucket_connect(State(st): State<Shared>, Json(b): Json<bucket::ConnectBody>) -> ApiResult<Json<bucket::Status>> {
+    Ok(Json(st.bucket.connect(b).await?))
+}
+
+async fn bucket_disconnect(State(st): State<Shared>) -> ApiResult<Json<bucket::Status>> {
+    st.bucket.disconnect()?;
+    Ok(Json(st.bucket.status()))
+}
+
+async fn bucket_usage(State(st): State<Shared>) -> ApiResult<Json<bucket::Usage>> {
+    Ok(Json(st.bucket.usage().await?))
+}
+
+async fn bucket_list(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Json<Vec<bucket::BucketNode>>> {
+    Ok(Json(st.bucket.list(&q.path).await?))
+}
+
+async fn bucket_stat(State(st): State<Shared>, Query(q): Query<PathQuery>) -> ApiResult<Json<bucket::BucketNode>> {
+    Ok(Json(st.bucket.stat(&q.path).await?))
+}
+
+async fn bucket_file(State(st): State<Shared>, Query(q): Query<PathQuery>, headers: HeaderMap) -> ApiResult<Response> {
+    Ok(st.bucket.file(&q.path, headers.get(header::RANGE)).await?)
+}
+
+async fn bucket_mkdir(State(st): State<Shared>, Json(b): Json<HostMkdirBody>) -> ApiResult<Json<bucket::BucketNode>> {
+    Ok(Json(st.bucket.mkdir(&b.parent, &b.name).await?))
+}
+
+async fn bucket_rename(State(st): State<Shared>, Json(b): Json<HostRenameBody>) -> ApiResult<Json<bucket::BucketNode>> {
+    Ok(Json(st.bucket.rename(&b.path, &b.name).await?))
+}
+
+async fn bucket_move(State(st): State<Shared>, Json(b): Json<HostMoveBody>) -> ApiResult<Json<bucket::BucketNode>> {
+    Ok(Json(st.bucket.move_to(&b.path, &b.target).await?))
+}
+
+async fn bucket_delete(State(st): State<Shared>, Json(b): Json<HostPathBody>) -> ApiResult<StatusCode> {
+    st.bucket.delete(&b.path).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A file from the app into the bucket, passed on as it arrives. The provider has to be
+/// told the size first, so an upload that does not say how long it is is refused.
+async fn bucket_upload(State(st): State<Shared>, Query(q): Query<UploadQuery>, headers: HeaderMap, body: Body) -> ApiResult<Json<bucket::BucketNode>> {
+    let length = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .ok_or(ApiError(StatusCode::LENGTH_REQUIRED, "the upload did not say how big it is".into()))?;
+    Ok(Json(st.bucket.upload(&q.parent, &q.name, length, body).await?))
+}
+
+/// Replaces a small text file in the bucket (the app's catalog editor).
+async fn bucket_write(State(st): State<Shared>, Query(q): Query<PathQuery>, body: axum::body::Bytes) -> ApiResult<Json<bucket::BucketNode>> {
+    Ok(Json(st.bucket.write(&q.path, body.to_vec()).await?))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -2197,7 +2279,7 @@ const MAX_LOG_ENTRIES: usize = 2000;
 /// A call's JSON body is read to record what it acted on; anything larger is refused.
 const MAX_RECORDED_BODY: usize = 1024 * 1024;
 /// Calls whose body is a file: passed on untouched, not read into the record.
-const STREAMED_BODIES: [&str; 5] = ["/upload", "/host/upload", "/comms/import", "/contacts/import", "/contacts/photo"];
+const STREAMED_BODIES: [&str; 6] = ["/upload", "/host/upload", "/bucket/upload", "/comms/import", "/contacts/import", "/contacts/photo"];
 /// Body fields worth recording. Never the whole body: a login's password must not land in the record.
 const RECORDED_FIELDS: [&str; 8] = ["id", "name", "parent", "to", "system", "hash", "path", "target"];
 
@@ -2637,6 +2719,18 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         .route("/arcade/saves/record", post(saves_record))
         .route("/arcade/saves/history", get(saves_history))
         .route("/arcade/saves/restore", post(saves_restore))
+        .route("/bucket", get(bucket_status))
+        .route("/bucket/connect", post(bucket_connect))
+        .route("/bucket/disconnect", post(bucket_disconnect))
+        .route("/bucket/usage", get(bucket_usage))
+        .route("/bucket/list", get(bucket_list))
+        .route("/bucket/stat", get(bucket_stat))
+        .route("/bucket/file", get(bucket_file))
+        .route("/bucket/mkdir", post(bucket_mkdir))
+        .route("/bucket/rename", post(bucket_rename))
+        .route("/bucket/move", post(bucket_move))
+        .route("/bucket/delete", post(bucket_delete))
+        .route("/bucket/write", put(bucket_write).layer(DefaultBodyLimit::max(bucket::MAX_WRITE_BYTES)))
         .route("/network", get(network_reading))
         .route("/network/speedtest", post(network_speedtest))
         .route("/network/provider", get(network_provider))
@@ -2662,6 +2756,7 @@ fn router(state: Shared, web: Option<PathBuf>) -> Router {
         // for this one route only.
         .route("/upload", put(upload).layer(DefaultBodyLimit::disable()))
         .route("/host/upload", put(host_upload).layer(DefaultBodyLimit::disable()))
+        .route("/bucket/upload", put(bucket_upload).layer(DefaultBodyLimit::disable()))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
 
     // Play links carry their own permission (see theater.rs), so a video player can use them.
@@ -2758,6 +2853,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         contacts: contacts::Contacts::open(root.join(META_DIR).join("contacts")),
         comms: comms::Comms::open(root.join(META_DIR).join("comms")),
         links: links::Links::open(root.join(META_DIR).join("links")),
+        bucket: bucket::Bucket::open(&root.join(META_DIR)),
         presence: presence::Presence::open(root.join(META_DIR).join("presence")),
         steam: Arc::new(steam::SteamCache::open(cfg.steam_cache_dir.clone().unwrap_or_else(|| root.join(META_DIR).join("steam")))),
         dns: Mutex::new(None),

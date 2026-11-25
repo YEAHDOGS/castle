@@ -12,7 +12,7 @@ getrandom = "0.4.3"
 mail-parser = "1.0.1"
 mime_guess = "2.0.5"
 quick-xml = "0.42.0"
-reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "native-tls", "json"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "native-tls", "json", "stream"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }

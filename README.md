@@ -78,7 +78,7 @@ folder; everything that is part of the app lives in `app/`.
 | `app/gatehouse/` | Firmware for the Presence radar nodes (ESP32 + LD2450). |
 | `app/data/` | Everything live or generated, never committed: Clones' disks, ISOs and Android SDK (`app/data/clonewars`), and the vault a plain `cargo run` of the daemon uses (`app/data/castle`). |
 | `Dockerfile`, `compose.yml` | The box in Docker: the daemon serving the app, with the vault on whatever drive `.env` names (`docker-box.env.example`). See `castled/README.md`. |
-| `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage, Arcade, Theater, Comms, Contacts, Links, Clones, Phoenix, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
+| `castled/` | **The box daemon** (Rust), the server every Castle app talks to. Storage (the vault, the rest of the computer, and a cloud bucket), Arcade, Theater, Comms, Contacts, Links, Clones, Phoenix, Security and Presence all answer from here. The audit scripts behind Security > Audits are in `castled/audits` and built in; the desktop app carries the daemon inside. |
 | `os/` | Castle OS: the Arch-based install image and its tools. |
 | `landing/` | castle.dogs.red, the landing page. |
 | `scripts/` | Repo scripts, such as building the website, and `demo-media.mjs`, which builds the demo's images (all public domain or freely licensed) into `media/`, never committed: its contents are hosted at data.wearedogs.net/castle, with their credits in `CREDITS.md` there. |

@@ -109,6 +109,8 @@ Start and B still get you out.
 | `Esc` | Close menu → preview → cancel rename → clear selection |
 | `Shift + F10` or the menu key (controller: X) | The focused file's menu |
 
+In **Bucket** (a cloud bucket connected to the box: Cloudflare R2, Backblaze B2, any S3) there is no trash, so `Delete` asks and then deletes for good. A file there has **Copy public link** in its menu when the bucket has a public address.
+
 An arrow at the edge of the files carries focus out to the rail, the bar or `../`. On a
 controller, B closes what is open, otherwise goes up a folder.
 
