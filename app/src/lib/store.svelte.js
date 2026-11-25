@@ -8,15 +8,19 @@ import { uid } from './format.js';
 import { ask } from './ask.svelte.js';
 import { prefs as devicePrefs } from './prefs.svelte.js';
 import { HOST_ROOT, COMPUTER_NAME, isHostId, hostTrail, hostParent } from './computer.js';
+import { isBucketId, bucketTrail } from './bucket.js';
 import { SHOWCASE, REFUSED, onRefused, refused } from './showcase.js';
 
-export const VIEWS = ['drive', 'computer', 'shared', 'recent', 'starred', 'trash'];
+export const VIEWS = ['drive', 'computer', 'bucket', 'shared', 'recent', 'starred', 'trash'];
 export const SORT_KEYS = ['name', 'size', 'modified'];
 export const SORT_LABELS = { name: 'NAME', size: 'SIZE', modified: 'MODIFIED' };
 
 // ---- per-session drive prefs (sort + density). sessionStorage only, no PII. ----
 const PREFS_KEY = 'castle-drive-prefs';
 const GENERIC_ERROR = 'Something went wrong';
+const NO_BUCKET = 'Connect a bucket first';
+const BUCKET_DELETE_ONE = 'Delete this from the bucket? It is gone for good, and its public link stops working.';
+const BUCKET_DISCONNECT = 'Disconnect this bucket? Its files stay where they are; the box forgets the keys.';
 // Actions that change the drive. Each is wrapped below so a failure (box unreachable, name
 // taken, token rejected) becomes a toast and a fresh listing instead of a silent dead end.
 const GUARDED_ACTIONS = [
@@ -74,6 +78,10 @@ class DriveStore {
   computer = $state(null);
   computerOff = $state(''); // why not, in words, when the box said no
   testing = $state(null); // "<drive path>|write" or "|read" while a speed test runs
+  // A cloud bucket: { connected, endpoint, bucket, publicUrl, keyId, quota } from the box, or
+  // null when this backend has none to offer (a browser-only drive, the demo).
+  bucket = $state(null);
+  uploading = $state(0); // files on their way to the bucket right now
 
   get cwd() {
     return this.path[this.path.length - 1];
@@ -83,9 +91,14 @@ class DriveStore {
     return this.view === 'trash';
   }
 
-  /** A view with folders to walk through: My Drive, or This computer. */
+  /** A view with folders to walk through: My Drive, This computer, or the bucket. */
   get browsing() {
-    return this.view === 'drive' || this.view === 'computer';
+    return this.view === 'drive' || this.view === 'computer' || this.view === 'bucket';
+  }
+
+  /** In the bucket view with no bucket connected: the page that asks for one. */
+  get atBucketDoor() {
+    return this.view === 'bucket' && !this.bucket?.connected;
   }
 
   /** On the drive list at the top of This computer. */
@@ -97,6 +110,7 @@ class DriveStore {
   get canClimb() {
     if (this.query) return false;
     if (this.view === 'drive') return this.path.length === 1 && !!this.computer;
+    if (this.view === 'bucket') return this.path.length > 1;
     return this.view === 'computer' && this.cwd.id !== HOST_ROOT;
   }
 
@@ -132,6 +146,7 @@ class DriveStore {
     }
     if (await this.connectLocalBox()) return;
     this.loadComputer();
+    this.loadBucket();
     try {
       await this.refresh();
     } catch (err) {
@@ -221,8 +236,10 @@ class DriveStore {
     this.previewId = null;
     this.computer = null;
     this.computerOff = '';
+    this.bucket = null;
     this.clearSelection();
     this.loadComputer();
+    this.loadBucket();
   }
 
   savePrefs() {
@@ -281,6 +298,8 @@ class DriveStore {
     let items;
     if (this.view === 'computer') {
       items = await this.listComputer();
+    } else if (this.view === 'bucket') {
+      items = await this.listBucket();
     } else if (this.query.trim()) {
       items = await this.adapter.search(this.query);
     } else if (this.view === 'drive') {
@@ -313,6 +332,48 @@ class DriveStore {
     if (!devicePrefs.get('storage.showHidden')) items = items.filter((n) => !n.hidden);
     const q = this.query.trim().toLowerCase();
     return q ? items.filter((n) => n.name.toLowerCase().includes(q)) : items;
+  }
+
+  /** The open bucket folder, filtered by the search box. Nothing while no bucket is connected. */
+  async listBucket() {
+    if (!this.bucket?.connected) return [];
+    const items = await this.adapter.listChildren(this.cwd.id);
+    const q = this.query.trim().toLowerCase();
+    return q ? items.filter((n) => n.name.toLowerCase().includes(q)) : items;
+  }
+
+  /** Asks the box whether it has a bucket. Leaves `bucket` null when this backend has none to offer. */
+  async loadBucket() {
+    const adapter = this.adapter;
+    if (!adapter.bucketStatus) {
+      this.bucket = null;
+      return;
+    }
+    try {
+      const status = await adapter.bucketStatus();
+      if (adapter === this.adapter) this.bucket = status;
+    } catch {
+      if (adapter === this.adapter) this.bucket = null; // an older box: no bucket view
+    }
+  }
+
+  /** Connects a bucket. Throws with words fit to show beside the form. */
+  async connectBucket(details) {
+    if (SHOWCASE) throw new Error(REFUSED);
+    this.bucket = await this.adapter.bucketConnect(details);
+    this.path = bucketTrail('', this.bucket.bucket);
+    await this.refresh();
+    this.toast('Bucket connected');
+  }
+
+  /** The box forgets the bucket's keys; the files in it stay where they are. */
+  async disconnectBucket() {
+    if (!(await ask(BUCKET_DISCONNECT, { yes: 'Disconnect' }))) return;
+    this.bucket = await this.adapter.bucketDisconnect();
+    this.path = bucketTrail('');
+    this.clearSelection();
+    await this.refresh();
+    this.toast('Bucket disconnected');
   }
 
   /**
@@ -382,13 +443,15 @@ class DriveStore {
 
   // ---------- navigation ----------
   async setView(v) {
-    if (this.view === v && !(v === 'computer' && !this.atComputerTop)) return;
+    const deep = (v === 'computer' && !this.atComputerTop) || (v === 'bucket' && this.path.length > 1);
+    if (this.view === v && !deep) return;
     this.view = v;
     this.slideDir = 1;
     if (v === 'drive') this.path = [{ id: 'root', name: 'My Drive' }];
     if (v === 'computer') this.path = hostTrail('');
-    // Recent, Starred and the rest add new files to My Drive, never to a computer folder.
-    else if (isHostId(this.cwd.id)) this.path = [{ id: 'root', name: 'My Drive' }];
+    else if (v === 'bucket') this.path = bucketTrail('', this.bucket?.bucket || undefined);
+    // Recent, Starred and the rest add new files to My Drive, never to a computer folder or a bucket.
+    else if (isHostId(this.cwd.id) || isBucketId(this.cwd.id)) this.path = [{ id: 'root', name: 'My Drive' }];
     this.query = '';
     this.clearSelection();
     await this.refresh();
@@ -397,7 +460,7 @@ class DriveStore {
   async openNode(node) {
     if (!node) return;
     if (node.kind === 'folder') {
-      this.view = isHostId(node.id) ? 'computer' : 'drive';
+      this.view = isHostId(node.id) ? 'computer' : isBucketId(node.id) ? 'bucket' : 'drive';
       this.query = '';
       this.slideDir = 1;
       this.path = [...this.path, { id: node.id, name: node.name }];
@@ -547,6 +610,7 @@ class DriveStore {
   // ---------- mutations (all instant-feeling) ----------
   async newFolder() {
     if (this.atComputerTop) return this.toast('Open a drive first');
+    if (this.atBucketDoor) return this.toast(NO_BUCKET);
     const node = await this.adapter.createFolder('New folder', this.cwd.id);
     this.query = '';
     await this.refresh();
@@ -587,6 +651,7 @@ class DriveStore {
   async trashSelection() {
     const ids = this.targets();
     if (!ids.length) return;
+    if (isBucketId(ids[0])) return this.deleteForeverSelection(); // a bucket has no trash
     for (const id of ids) await this.adapter.trash(id);
     this.clearSelection();
     this.menu = null;
@@ -608,8 +673,11 @@ class DriveStore {
   async deleteForeverSelection() {
     const ids = this.targets();
     if (!ids.length) return;
-    const question = ids.length > 1 ? `Delete ${ids.length} items for good? This cannot be undone.` : 'Delete this for good? This cannot be undone.';
-    if (devicePrefs.get('storage.confirmDelete') && !(await ask(question, { yes: 'Delete forever', danger: true }))) return;
+    const inBucket = isBucketId(ids[0]);
+    const one = inBucket ? BUCKET_DELETE_ONE : 'Delete this for good? This cannot be undone.';
+    const question = ids.length > 1 ? `Delete ${ids.length} items for good? This cannot be undone.` : one;
+    // What is in a bucket may be live on a website, so that delete is always asked about.
+    if ((inBucket || devicePrefs.get('storage.confirmDelete')) && !(await ask(question, { yes: 'Delete forever', danger: true }))) return;
     for (const id of ids) await this.adapter.deleteForever(id);
     this.clearSelection();
     this.menu = null;
@@ -638,7 +706,16 @@ class DriveStore {
     const files = [...fileList];
     if (!files.length) return;
     if (this.atComputerTop) return this.toast('Open a drive first');
-    const made = await this.adapter.upload(files, this.cwd.id);
+    if (this.atBucketDoor) return this.toast(NO_BUCKET);
+    // A song or a film takes a while to reach a provider: the bucket bar counts what is on its way.
+    const toBucket = isBucketId(this.cwd.id);
+    if (toBucket) this.uploading += files.length;
+    let made;
+    try {
+      made = await this.adapter.upload(files, this.cwd.id);
+    } finally {
+      if (toBucket) this.uploading = Math.max(0, this.uploading - files.length);
+    }
     await this.refresh();
     this.toast(made.length > 1 ? `${made.length} uploaded` : 'Uploaded');
     if (made.length === 1) this.select(made[0].id);

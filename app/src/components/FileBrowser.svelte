@@ -205,7 +205,7 @@
                 {:else}
                   <p class="truncate text-[13px] font-medium text-white">{node.name}</p>
                   <p class="micro mt-1 text-text-faint">
-                    {node.kind === 'folder' ? 'FOLDER' : fmtSize(node.size)} · {fmtDate(node.modified)}
+                    {node.kind === 'folder' ? 'FOLDER' : fmtSize(node.size)}{#if node.modified}{' · '}{fmtDate(node.modified)}{/if}
                   </p>
                 {/if}
               </div>
@@ -262,7 +262,7 @@
                 {/if}
               </div>
               {#if node.starred}<Star class="h-3.5 w-3.5 shrink-0 fill-chiral text-chiral" />{/if}
-              <span class="micro hidden w-24 shrink-0 text-right text-text-faint sm:block">{fmtDate(node.modified)}</span>
+              <span class="micro hidden w-24 shrink-0 text-right text-text-faint sm:block">{node.modified ? fmtDate(node.modified) : '—'}</span>
               <span class="micro hidden w-20 shrink-0 text-right text-text-faint md:block">
                 {node.kind === 'folder' ? '—' : fmtSize(node.size)}
               </span>

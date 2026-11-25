@@ -1,7 +1,7 @@
 <!-- StorageSection: the drive. Views in the rail, search and New in the bar, files below. -->
 <script>
   import { onMount } from 'svelte';
-  import { HardDrive, Users, History, Star, Trash2, Monitor, Usb, Disc3, MemoryStick } from '@lucide/svelte';
+  import { HardDrive, Users, History, Star, Trash2, Monitor, Usb, Disc3, MemoryStick, Cloud } from '@lucide/svelte';
   import { attachShortcuts } from '../../lib/keys.js';
   import { store } from '../../lib/store.svelte.js';
   import { fmtSize } from '../../lib/format.js';
@@ -10,11 +10,14 @@
   import Breadcrumbs from '../Breadcrumbs.svelte';
   import FileBrowser from '../FileBrowser.svelte';
   import ComputerView from '../ComputerView.svelte';
+  import BucketDoor from '../BucketDoor.svelte';
+  import BucketBar from '../BucketBar.svelte';
   import { hostId } from '../../lib/computer.js';
 
   const VIEWS = [
     { id: 'drive', label: 'My Drive', short: 'Drive', icon: HardDrive },
     { id: 'computer', label: 'This computer', short: 'Computer', icon: Monitor },
+    { id: 'bucket', label: 'Bucket', short: 'Bucket', icon: Cloud },
     { id: 'shared', label: 'Shared', short: 'Shared', icon: Users },
     { id: 'recent', label: 'Recent', short: 'Recent', icon: History },
     { id: 'starred', label: 'Starred', short: 'Starred', icon: Star },
@@ -27,9 +30,13 @@
 
   const driveIcon = (drive) => (drive.kind === 'optical' ? Disc3 : drive.bus === 'SD' || drive.bus === 'MMC' ? MemoryStick : Usb);
 
-  // This computer appears only where there is one; each plugged-in drive gets its own row under it.
+  // This computer and Bucket appear only on a backend that has them (a box, not the demo).
+  const offered = $derived(VIEWS.filter((v) => (v.id !== 'computer' || store.computer) && (v.id !== 'bucket' || store.bucket)));
+  const inBucket = $derived(store.view === 'bucket' && !!store.bucket?.connected);
+
+  // Each plugged-in drive gets its own row under This computer.
   const views = $derived.by(() => {
-    const list = VIEWS.filter((v) => v.id !== 'computer' || store.computer);
+    const list = offered;
     if (!store.computer) return list;
     const plugged = store.computer.drives
       .filter((d) => d.removable)
@@ -52,7 +59,10 @@
   }
 
   let stats = $state({ used: 0, quota: 1 });
-  const usedPercent = $derived(stats.quota ? Math.min(FULL, (stats.used / stats.quota) * FULL) : 0);
+  let bucketUsage = $state(null); // { used, objects, quota, complete } while the bucket is open
+  // In the bucket the meter reads the bucket: how much of what was rented is used.
+  const meterStats = $derived(inBucket ? bucketUsage || { used: 0, quota: 0 } : stats);
+  const usedPercent = $derived(meterStats.quota ? Math.min(FULL, (meterStats.used / meterStats.quota) * FULL) : 0);
 
   // Drive shortcuts (Delete, type-ahead, arrows) belong to this section only.
   onMount(attachShortcuts);
@@ -64,15 +74,16 @@
 
   $effect(() => {
     store.items; // refresh the meter whenever the drive changes
-    store.adapter.stats().then((s) => (stats = s)).catch(() => {}); // unreachable box: keep the last reading
+    if (inBucket) store.adapter.bucketUsage().then((u) => (bucketUsage = u)).catch(() => {});
+    else store.adapter.stats().then((s) => (stats = s)).catch(() => {}); // unreachable box: keep the last reading
   });
 </script>
 
 {#snippet meter()}
   <div class="hidden border-t border-hairline-faint px-6 py-4 lg:block">
     <div class="micro mb-2 flex justify-between text-text-faint">
-      <span>STORAGE</span>
-      <span class="text-text-dim">{Math.round(usedPercent)}%</span>
+      <span>{inBucket ? 'BUCKET' : 'STORAGE'}</span>
+      {#if meterStats.quota}<span class="text-text-dim">{Math.round(usedPercent)}%</span>{/if}
     </div>
     <div class="h-[3px] overflow-hidden rounded-full bg-white/[0.07]">
       <div
@@ -80,7 +91,7 @@
         style="width: {usedPercent}%; background: linear-gradient(90deg, var(--color-chiral), var(--color-bridge));"
       ></div>
     </div>
-    <div class="micro mt-2 text-text-faint">{fmtSize(stats.used)} / {fmtSize(stats.quota)}</div>
+    <div class="micro mt-2 text-text-faint">{fmtSize(meterStats.used)}{#if meterStats.quota}{' / '}{fmtSize(meterStats.quota)}{/if}</div>
   </div>
 {/snippet}
 
@@ -94,7 +105,10 @@
     <Breadcrumbs />
     {#if store.atComputerTop}
       <ComputerView />
+    {:else if store.atBucketDoor}
+      <BucketDoor />
     {:else}
+      {#if inBucket}<BucketBar usage={bucketUsage} />{/if}
       <FileBrowser />
     {/if}
   </div>
@@ -102,7 +116,7 @@
 
 <!-- phone tab rail -->
 <nav class="glass fixed inset-x-0 bottom-[var(--strip)] z-40 flex border-x-0 border-b-0 md:hidden" aria-label="Drive views" data-tour="tabs">
-  {#each VIEWS.filter((v) => v.id !== 'computer' || store.computer) as item (item.id)}
+  {#each offered as item (item.id)}
     {@const Icon = item.icon}
     {@const active = store.view === item.id}
     <button

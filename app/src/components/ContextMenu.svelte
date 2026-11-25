@@ -1,9 +1,10 @@
 <!-- ContextMenu: right-click actions. Pops at the cursor, expo-out. -->
 <script>
-  import { FolderOpen, PenLine, Star, StarOff, Download, Trash2, RotateCcw, XOctagon } from '@lucide/svelte';
+  import { FolderOpen, PenLine, Star, StarOff, Download, Trash2, RotateCcw, XOctagon, Link2 } from '@lucide/svelte';
   import { scale, fade } from 'svelte/transition';
   import { store } from '../lib/store.svelte.js';
   import { isHostId } from '../lib/computer.js';
+  import { isBucketId } from '../lib/bucket.js';
   import { pop, reducedMotion } from '../lib/motion.js';
 
   const menu = $derived(store.menu);
@@ -22,6 +23,15 @@
     }
   });
 
+  async function copyLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      store.toast('Link copied');
+    } catch {
+      store.toast(url); // no clipboard here (plain http on the home network): show it instead
+    }
+  }
+
   const rows = $derived.by(() => {
     if (!node) return [];
     if (store.isTrash) {
@@ -29,6 +39,17 @@
         { label: 'Restore', icon: RotateCcw, fn: () => store.restoreSelection() },
         { label: 'Delete forever', icon: XOctagon, danger: true, fn: () => store.deleteForeverSelection() },
       ];
+    }
+    // A file in a bucket: no stars and no trash, and a public link when the bucket has an address.
+    if (isBucketId(node.id)) {
+      const rows = [
+        { label: node.kind === 'folder' ? 'Open' : 'Preview', icon: FolderOpen, fn: () => store.openNode(node) },
+        { label: 'Rename', hint: 'F2', icon: PenLine, fn: () => store.startRename(node.id) },
+      ];
+      if (node.kind === 'file') rows.push({ label: 'Download', icon: Download, fn: () => store.download(node.id) });
+      if (node.url) rows.push({ label: 'Copy public link', icon: Link2, fn: () => copyLink(node.url) });
+      rows.push({ label: 'Delete forever', hint: 'DEL', icon: XOctagon, danger: true, fn: () => store.deleteForeverSelection() });
+      return rows;
     }
     // A file on the computer: no stars, and a delete goes to the system's bin.
     if (isHostId(node.id)) {

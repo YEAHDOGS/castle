@@ -162,6 +162,49 @@ address on this computer, a private network, a Tailscale range or a link-local r
 refused, at the first address and at every redirect. The connection goes to the addresses
 that were checked.
 
+## A cloud bucket
+
+Storage can show one bucket beside the vault: storage rented from a provider that speaks
+the S3 API (Cloudflare R2, Backblaze B2, MinIO, Amazon S3). The box is given the bucket's
+address and a pair of keys once, in Storage > Bucket, and keeps them in
+`<vault>/.castle/bucket.json`. From then on the box makes every call to the provider
+(`src/bucket.rs`); the app talks only to the box, and no call returns the secret.
+
+An item's id is its whole name in the bucket. A folder's id ends with a slash
+(`music/2026/`), and the top of the bucket is `""`.
+
+| Call | Does |
+|---|---|
+| `GET /bucket` | `{connected, endpoint, bucket, publicUrl, keyId, quota}`. `keyId` is the last four characters of the key id. |
+| `POST /bucket/connect` `{endpoint, bucket, accessKeyId, secretAccessKey, region, publicUrl, quotaGb}` | Tries the keys with one listing and keeps them only if the provider accepts them. `endpoint` must be `https://` with nothing after the name (plain `http://` only for a provider on this computer). `region` defaults to `auto`. `publicUrl` is where the bucket's files are public, if they are; `quotaGb` is how much it may hold, for the meter. |
+| `POST /bucket/disconnect` | Forgets the keys. Nothing in the bucket changes. |
+| `GET /bucket/usage` | `{used, objects, quota, complete}`, added up from a full listing and remembered for ten minutes, or until the box next changes the bucket. |
+| `GET /bucket/list?path=` | What is directly in a folder. Each item: `{id, name, kind, parentId, mime, size, modified, url}`; `url` is the file's public address when the bucket has one. |
+| `GET /bucket/stat?path=` | One item. |
+| `GET /bucket/file?path=` | A file's bytes, passed through from the provider. Honours `Range`. |
+| `PUT /bucket/upload?parent=&name=` | Upload; the request body is the file, passed on as it arrives. Needs `Content-Length`. A taken name becomes `name (2)`. |
+| `POST /bucket/mkdir` `{parent, name}` | New folder: an empty object whose name ends in a slash, so it shows while empty. |
+| `POST /bucket/rename` `{path, name}` | Rename. `409` if the name is taken. |
+| `POST /bucket/move` `{path, target}` | Move into another folder. |
+| `POST /bucket/delete` `{path}` | Delete a file, or a folder and everything in it. |
+| `PUT /bucket/write?path=` | Replaces a small text file (up to 1 MB), or makes it. The one call that overwrites: it is for a file the app edits in place, such as a catalog. |
+
+- **A bucket cannot rename.** A rename or move copies each file to its new name and removes
+  the old ones only once every copy is there. A folder holding more than 1,000 files is
+  refused, to be done in smaller pieces.
+- **There is no trash.** A delete is for good, and the app always asks first.
+- **Anyone with the box token can use the bucket**, like everything else on the box. The
+  keys are as safe as the vault's private folder.
+
+### A catalog in the bucket
+
+A website can read which songs it has from one small file in the bucket instead of from
+its own code, so a new song goes live by uploading it. Castle shows a Catalog button in
+Storage > Bucket when the bucket holds `music/catalog.json` with `"kind": "dogs-music"`
+(`app/src/lib/catalog.js` has the format). Adding a song there uploads its files into the
+folders the catalog names and saves the catalog with `PUT /bucket/write`. The bucket needs
+a public address for this, since the catalog lists each file by its link.
+
 ## Storage places (needs `--places` and `--state`)
 
 | Call | Does |
