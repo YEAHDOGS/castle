@@ -542,6 +542,14 @@ watch_daemon() {
         is_stale "$DAEMON_EXE" "${DAEMON_SOURCES[@]}" || continue
         say 'The box daemon changed. Rebuilding and restarting it.'
         build_daemon || say 'The box daemon did not build. The previous one is starting again; fix the error above and save.'
+        # While it built, nothing listened, so a window that reloaded then had the app start
+        # the copy it bundles: an older build, without the web app, Clones or Arcade. That
+        # one is ended so the box just built takes its place.
+        read_started
+        if [[ -n "$STARTED_PID" ]]; then
+            say "Replacing the box that started during the build (process $STARTED_PID) with the new one."
+            stop_started_box
+        fi
         start_box || true
     done
 }
