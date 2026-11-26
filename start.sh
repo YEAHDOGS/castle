@@ -327,7 +327,11 @@ fi
 
 need_cargo() { command -v cargo >/dev/null 2>&1 || die 'Building Castle needs Rust (cargo). Install it from https://rustup.rs'; }
 need_npm() { command -v npm >/dev/null 2>&1 || die 'Building Castle needs Node.js (npm). Install it from https://nodejs.org'; }
-install_packages() { [[ -d "$CLIENT_DIR/node_modules" ]] || (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund); }
+# True when a folder's packages are not fully installed: npm writes node_modules/.package-lock.json
+# last, so a missing one means an install that never finished (a folder that only exists is not
+# enough), and one older than package-lock.json means the packages changed since.
+needs_packages() { is_stale "$1/node_modules/.package-lock.json" "$1/package-lock.json"; }
+install_packages() { if needs_packages "$CLIENT_DIR"; then (cd "$CLIENT_DIR" && npm ci --no-audit --no-fund) || die "The interface's packages did not install (app/node_modules)."; fi; }
 
 # DOGS AI's app (app/ai/app), which the box shows in its AI section through the dogs server.
 # app/ai is the dogs-ai project as a git submodule: fetched here when the checkout does not
@@ -342,7 +346,7 @@ build_ai_app() {
     [[ -f "$AI_APP_DIR/package.json" ]] || return 0
     if [[ -f "$AI_APP_DIR/dist/index.html" ]] && (( ! BUILD )); then return 0; fi
     say 'Building DOGS AI (app/ai/app).'
-    if [[ ! -d "$AI_APP_DIR/node_modules" ]]; then
+    if needs_packages "$AI_APP_DIR"; then
         (cd "$AI_APP_DIR" && npm ci --no-audit --no-fund) || { say 'DOGS AI did not install, so AI stays off.'; return 0; }
     fi
     (cd "$AI_APP_DIR" && npm run build) || say 'DOGS AI did not build, so AI stays off.'
